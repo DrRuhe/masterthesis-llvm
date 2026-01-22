@@ -7,13 +7,10 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Passes/PassBuilder.h"
-#include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/Passes/PassPlugin.h"
-#include <cassert>
 
 
 using namespace llvm;
+
 
 static void printSpecializationInfo(Value *Instance, CallInst *MemberCall) {
   errs() << "--- Specialization Info ---\n";
@@ -140,91 +137,4 @@ PreservedAnalyses RuntimeSpecializerPass::run(Module &M, ModuleAnalysisManager &
   }
 
   return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
-}
-
-PreservedAnalyses RuntimeSpecializeableIRFinalizerPass::run(Module &M, ModuleAnalysisManager &AM) {
-  bool Changed = false;
-
-  static constexpr const char *kPtrName  = "RuntimeSpecializeableIR_ptr";
-  static constexpr const char *kLenName  = "RuntimeSpecializeableIR_len";
-  static constexpr const char *kDataName = "RuntimeSpecializeableIR_data";
-
-  GlobalVariable *PtrGV = M.getNamedGlobal(kPtrName);
-  GlobalVariable *LenGV = M.getNamedGlobal(kLenName);
-  if (!PtrGV || !LenGV) {
-    // Pass 1 didn't decide to expose anything; nothing to do.
-    return PreservedAnalyses::all();
-  }
-
-  // If we already finalized once, don't do it again (keeps things predictable).
-  if (M.getNamedGlobal(kDataName)) {
-    return PreservedAnalyses::all();
-  }
-
-  // 1) Serialize the entire module to LLVM bitcode in-memory.
-  SmallVector<char, 0> BitcodeBuffer;
-  raw_svector_ostream OS(BitcodeBuffer);
-  WriteBitcodeToFile(M, OS);
-
-  LLVMContext &Ctx = M.getContext();
-  ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(BitcodeBuffer.data()),
-                          BitcodeBuffer.size());
-
-  // 2) Create @RuntimeSpecializeableIR_data = constant [N x i8] c"..."
-  ArrayType *DataTy = ArrayType::get(Type::getInt8Ty(Ctx), Bytes.size());
-  Constant *DataInit = ConstantDataArray::get(Ctx, Bytes);
-
-  auto *DataGV = new GlobalVariable(
-      M,
-      DataTy,
-      /*isConstant=*/true,
-      GlobalValue::InternalLinkage,
-      DataInit,
-      kDataName);
-  DataGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
-
-  // 3) Point ptr to the first byte, and set len.
-  Constant *Zero32 = ConstantInt::get(Type::getInt32Ty(Ctx), 0);
-  SmallVector<Constant *, 2> GEPIdx = {Zero32, Zero32};
-  Constant *DataPtr = ConstantExpr::getInBoundsGetElementPtr(DataTy, DataGV, GEPIdx);
-
-  DataPtr = ConstantExpr::getBitCast(DataPtr, PointerType::getUnqual(Ctx));
-
-
-  PtrGV->setInitializer(DataPtr);
-  LenGV->setInitializer(ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size()));
-
-  Changed = true;
-  return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
-}
-
-
-// ... existing code ...
-extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
-llvmGetPassPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "RuntimeSpecializer", LLVM_VERSION_STRING,
-          [](PassBuilder &PB) {
-            // 1. Registrierung für RuntimeSpecializerPass
-            PB.registerPipelineParsingCallback(
-                [](StringRef Name, ModulePassManager &MPM,
-                   ArrayRef<PassBuilder::PipelineElement>) {
-                  if (Name == "runtime-specializer") {
-                    MPM.addPass(RuntimeSpecializerPass());
-                    return true;
-                  }
-
-                  if (Name == "runtime-specializeable-ir-finalizer") {
-                    MPM.addPass(RuntimeSpecializeableIRFinalizerPass());
-                    return true;
-                  }
-                  return false;
-                });
-
-
-            // 2. Automatisches Einhängen des Finalizers nach allen Optimierungen
-            PB.registerOptimizerLastEPCallback(
-                [](ModulePassManager &MPM, OptimizationLevel Level, ThinOrFullLTOPhase Phase) {
-                  MPM.addPass(RuntimeSpecializeableIRFinalizerPass());
-                });
-  }};
 }

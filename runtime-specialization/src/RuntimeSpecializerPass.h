@@ -10,7 +10,7 @@ namespace llvm {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
     };
 
-    class RuntimeSpecializeableIRFinalizerPass : public PassInfoMixin<RuntimeSpecializeableIRFinalizerPass> {
+    class IRDumpingPass : public PassInfoMixin<IRDumpingPass> {
     public:
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
     };
