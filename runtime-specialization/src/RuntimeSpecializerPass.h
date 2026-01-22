@@ -10,6 +10,11 @@ namespace llvm {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
     };
 
+    class RuntimeSpecializeableIRFinalizerPass : public PassInfoMixin<RuntimeSpecializeableIRFinalizerPass> {
+    public:
+        PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
+    };
+
 } // namespace llvm
 
 #endif // LLVM_TRANSFORMS_SPECIALIZE_RUNTIMESPECIALIZERPASS_H

@@ -1,7 +1,8 @@
-// RUN: clang -emit-llvm -S -O0 %s -o - | opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializer%shlibext -passes='runtime-specializer' -S | FileCheck %s
+// RUN: clang -emit-llvm -S -O0 %s -o - | opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializer%shlibext -passes='runtime-specializer','runtime-specializeable-ir-finalizer' -S | FileCheck --dump-input=always %s
 
-
-
+//CHECK: @RuntimeSpecializeableIR_ptr = constant ptr @RuntimeSpecializeableIR_data
+//CHECK: @RuntimeSpecializeableIR_len = constant i64 [[LEN:[1-9][0-9]*]]
+//CHECK: @RuntimeSpecializeableIR_data = internal unnamed_addr constant
 
 class A {
   int value;
@@ -17,7 +18,6 @@ public:
 int main(int argc, char** argv) {
   A instance(argc);
 
-  //CHECK: @.str = private unnamed_addr constant [11 x i8] c"specialize\00", section "llvm.metadata"
   //CHECK: call void @llvm.var.annotation.p0.p0(ptr %result, ptr @.str, ptr @.str.1, i32 [[#]], ptr null)
   [[clang::annotate("specialize")]]
   int result = instance.getMod2();
