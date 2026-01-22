@@ -50,28 +50,65 @@ static std::pair<GlobalVariable*, GlobalVariable*> getOrCreateIRDumpGlobals(Modu
 
   return {PtrGV, LenGV};
 }
-
 static FunctionCallee getOrCreateRuntimeHook(Module &M) {
-  // C ABI Vorschlag:
+  // Opaque pointers: ptr ist ungetypt -> wir modellieren args einfach als ptr.
+  //
+  // C ABI:
   // void* __runtime_specialize_hook(const char* function_ref,
   //                                uint64_t argc,
-  //                                void** args,
+  //                                void* args,            // ptr auf args[0]
   //                                const void* ir_dump,
   //                                uint64_t ir_dump_len);
-  // Rückgabe: pointer auf parameterlose Funktion (als roher void*/i8*).
   LLVMContext &Ctx = M.getContext();
 
-  Type *I8PtrTy = PointerType::getUnqual(Ctx);    // i8*
-  Type *I8PtrPtrTy = PointerType::getUnqual(Ctx); // i8**
+  Type *PtrTy = PointerType::getUnqual(Ctx); // ptr
   Type *I64Ty = Type::getInt64Ty(Ctx);
 
   FunctionType *FTy = FunctionType::get(
-      /*Result=*/I8PtrTy,
-      {I8PtrTy, I64Ty, I8PtrPtrTy, I8PtrTy, I64Ty},
+      /*Result=*/PtrTy,
+      {PtrTy, I64Ty, PtrTy, PtrTy, I64Ty},
       /*isVarArg=*/false);
 
-  return M.getOrInsertFunction("__runtime_specialize_hook", FTy);
+  return M.getOrInsertFunction("llvmRuntimeSpecializationEntrypoint", FTy);
 }
+
+static Value *getOrCreateFunctionNameCStringPtr(Module &M, IRBuilder<> &B, StringRef Name) {
+  LLVMContext &Ctx = M.getContext();
+  Type *I32Ty = Type::getInt32Ty(Ctx);
+
+  // Deterministischer Name, damit wir mehrfachen Output deduplizieren können.
+  // (Hash reicht hier völlig; Kollision wäre theoretisch möglich, praktisch sehr unwahrscheinlich.)
+  uint64_t H = hash_value(Name);
+  std::string GVName = (Twine("rs.func.") + Twine::utohexstr(H)).str();
+
+  if (auto *Existing = M.getGlobalVariable(GVName, /*AllowInternal=*/true)) {
+    Value *Zero32 = ConstantInt::get(I32Ty, 0);
+    return B.CreateInBoundsGEP(
+        Existing->getValueType(),
+        Existing,
+        {Zero32, Zero32},
+        "rs.func.ptr");
+  }
+
+  Constant *Init = ConstantDataArray::getString(Ctx, Name, /*AddNull=*/true);
+  auto *GV = new GlobalVariable(
+      M,
+      Init->getType(),
+      /*isConstant=*/true,
+      GlobalValue::PrivateLinkage,
+      Init,
+      GVName);
+  GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+  GV->setAlignment(Align(1));
+
+  Value *Zero32 = ConstantInt::get(I32Ty, 0);
+  return B.CreateInBoundsGEP(
+      GV->getValueType(),
+      GV,
+      {Zero32, Zero32},
+      "rs.func.ptr");
+}
+
 
 
 PreservedAnalyses RuntimeSpecializerPass::run(Module &M, ModuleAnalysisManager &AM) {
@@ -126,62 +163,49 @@ PreservedAnalyses RuntimeSpecializerPass::run(Module &M, ModuleAnalysisManager &
           continue;
         }
 
-        IRBuilder<> B(TargetCall); // Insert unmittelbar vor dem Call
+        IRBuilder<> B(TargetCall);
 
         auto [IRPtrGV, IRLenGV] = getOrCreateIRDumpGlobals(M);
         FunctionCallee Hook = getOrCreateRuntimeHook(M);
 
         LLVMContext &Ctx = M.getContext();
-        Type *I8PtrTy = PointerType::getUnqual(Ctx);
-        Type *I8PtrPtrTy = PointerType::getUnqual(Ctx);
+        Type *PtrTy = PointerType::getUnqual(Ctx); // ptr (opaque)
         Type *I64Ty = Type::getInt64Ty(Ctx);
 
         const uint64_t Argc = TargetCall->arg_size();
+        Value *ArgcV = ConstantInt::get(I64Ty, Argc);
 
-        ArrayType *ArgsArrTy = ArrayType::get(I8PtrTy, Argc);
-        AllocaInst *ArgsArrAlloca = B.CreateAlloca(ArgsArrTy, nullptr, "rs.args");
+        // Dynamisches args-array: alloca ptr, i64 Argc
+        AllocaInst *ArgsArrAlloca = B.CreateAlloca(PtrTy, ArgcV, "rs.args");
 
-        for (uint64_t i = 0; i < Argc; ++i) {
+        for (uint64_t i = 0; i < Argc; i++) {
           Value *ArgV = TargetCall->getArgOperand(i);
           Type *ArgTy = ArgV->getType();
 
+          // Pro Argument ein Stack-Slot, damit wir eine Adresse (&arg) bekommen.
           AllocaInst *ArgSlot = B.CreateAlloca(ArgTy, nullptr, Twine("rs.arg.") + Twine(i));
           B.CreateStore(ArgV, ArgSlot);
 
-          Value *ArgSlotI8 = B.CreateBitCast(ArgSlot, I8PtrTy, Twine("rs.arg.") + Twine(i) + ".i8");
+          Value *ArgSlotPtr = B.CreateBitCast(ArgSlot, PtrTy, Twine("rs.arg.") + Twine(i) + ".ptr");
 
-          Value *Zero = ConstantInt::get(I64Ty, 0);
-          Value *Idx  = ConstantInt::get(I64Ty, i);
-          Value *ElemPtr = B.CreateInBoundsGEP(ArgsArrTy, ArgsArrAlloca, {Zero, Idx},
-                                               Twine("rs.args.gep.") + Twine(i));
-
-          B.CreateStore(ArgSlotI8, ElemPtr);
+          Value *Idx = ConstantInt::get(I64Ty, i);
+          Value *ElemPtr = B.CreateInBoundsGEP(PtrTy, ArgsArrAlloca, Idx, Twine("rs.args.gep.") + Twine(i));
+          B.CreateStore(ArgSlotPtr, ElemPtr);
         }
 
-        // CreateGlobalStringPtr ist deprecated -> CreateGlobalString + GEP auf erstes Element
-        GlobalVariable *FuncNameGV = B.CreateGlobalString(CalledFn->getName(), "rs.func");
-        Type *I32Ty = Type::getInt32Ty(Ctx);
-        Value *Zero32 = ConstantInt::get(I32Ty, 0);
-        Value *FuncNamePtr = B.CreateInBoundsGEP(
-            FuncNameGV->getValueType(),
-            FuncNameGV,
-            {Zero32, Zero32},
-            "rs.func.ptr");
+        // function_ref (dedupliziert)
+        Value *FuncNamePtr = getOrCreateFunctionNameCStringPtr(M, B, CalledFn->getName());
 
-        Value *ArgcV = ConstantInt::get(I64Ty, Argc);
-        Value *ArgsAsI8PtrPtr = B.CreateBitCast(ArgsArrAlloca, I8PtrPtrTy, "rs.args.i8pp");
-
-        Value *IRDumpPtr = B.CreateLoad(I8PtrTy, IRPtrGV, "rs.irdump.ptr");
+        Value *IRDumpPtr = B.CreateLoad(PtrTy, IRPtrGV, "rs.irdump.ptr");
         Value *IRDumpLen = B.CreateLoad(I64Ty, IRLenGV, "rs.irdump.len");
 
-        CallInst *HookRes = B.CreateCall(Hook, {FuncNamePtr, ArgcV, ArgsAsI8PtrPtr, IRDumpPtr, IRDumpLen}, "rs.hook.res");
-
+        CallInst *HookRes = B.CreateCall(Hook, {FuncNamePtr, ArgcV, ArgsArrAlloca, IRDumpPtr, IRDumpLen}, "rs.hook.res");
+        // parameterlose Ersatzfunktion: RetTy ()
         Type *RetTy = TargetCall->getType();
         FunctionType *ZeroArgFTy = FunctionType::get(RetTy, /*isVarArg=*/false);
 
-        // Typed function-pointer types sind deprecated (opaque pointers). HookRes ist bereits "ptr".
-        Value *SpecFnPtr = B.CreateBitCast(HookRes, PointerType::getUnqual(Ctx), "rs.spec.fn");
-
+        // Opaque pointers: Callee ist ptr, Typinfo kommt über FunctionType beim CreateCall
+        Value *SpecFnPtr = B.CreateBitCast(HookRes, PtrTy, "rs.spec.fn");
         CallInst *NewCall = B.CreateCall(ZeroArgFTy, SpecFnPtr, {}, "rs.spec.call");
 
         if (!RetTy->isVoidTy())

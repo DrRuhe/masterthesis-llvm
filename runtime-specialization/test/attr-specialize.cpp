@@ -1,4 +1,4 @@
-// RUN: clang -emit-llvm -S -O0 %s -o - | opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializer%shlibext -passes='runtime-specializer','runtime-specializeable-ir-finalizer' -S | FileCheck --dump-input=always %s
+// RUN: clang -emit-llvm -S -O0 %s -o - | opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specializer','runtime-specializeable-ir-finalizer' -S | FileCheck --dump-input=always %s
 
 //CHECK: @RuntimeSpecializeableIR_ptr = constant ptr @RuntimeSpecializeableIR_data
 //CHECK: @RuntimeSpecializeableIR_len = constant i64 [[LEN:[1-9][0-9]*]]
