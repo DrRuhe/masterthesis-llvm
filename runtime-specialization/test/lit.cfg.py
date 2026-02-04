@@ -1,21 +1,32 @@
 import os
 import lit.formats
-from lit.llvm import llvm_config
 
-config.name = 'RuntimeSpecializer'
-config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
-config.suffixes = ['.ll', '.cpp']
-
-# 1. Initialisiere Standard-LLVM-Pfade und Substitutionen
 import lit.llvm
+
+config.name = "RuntimeSpecializer"
+config.test_format = lit.formats.ShTest(True)
+config.suffixes = [".ll", ".cpp"]
+
+# Initialisiert u.a. lit.llvm.llvm_config (global im Modul!)
 lit.llvm.initialize(lit_config, config)
 
-# 2. Füge das LLVM-Tool-Verzeichnis zum PATH hinzu
+# Ab hier llvm_config korrekt beziehen:
+llvm_config = lit.llvm.llvm_config
+
+# Tools aus dem Build-Tree bevorzugen.
 llvm_config.with_environment("PATH", config.llvm_tools_dir, append_path=True)
 
-# 3. Normalisiere den shlib-Pfad (entfernt das unnötige ./)
+# Standard-Substitutions
 llvm_shlib_dir = os.path.normpath(config.llvm_shlib_dir)
-
-# 4. Stelle sicher, dass Standard-Variablen für Pfade verfügbar sind
 config.substitutions.append(("%llvmshlibdir", llvm_shlib_dir))
 config.substitutions.append(("%shlibext", config.llvm_plugin_ext))
+
+# Clang/Clang++ aus dem Build-Tree auflösen (nicht System clang).
+config.substitutions.append((
+    "%clang",
+    llvm_config.use_llvm_tool("clang", search_paths=[config.llvm_tools_dir], required=True),
+))
+config.substitutions.append((
+    "%clangxx",
+    llvm_config.use_llvm_tool("clang++", search_paths=[config.llvm_tools_dir], required=True),
+))
