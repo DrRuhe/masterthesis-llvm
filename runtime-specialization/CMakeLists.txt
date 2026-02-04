@@ -1,4 +1,5 @@
-add_subdirectory(src)
+add_subdirectory(comptime)
+add_subdirectory(runtime)
 
 # Test Konfiguration
 if (LLVM_INCLUDE_TESTS)

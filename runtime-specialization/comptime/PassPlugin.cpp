@@ -16,12 +16,8 @@ llvmGetPassPluginInfo() {
                 PB.registerPipelineParsingCallback(
                     [](StringRef Name, ModulePassManager &MPM,
                        ArrayRef<PassBuilder::PipelineElement>) {
-                      if (Name == "runtime-specializer") {
-                        MPM.addPass(RuntimeSpecializerPass());
-                        return true;
-                      }
 
-                      if (Name == "runtime-specializeable-ir-finalizer") {
+                      if (Name == "runtime-specialization-IR-dumping") {
                         MPM.addPass(IRDumpingPass());
                         return true;
                       }
