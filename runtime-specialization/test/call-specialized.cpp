@@ -1,4 +1,3 @@
-// REQUIRES: shell
 // RUN: %clang++ -O0 -emit-llvm -c -I%S/../runtime/ClangRuntimeSpecializer %s -o %t.bc
 // RUN: opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // RUN: %clang++ %t.opt.bc -o %t.exe %llvmshlibdir/libClangRuntimeSpecializer%shlibext -Wl,-rpath,%llvmshlibdir
