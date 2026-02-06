@@ -1,6 +1,5 @@
 @LIT_SITE_CFG_IN_HEADER@
 
-print("Loaded lit.site.cfg.py")
 
 config.llvm_tools_dir = "@LLVM_TOOLS_DIR@"
 config.llvm_libs_dir = "@LLVM_LIBS_DIR@"
@@ -9,7 +8,10 @@ config.llvm_plugin_ext = "@CMAKE_SHARED_LIBRARY_SUFFIX@"
 
 config.runtime_specializer_src_root = "@CMAKE_CURRENT_SOURCE_DIR@"
 config.runtime_specializer_obj_root = "@CMAKE_CURRENT_BINARY_DIR@"
-config.test_source_root = "@CMAKE_CURRENT_SOURCE_DIR@"
+config.test_source_root = "@CMAKE_CURRENT_SOURCE_DIR@" + "/test"
+
+print(f"Loaded lit.site.cfg.py with test source root {config.test_source_root}")
+
 
 
 # Die eigentliche Suite-Konfiguration laden (die ruft dann initialize()).
