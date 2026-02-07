@@ -18,15 +18,17 @@ llvm_config = lit.llvm.llvm_config
 # Tools aus dem Build-Tree bevorzugen.
 llvm_config.with_environment("PATH", config.llvm_tools_dir, append_path=True)
 
-llvm_config.use_clang(
-    additional_flags=[config.additional_clang_flags],
-)
 
 #
 # # Standard-Substitutions
-# llvm_shlib_dir = os.path.normpath(config.llvm_shlib_dir)
-# config.substitutions.append(("%llvmshlibdir", llvm_shlib_dir))
-# config.substitutions.append(("%shlibext", config.llvm_plugin_ext))
+llvm_shlib_dir = os.path.normpath(config.llvm_shlib_dir)
+config.substitutions.append(("%llvmshlibdir", llvm_shlib_dir))
+config.substitutions.append(("%shlibext", config.llvm_plugin_ext))
+
+
+llvm_config.use_clang(
+    additional_flags=[config.additional_clang_flags],
+)
 #
 # # Clang/Clang++ aus dem Build-Tree auflösen (nicht System clang).
 # config.substitutions.append((
