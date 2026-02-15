@@ -17,7 +17,7 @@ if (LLVM_INCLUDE_TESTS)
 
     add_lit_testsuite(check-runtime-specializer "Running RuntimeSpecializer tests"
             ${CMAKE_CURRENT_BINARY_DIR}/test
-            DEPENDS LLVMRuntimeSpecializationComptimePlugin opt FileCheck clang
+            DEPENDS LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer opt FileCheck clang
             ARGS
     )
 
