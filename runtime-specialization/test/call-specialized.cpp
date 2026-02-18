@@ -7,7 +7,8 @@
 // Test that there is a RuntimeSpecializableIR_ptr now:
 // RUN: opt -S %t.opt.bc -o - | FileCheck %s --check-prefix=POST-DUMP
 // RUN: %clangxx %t.opt.bc -o %t.exe %llvmshlibdir/libClangRuntimeSpecializer%shlibext -Wl,-rpath,%llvmshlibdir
-// RUN: %t.exe 1 2
+// RUN: %t.exe 1
+// RUN: false
 
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>

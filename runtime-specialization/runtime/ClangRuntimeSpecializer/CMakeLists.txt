@@ -13,3 +13,10 @@ set_target_properties(ClangRuntimeSpecializer PROPERTIES
         CXX_STANDARD_REQUIRED YES
         POSITION_INDEPENDENT_CODE ON
 )
+
+target_link_libraries(ClangRuntimeSpecializer
+        PRIVATE
+        LLVMCore
+        LLVMBitReader
+        LLVMSupport
+)
