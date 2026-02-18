@@ -1,11 +1,19 @@
+// RUN: %clangxx -O0 -g -I%S/../runtime/ClangRuntimeSpecializer %s -o %t.without_dump.exe %llvmshlibdir/libClangRuntimeSpecializer%shlibext -Wl,-rpath,%llvmshlibdir
+// RUN: %t.without_dump.exe 1 2
 // RUN: %clangxx -O0 -emit-llvm -c -I%S/../runtime/ClangRuntimeSpecializer %s -o %t.bc
+// Test that there is no RuntimeSpecializableIR_ptr yet:
+// RUN: opt -S %t.bc -o - | FileCheck %s --check-prefix=PRE-DUMP
 // RUN: opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
+// Test that there is a RuntimeSpecializableIR_ptr now:
+// RUN: opt -S %t.opt.bc -o - | FileCheck %s --check-prefix=POST-DUMP
 // RUN: %clangxx %t.opt.bc -o %t.exe %llvmshlibdir/libClangRuntimeSpecializer%shlibext -Wl,-rpath,%llvmshlibdir
-// RUN: %t.exe 2>&1 | FileCheck %s
+// RUN: %t.exe 1 2
 
 #include "ClangRuntimeSpecializer.h"
+#include <cstdio>
 
-// CHECK: [ClangRuntimeSpecializer] RuntimeSpecializeableIR_ptr=0x{{[0-9a-fA-F]+}} RuntimeSpecializeableIR_len={{[1-9][0-9]*}}
+// PRE-DUMP-NOT: RuntimeSpecializeableIR_ptr
+// POST-DUMP: RuntimeSpecializeableIR_ptr
 
 class A {
   int value;
@@ -14,18 +22,33 @@ public:
   A(int val) : value(val) {}
 
   int getMod2() const {
-    return value % 2;
+    int result = value % 2;
+    std::fprintf(stderr, "[getMod2] return value: %d\n", result);
+    return result;
   }
 
-  int add(int a, int b) const {
-    return value + a + b;
+  int add(int a, int b) const
+  {
+    std::fprintf(stderr, "[add] args: a=%d, b=%d, value=%d\n", a, b, value);
+    int result = value + a + b;
+    std::fprintf(stderr, "[add] return value: %d\n", result);
+    return result;
   }
 };
 
 int main(int argc, char** argv) {
+
   A instance(argc);
 
   int r1 = clangRuntimeSpecializer::call_specialized(&A::getMod2, instance);
   int r2 = clangRuntimeSpecializer::call_specialized(&A::add, instance, 7, 11);
-  return r1 + r2;
+
+  if (r1 != 1)
+  {
+    return 0;
+  } else if (r2 != 20)
+  {
+    return 0;
+  }
+  return 1;
 }
