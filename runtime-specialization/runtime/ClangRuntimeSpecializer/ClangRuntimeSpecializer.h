@@ -5,7 +5,7 @@
 #include <utility>
 #include <memory>
 
-#include "llvm/IR/Constants.h"
+//#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -33,11 +33,11 @@ namespace clangRuntimeSpecializer {
       }
     }
 
+    ~ClangRuntimeSpecializer();
   private:
     struct Impl;
 
     explicit ClangRuntimeSpecializer(std::unique_ptr<llvm::Module> mod);
-    ~ClangRuntimeSpecializer();
 
     template <class T>
     llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, T&& value) {

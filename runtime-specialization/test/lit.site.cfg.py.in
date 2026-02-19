@@ -6,6 +6,12 @@ config.llvm_libs_dir = "@LLVM_LIBS_DIR@"
 config.llvm_shlib_dir = "@SHLIBDIR@"
 config.llvm_plugin_ext = "@CMAKE_SHARED_LIBRARY_SUFFIX@"
 
+# LLVM include paths (source + build)
+config.llvm_src_root = "@LLVM_SOURCE_DIR@"
+config.llvm_obj_root = "@LLVM_BINARY_DIR@"
+config.llvm_src_include = "@LLVM_SOURCE_DIR@/include"
+config.llvm_obj_include = "@LLVM_BINARY_DIR@/include"
+
 config.additional_clang_flags = "@CMAKE_CXX_FLAGS@"
 
 
@@ -16,7 +22,10 @@ config.runtime_specializer_src_root = "@CMAKE_CURRENT_SOURCE_DIR@"
 config.runtime_specializer_obj_root = "@CMAKE_CURRENT_BINARY_DIR@"
 config.test_source_root = "@CMAKE_CURRENT_SOURCE_DIR@" + "/test"
 
-print(f"Loaded lit.site.cfg.py with test source root {config.test_source_root}")
+# RuntimeSpecializer specific paths (from CMake)
+config.runtime_specializer_include_dir = "@CMAKE_CURRENT_SOURCE_DIR@/runtime/ClangRuntimeSpecializer"
+
+print(f"Loaded {__file__} with test source root {config.test_source_root}")
 
 
 

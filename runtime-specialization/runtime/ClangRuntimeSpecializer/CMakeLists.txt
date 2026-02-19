@@ -15,7 +15,7 @@ set_target_properties(ClangRuntimeSpecializer PROPERTIES
 )
 
 target_link_libraries(ClangRuntimeSpecializer
-        PRIVATE
+        PUBLIC
         LLVMCore
         LLVMBitReader
         LLVMSupport
