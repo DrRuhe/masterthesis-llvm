@@ -4,6 +4,8 @@
 #include <type_traits>
 #include <utility>
 #include <memory>
+#include <vector>
+#include <typeinfo>
 
 //#include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
@@ -17,14 +19,45 @@ namespace clangRuntimeSpecializer {
     static ClangRuntimeSpecializer* init();
 
     template <class MemFn, class Obj, class... Args>
-    decltype(auto) call_specialized(MemFn mf, Obj&& obj, Args&&... args) {
+    decltype(auto) call_specialized(const char* funcName, MemFn mf, Obj&& obj, Args&&... args) {
 
       llvm::IRBuilder<> Builder{Context};
 
-      // TODO: Use parsed module + serialized args to specialize the call.
-      (void)serializeArgumentsToIR(Builder, std::forward<Args>(args)...);
+      auto ArgValues = serializeArgumentsToIR(Builder, std::forward<Args>(args)...);
 
+      // Check if all arguments were successfully serialized
+      bool allSerialized = true;
+      for (auto* val : ArgValues) {
+        if (!val) {
+          allSerialized = false;
+          break;
+        }
+      }
 
+      if (allSerialized && Module) {
+        // Map the member function pointer `mf` to an actual LLVM function in `Module`.
+        // This is non-trivial as it requires name mangling or some registry.
+        // For now, let's use the `funcName` if provided.
+
+        // Create a new function that takes no arguments.
+        llvm::FunctionType* FTy = llvm::FunctionType::get(Builder.getVoidTy(), false);
+        llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, "specialized_wrapper", *Module);
+
+        llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Context, "entry", NewFunc);
+        Builder.SetInsertPoint(Entry);
+
+        // TODO: Handle the 'this' pointer and call the original function.
+        if (funcName) {
+           std::fprintf(stderr, "[ClangRuntimeSpecializer] Specializing call to: %s\n", funcName);
+           // We might need to find the function in the module.
+           // Note: The `funcName` here is from `__PRETTY_FUNCTION__`, which might not match mangled names.
+           // However, it can be useful for debugging or as a hint.
+        }
+
+        // Print the new function to stderr as requested.
+        NewFunc->print(llvm::errs());
+        llvm::errs() << "\n";
+      }
 
       auto invoke = [&]() -> decltype(auto) {
         return (std::forward<Obj>(obj).*mf)(std::forward<Args>(args)...);
@@ -39,7 +72,7 @@ namespace clangRuntimeSpecializer {
 
     ~ClangRuntimeSpecializer();
   private:
-    // TODO figure out if its possible to reuse the context, or should it be recreated for every JIT runtime specialization call?
+
     llvm::LLVMContext Context;
     std::unique_ptr<llvm::Module> Module;
     explicit ClangRuntimeSpecializer();
@@ -58,25 +91,29 @@ namespace clangRuntimeSpecializer {
           return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(static_cast<double>(value)));
         }
       } else {
-        // TODO: Add serialization for pointers, aggregates, and user-defined types.
-        (void)builder;
-        (void)value;
+        std::fprintf(stderr, "[ClangRuntimeSpecializer] Warning: Cannot serialize argument of type %s to IR.\n",
+                     typeid(T).name());
         return nullptr;
       }
     }
 
     template <class... Args>
-    void serializeArgumentsToIR(llvm::IRBuilder<>& builder, Args&&... args) {
-      (void)std::initializer_list<int>{
-          (serializeArgumentToIR(builder, std::forward<Args>(args)), 0)...};
+    std::vector<llvm::Value*> serializeArgumentsToIR(llvm::IRBuilder<>& builder, Args&&... args) {
+      return {serializeArgumentToIR(builder, std::forward<Args>(args))...};
     }
   };
 
   // call_specialized stellt bereit:
   template <class MemFn, class Obj, class... Args>
   decltype(auto) call_specialized(MemFn mf, Obj&& obj, Args&&... args) {
+    //TODO this func Name will currently be "call_specialized", not the name of the actually specialized function. This should be solvable by some macro that the user uses instead, so that
+    const char* funcName = __PRETTY_FUNCTION__;
+#ifdef __clang__
+    // Optional: could use __builtin_FUNCTION() or similar if available/needed,
+    // but __PRETTY_FUNCTION__ is already quite good in Clang.
+#endif
     if (auto* RS = ClangRuntimeSpecializer::init()) {
-      return RS->call_specialized(mf, std::forward<Obj>(obj), std::forward<Args>(args)...);
+      return RS->call_specialized(funcName, mf, std::forward<Obj>(obj), std::forward<Args>(args)...);
     }
 
     auto invoke = [&]() -> decltype(auto) {
