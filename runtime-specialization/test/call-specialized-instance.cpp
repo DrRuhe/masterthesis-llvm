@@ -7,7 +7,7 @@
 // Test that there is a RuntimeSpecializableIR_ptr now:
 // RUN: opt -S %t.opt.bc -o - | FileCheck %s --check-prefix=POST-DUMP
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
-// RUN: %t.exe 2
+// RUN: %t.exe 1
 
 
 
@@ -18,27 +18,38 @@
 // PRE-DUMP-NOT: RuntimeSpecializeableIR_ptr
 // POST-DUMP: RuntimeSpecializeableIR_ptr
 
+class A {
+  int value;
 
-/// computes 3^x
-extern "C" int mypow(int x) __asm__("mypow");
-int mypow(int x)
-{
-  int result = 1;
-  for (int i = 0; i < x; i++)
-  {
-    result = result * 3;
+public:
+  A(int val) : value(val) {}
+
+  int getMod2() const __asm__("A::getMod2") {
+    int result = value % 2;
+    std::fprintf(stderr, "[getMod2] return value: %d\n", result);
+    return result;
   }
 
-  std::fprintf(stderr, "[add] return value: %d\n", result);
-  return result;
+  int add(int a, int b) const __asm__("A::add")
+  {
+    std::fprintf(stderr, "[add] args: a=%d, b=%d, value=%d\n", a, b, value);
+    int result = value + a + b;
+    std::fprintf(stderr, "[add] return value: %d\n", result);
+    return result;
+  }
 };
 
 int main(int argc, char** argv) {
 
+  A instance(argc);
 
-  int r1 = clangRuntimeSpecializer::call_specialized(&mypow, argc);
+  int r1 = clangRuntimeSpecializer::call_specialized(&A::getMod2, instance);
+  int r2 = clangRuntimeSpecializer::call_specialized(&A::add, instance, 7, 11);
 
-  if (r1 != 1 || r1 == 27)
+  if (r1 != 1)
+  {
+    return 0;
+  } else if (r2 != 20)
   {
     return 0;
   }
