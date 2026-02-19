@@ -1,14 +1,14 @@
-// RUN: %clangxx -Wl,-v -v -O0 -g %s -o %t.without_dump.exe
+// RUN: %clangxx -O0 -g %s -o %t.without_dump.exe
 // RUN: %t.without_dump.exe 1 2
-// RUN: %clangxx -O0 -emit-llvm -c %s -o %t.bc
+// RUN: %clangxx -g -O0 -emit-llvm -c %s -o %t.bc
 // Test that there is no RuntimeSpecializableIR_ptr yet:
 // RUN: opt -S %t.bc -o - | FileCheck %s --check-prefix=PRE-DUMP
-// RUN: opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
+// RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // Test that there is a RuntimeSpecializableIR_ptr now:
 // RUN: opt -S %t.opt.bc -o - | FileCheck %s --check-prefix=POST-DUMP
-// RUN: %clangxx %t.opt.bc -o %t.exe
+// RUN: %clangxx -g %t.opt.bc -o %t.exe
 // RUN: %t.exe 1
-// RUN: false
+
 
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>

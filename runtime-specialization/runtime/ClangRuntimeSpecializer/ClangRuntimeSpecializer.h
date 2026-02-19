@@ -18,13 +18,17 @@ namespace clangRuntimeSpecializer {
 
     template <class MemFn, class Obj, class... Args>
     decltype(auto) call_specialized(MemFn mf, Obj&& obj, Args&&... args) {
-      auto invoke = [&]() -> decltype(auto) {
-        return (std::forward<Obj>(obj).*mf)(std::forward<Args>(args)...);
-      };
+
+      llvm::IRBuilder<> Builder{Context};
 
       // TODO: Use parsed module + serialized args to specialize the call.
       (void)serializeArgumentsToIR(Builder, std::forward<Args>(args)...);
 
+
+
+      auto invoke = [&]() -> decltype(auto) {
+        return (std::forward<Obj>(obj).*mf)(std::forward<Args>(args)...);
+      };
       if constexpr (std::is_void_v<decltype(invoke())>) {
         invoke();
         return;
@@ -35,9 +39,10 @@ namespace clangRuntimeSpecializer {
 
     ~ClangRuntimeSpecializer();
   private:
-    struct Impl;
-
-    explicit ClangRuntimeSpecializer(std::unique_ptr<llvm::Module> mod);
+    // TODO figure out if its possible to reuse the context, or should it be recreated for every JIT runtime specialization call?
+    llvm::LLVMContext Context;
+    std::unique_ptr<llvm::Module> Module;
+    explicit ClangRuntimeSpecializer();
 
     template <class T>
     llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, T&& value) {
@@ -65,10 +70,6 @@ namespace clangRuntimeSpecializer {
       (void)std::initializer_list<int>{
           (serializeArgumentToIR(builder, std::forward<Args>(args)), 0)...};
     }
-
-    llvm::LLVMContext Context;
-    std::unique_ptr<llvm::Module> Module;
-    llvm::IRBuilder<> Builder{Context};
   };
 
   // call_specialized stellt bereit:

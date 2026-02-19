@@ -81,18 +81,19 @@ namespace clangRuntimeSpecializer {
       return nullptr;
     }
 
-    llvm::LLVMContext ctx;
+    llvm::LLVMContext ctx = llvm::LLVMContext();
     std::unique_ptr<llvm::Module> mod = parse_module_from_runtime_data(data, ctx);
     if (!mod) {
       return nullptr;
     }
 
-    Instance.reset(new ClangRuntimeSpecializer(std::move(mod)));
+    Instance.reset(new ClangRuntimeSpecializer);
+    Instance->Module = parse_module_from_runtime_data(data, Instance->Context);
+
     return Instance.get();
   }
 
-  ClangRuntimeSpecializer::ClangRuntimeSpecializer(std::unique_ptr<llvm::Module> mod)
-      : Module(std::move(mod)), Builder(Context) {}
+  ClangRuntimeSpecializer::ClangRuntimeSpecializer(){}
 
   ClangRuntimeSpecializer::~ClangRuntimeSpecializer() = default;
 
