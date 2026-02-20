@@ -11,6 +11,9 @@
 #include <cstdio>
 
 //#include "llvm/IR/Constants.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -21,79 +24,95 @@ namespace clangRuntimeSpecializer {
   public:
     static ClangRuntimeSpecializer* init();
 
-    template <class MemFn, class Obj, class... Args>
-    decltype(auto) call_specialized(const char* funcName, MemFn mf, Obj&& obj, Args&&... args) {
-      // Any failure during specialization should be reported and we should fall back to calling the function normally.
-      try {
-        if (funcName == nullptr) {
-          throw std::runtime_error("[ClangRuntimeSpecializer] funcName was null! ");
-        }
-        if (Module == nullptr) {
-          throw std::runtime_error("[ClangRuntimeSpecializer] Module was null! ");
-        }
-        std::string FuncNameStr(funcName);
-        if (!FuncNameStr.empty() && FuncNameStr.front() == '&') {
-          FuncNameStr.erase(0, 1);
-        }
-        llvm::Function *TargetFunc = Module->getFunction(FuncNameStr);
-
-        if (TargetFunc == nullptr) {
-          throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find function: ") + funcName);
-        }
-
-        // Create a new function that takes no arguments and, inside, calls the target with serialized constants.
-        llvm::IRBuilder<> Builder{Context};
-        llvm::FunctionType* FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
-        llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, "specialized_wrapper", *Module);
-
-        llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Context, "entry", NewFunc);
-        Builder.SetInsertPoint(Entry);
-        
-        // Serialize the runtime arguments to IR constants and create a call to the target function with them.
-        auto ArgValues = serializeArgumentsToIR(Builder, std::forward<Args>(args)...);
-
-        // Validate serialized args
-        bool allSerialized = true;
-        for (auto* val : ArgValues) {
-          if (!val) { allSerialized = false; break; }
-        }
-
-        if (!allSerialized) {
-          throw std::runtime_error("[ClangRuntimeSpecializer] Not all arguments could be serialized to IR constants.");
-        }
-
-        // TODO this is currently faulty, as a call to a member function is going to have the additional instance argument.
-        // Ensure the arity matches before creating the call.
-        if (ArgValues.size() != TargetFunc->arg_size()) {
-          throw std::runtime_error("[ClangRuntimeSpecializer] Mismatch between provided arguments and target function parameters.");
-        }
-
-        auto *CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, ArgValues);
-        if (TargetFunc->getReturnType()->isVoidTy()) {
-          Builder.CreateRetVoid();
-        } else {
-          Builder.CreateRet(CallInst);
-        }
-
-        std::fprintf(stderr, "[ClangRuntimeSpecializer] Specializing call to: %s\n", funcName);
-        // Print the new function to stderr as requested.
-        NewFunc->print(llvm::errs());
-        llvm::errs() << "\n";
-      } catch (const std::exception& e) {
-        std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed: %s\n", e.what());
-      } catch (...) {
-        std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed with an unknown error.\n");
+    template <class R, class... Args>
+    R call_specialized(const char* funcName, Args&&... args) {
+      if (funcName == nullptr) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] funcName was null! ");
+      }
+      if (Module == nullptr) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] Module was null! ");
+      }
+      if (!JIT) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] JIT was not initialized!");
       }
 
-      // Fallback: call the original member function normally.
-      auto invoke = [&]() -> decltype(auto) {
-        return (std::forward<Obj>(obj).*mf)(std::forward<Args>(args)...);
-      };
-      if constexpr (std::is_void_v<decltype(invoke())>) {
-        invoke();
+
+      std::string FuncNameStr(funcName);
+      if (!FuncNameStr.empty() && FuncNameStr.front() == '&') {
+        FuncNameStr.erase(0, 1);
+      }
+      llvm::Function *TargetFunc = Module->getFunction(FuncNameStr);
+
+      if (TargetFunc == nullptr) {
+        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find function: ") + funcName);
+      }
+
+      // TODO reuse a clean copy of the llvm module. POssibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
+      static uint64_t SpecializationCount = 0;
+      std::string SpecializationWrapperName = "specialized_wrapper_" + std::to_string(++SpecializationCount);
+
+      // Create a new function that takes no arguments and, inside, calls the target with serialized constants.
+      llvm::IRBuilder<> Builder{Context};
+      llvm::FunctionType* FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
+      llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, SpecializationWrapperName, *Module);
+
+      llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Context, "entry", NewFunc);
+      Builder.SetInsertPoint(Entry);
+
+      // Serialize the runtime arguments to IR constants and create a call to the target function with them.
+      auto ArgValues = serializeArgumentsToIR(Builder, std::forward<Args>(args)...);
+
+      // Validate serialized args
+      bool allSerialized = true;
+      for (auto* val : ArgValues) {
+        if (!val) { allSerialized = false; break; }
+      }
+
+      if (!allSerialized) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] Not all arguments could be serialized to IR constants.");
+      }
+
+      // Ensure the arity matches before creating the call.
+      if (ArgValues.size() != TargetFunc->arg_size()) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] Mismatch between provided arguments and target function parameters.");
+      }
+
+      auto *CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, ArgValues);
+      if (TargetFunc->getReturnType()->isVoidTy()) {
+        Builder.CreateRetVoid();
+      } else {
+        Builder.CreateRet(CallInst);
+      }
+
+      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specializing call to: %s\n", funcName);
+      // Print the new function to stderr as requested.
+      NewFunc->print(llvm::errs());
+      llvm::errs() << "\n";
+
+      // Clone the module and add it to the JIT.
+      // We need to move the Module into a ThreadSafeModule, but we want to keep it in the Specializer too.
+      // So we clone it.
+      auto TSM = llvm::orc::ThreadSafeModule(llvm::CloneModule(*Module),
+                                             llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>()));
+
+      if (auto Err = JIT->addIRModule(std::move(TSM))) {
+        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to add module to JIT: ") + llvm::toString(std::move(Err)));
+      }
+
+      // TODO log the IR for the specialized function. I wanna see the optimizations actually work :)
+
+      auto SpecializedFn = JIT->lookup(SpecializationWrapperName);
+      if (!SpecializedFn) {
+        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to lookup wrapper: ") + llvm::toString(SpecializedFn.takeError()));
+      }
+
+      auto SpecializedFnPtr = SpecializedFn->template toPtr<R()>();
+
+      if constexpr (std::is_void_v<R>) {
+        SpecializedFnPtr();
         return;
       } else {
-        return invoke();
+        return SpecializedFnPtr();
       }
     }
 
@@ -102,11 +121,13 @@ namespace clangRuntimeSpecializer {
 
     llvm::LLVMContext Context;
     std::unique_ptr<llvm::Module> Module;
+    std::unique_ptr<llvm::orc::LLJIT> JIT;
     explicit ClangRuntimeSpecializer();
 
     template <class T>
     llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, T&& value) {
       using Decayed = std::decay_t<T>;
+      // TODO implement proper serialization logic for all sorts of types.
       if constexpr (std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>) {
         llvm::Type* Ty = llvm::Type::getIntNTy(builder.getContext(),
                                               static_cast<unsigned>(sizeof(Decayed) * 8));
@@ -117,6 +138,10 @@ namespace clangRuntimeSpecializer {
         } else {
           return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(static_cast<double>(value)));
         }
+      } else if constexpr (std::is_pointer_v<Decayed>) {
+        llvm::Type* Ty = llvm::Type::getInt64Ty(builder.getContext());
+        llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, reinterpret_cast<std::uintptr_t>(value));
+        return llvm::ConstantExpr::getIntToPtr(IntVal, llvm::PointerType::getUnqual(builder.getContext()));
       } else {
         std::fprintf(stderr, "[ClangRuntimeSpecializer] Warning: Cannot serialize argument of type %s to IR.\n",
                      typeid(T).name());
@@ -133,13 +158,25 @@ namespace clangRuntimeSpecializer {
   // call_specialized_impl stellt bereit:
   template <class MemFn, class Obj, class... Args>
   decltype(auto) call_specialized_impl(const char* funcName, MemFn mf, Obj&& obj, Args&&... args) {
-    if (auto* RS = ClangRuntimeSpecializer::init()) {
-      return RS->call_specialized(funcName, mf, std::forward<Obj>(obj), std::forward<Args>(args)...);
-    }
-
     auto invoke = [&]() -> decltype(auto) {
       return (std::forward<Obj>(obj).*mf)(std::forward<Args>(args)...);
     };
+
+    try {
+      if (auto* RS = ClangRuntimeSpecializer::init()) {
+        using R = decltype(invoke());
+        if constexpr (std::is_void_v<R>) {
+          RS->template call_specialized<void>(funcName, std::forward<Obj>(obj), std::forward<Args>(args)...);
+          return;
+        } else {
+          return RS->template call_specialized<R>(funcName, std::forward<Obj>(obj), std::forward<Args>(args)...);
+        }
+      }
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed: %s\n", e.what());
+    } catch (...) {
+      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed with an unknown error.\n");
+    }
 
     if constexpr (std::is_void_v<decltype(invoke())>) {
       invoke();
@@ -149,7 +186,38 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-// TODO allow specializing of member functions and non member functions.
+  template <class Fn, class... Args>
+  decltype(auto) call_specialized_free_impl(const char* funcName, Fn f, Args&&... args) {
+    auto invoke = [&]() -> decltype(auto) {
+      return f(std::forward<Args>(args)...);
+    };
+
+    try {
+      if (auto* RS = ClangRuntimeSpecializer::init()) {
+        using R = decltype(invoke());
+        if constexpr (std::is_void_v<R>) {
+          RS->template call_specialized<void>(funcName, std::forward<Args>(args)...);
+          return;
+        } else {
+          return RS->template call_specialized<R>(funcName, std::forward<Args>(args)...);
+        }
+
+      }
+    } catch (const std::exception& e) {
+      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed: %s\n", e.what());
+    } catch (...) {
+      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed with an unknown error.\n");
+    }
+
+    if constexpr (std::is_void_v<decltype(invoke())>) {
+      invoke();
+      return;
+    } else {
+      return invoke();
+    }
+  }
+
 #define call_specialized(fn, obj, ...) call_specialized_impl(#fn, fn, obj, ##__VA_ARGS__)
+#define call_specialized_free(fn, ...) call_specialized_free_impl(#fn, fn, ##__VA_ARGS__)
 
 } // namespace clangRuntimeSpecializer

@@ -19,4 +19,8 @@ target_link_libraries(ClangRuntimeSpecializer
         LLVMCore
         LLVMBitReader
         LLVMSupport
+        LLVMOrcJIT
+        LLVMX86CodeGen
+        LLVMX86Desc
+        LLVMX86Info
 )

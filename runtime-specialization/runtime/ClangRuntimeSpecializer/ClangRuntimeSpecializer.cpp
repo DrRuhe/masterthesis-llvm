@@ -5,8 +5,10 @@
 #include <utility>
 
 #include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/TargetSelect.h"
 
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
@@ -76,18 +78,24 @@ namespace clangRuntimeSpecializer {
       return Instance.get();
     }
 
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+
     RuntimeSpecializableData data = read_runtime_specializable_data();
     if (!data.Ptr || data.Len == 0) {
       return nullptr;
     }
 
-    llvm::LLVMContext ctx = llvm::LLVMContext();
-    std::unique_ptr<llvm::Module> mod = parse_module_from_runtime_data(data, ctx);
-    if (!mod) {
+    Instance.reset(new ClangRuntimeSpecializer);
+
+    auto JITExp = llvm::orc::LLJITBuilder().create();
+    if (!JITExp) {
+      llvm::errs() << "[ClangRuntimeSpecializer] Failed to create JIT: "
+                   << JITExp.takeError() << "\n";
       return nullptr;
     }
+    Instance->JIT = std::move(*JITExp);
 
-    Instance.reset(new ClangRuntimeSpecializer);
     Instance->Module = parse_module_from_runtime_data(data, Instance->Context);
 
     return Instance.get();
