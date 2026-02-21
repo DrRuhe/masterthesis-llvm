@@ -18,12 +18,15 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 
+// TODO refactor the error handling: create a special "ClangRuntimeSpecializationError" for this project.
 namespace clangRuntimeSpecializer {
 
   class ClangRuntimeSpecializer {
   public:
     static ClangRuntimeSpecializer* init();
-
+    
+    //TODO extract the non generic logic into the cpp file. So still perform the generic arg serialization 
+    // in this header, but then call a method implemented in the cpp file.
     template <class R, class... Args>
     R call_specialized(const char* funcName, Args&&... args) {
       if (funcName == nullptr) {
@@ -47,10 +50,17 @@ namespace clangRuntimeSpecializer {
         throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find function: ") + funcName);
       }
 
-      // TODO reuse a clean copy of the llvm module. POssibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
+      // Ensure the arity matches before creating the call.
+      if (sizeof...(Args) != TargetFunc->arg_size()) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] Mismatch between provided arguments and target function parameters.");
+      }
+
+
+      // TODO reuse a clean copy of the llvm module. Possibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
+      //   Currently we get conflicts, so specialization fails.
       static uint64_t SpecializationCount = 0;
       std::string SpecializationWrapperName = "specialized_wrapper_" + std::to_string(++SpecializationCount);
-
+      
       // Create a new function that takes no arguments and, inside, calls the target with serialized constants.
       llvm::IRBuilder<> Builder{Context};
       llvm::FunctionType* FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
@@ -60,7 +70,9 @@ namespace clangRuntimeSpecializer {
       Builder.SetInsertPoint(Entry);
 
       // Serialize the runtime arguments to IR constants and create a call to the target function with them.
-      auto ArgValues = serializeArgumentsToIR(Builder, std::forward<Args>(args)...);
+      // We pass the TargetFunc's arguments to guide serialization.
+      auto ArgValues = serializeArgumentsToIR(Builder, TargetFunc->arg_begin(), std::forward<Args>(args)...);
+
 
       // Validate serialized args
       bool allSerialized = true;
@@ -70,11 +82,6 @@ namespace clangRuntimeSpecializer {
 
       if (!allSerialized) {
         throw std::runtime_error("[ClangRuntimeSpecializer] Not all arguments could be serialized to IR constants.");
-      }
-
-      // Ensure the arity matches before creating the call.
-      if (ArgValues.size() != TargetFunc->arg_size()) {
-        throw std::runtime_error("[ClangRuntimeSpecializer] Mismatch between provided arguments and target function parameters.");
       }
 
       // Encourage inlining for the callee in the JIT pipeline.
@@ -161,34 +168,101 @@ namespace clangRuntimeSpecializer {
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     explicit ClangRuntimeSpecializer();
 
-    template <class T>
-    llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, T&& value) {
-      using Decayed = std::decay_t<T>;
-      // TODO implement proper serialization logic for all sorts of types.
-      if constexpr (std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>) {
-        llvm::Type* Ty = llvm::Type::getIntNTy(builder.getContext(),
-                                              static_cast<unsigned>(sizeof(Decayed) * 8));
-        return llvm::ConstantInt::get(Ty, static_cast<std::uint64_t>(value));
-      } else if constexpr (std::is_floating_point_v<Decayed>) {
-        if constexpr (std::is_same_v<Decayed, float>) {
-          return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(value));
-        } else {
-          return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(static_cast<double>(value)));
+    // Recursively serialize a value of a given LLVM type from a memory location.
+    llvm::Value* serializeValueToIR(llvm::IRBuilder<>& builder, llvm::Type* type, const void* valuePtr) {
+      if (type->isIntegerTy()) {
+        unsigned BitWidth = type->getIntegerBitWidth();
+        if (BitWidth <= 64) {
+          uint64_t Val = 0;
+          std::memcpy(&Val, valuePtr, (BitWidth + 7) / 8);
+          return llvm::ConstantInt::get(type, Val);
         }
-      } else if constexpr (std::is_pointer_v<Decayed>) {
+        // TODO: support > 64 bit integers if needed.
+      } else if (type->isFloatTy()) {
+        float Val;
+        std::memcpy(&Val, valuePtr, sizeof(float));
+        return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(Val));
+      } else if (type->isDoubleTy()) {
+        double Val;
+        std::memcpy(&Val, valuePtr, sizeof(double));
+        return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(Val));
+      } else if (type->isPointerTy()) {
+        uintptr_t Val;
+        std::memcpy(&Val, valuePtr, sizeof(uintptr_t));
         llvm::Type* Ty = llvm::Type::getInt64Ty(builder.getContext());
-        llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, reinterpret_cast<std::uintptr_t>(value));
-        return llvm::ConstantExpr::getIntToPtr(IntVal, llvm::PointerType::getUnqual(builder.getContext()));
-      } else {
-        std::fprintf(stderr, "[ClangRuntimeSpecializer] Warning: Cannot serialize argument of type %s to IR.\n",
-                     typeid(T).name());
-        return nullptr;
+        llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
+        return llvm::ConstantExpr::getIntToPtr(IntVal, type);
+      } else if (type->isStructTy()) {
+        llvm::StructType* STy = llvm::cast<llvm::StructType>(type);
+        const llvm::DataLayout& DL = Module->getDataLayout();
+        const llvm::StructLayout* SL = DL.getStructLayout(STy);
+        
+        std::vector<llvm::Constant*> Elements;
+        for (unsigned i = 0; i < STy->getNumElements(); ++i) {
+          llvm::Type* ElemTy = STy->getElementType(i);
+          uint64_t Offset = SL->getElementOffset(i);
+          const void* ElemPtr = static_cast<const char*>(valuePtr) + Offset;
+          
+          llvm::Value* ElemVal = serializeValueToIR(builder, ElemTy, ElemPtr);
+          if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
+            Elements.push_back(C);
+          } else {
+            return nullptr;
+          }
+        }
+        return llvm::ConstantStruct::get(STy, Elements);
+      } else if (type->isArrayTy()) {
+        llvm::ArrayType* ATy = llvm::cast<llvm::ArrayType>(type);
+        llvm::Type* ElemTy = ATy->getElementType();
+        const llvm::DataLayout& DL = Module->getDataLayout();
+        uint64_t ElemSize = DL.getTypeAllocSize(ElemTy);
+        
+        std::vector<llvm::Constant*> Elements;
+        for (uint64_t i = 0; i < ATy->getNumElements(); ++i) {
+          const void* ElemPtr = static_cast<const char*>(valuePtr) + (i * ElemSize);
+          llvm::Value* ElemVal = serializeValueToIR(builder, ElemTy, ElemPtr);
+          if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
+            Elements.push_back(C);
+          } else {
+            return nullptr;
+          }
+        }
+        return llvm::ConstantArray::get(ATy, Elements);
       }
+      
+      return nullptr;
+    }
+
+    template <class T>
+    llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, llvm::Argument* irArg, T&& value) {
+      using Decayed = std::decay_t<T>;
+      llvm::Type* expectedType = irArg ? irArg->getType() : nullptr;
+      if (!expectedType) return nullptr;
+
+      // If it's a pointer in IR, we just pass the address or the pointer value.
+      if (expectedType->isPointerTy()) {
+        if constexpr (std::is_pointer_v<Decayed>) {
+          return serializeValueToIR(builder, expectedType, &value);
+        } else {
+          // It's a class/struct passed by reference or 'this'
+          const Decayed* ptr = &value;
+          return serializeValueToIR(builder, expectedType, &ptr);
+        }
+      }
+
+      // If it's a struct/class passed by value in IR
+      if (expectedType->isStructTy() || expectedType->isArrayTy() || expectedType->isIntegerTy() || expectedType->isFloatingPointTy()) {
+        return serializeValueToIR(builder, expectedType, &value);
+      }
+
+      return nullptr;
     }
 
     template <class... Args>
-    std::vector<llvm::Value*> serializeArgumentsToIR(llvm::IRBuilder<>& builder, Args&&... args) {
-      return {serializeArgumentToIR(builder, std::forward<Args>(args))...};
+    std::vector<llvm::Value*> serializeArgumentsToIR(llvm::IRBuilder<>& builder, llvm::Function::arg_iterator irArgIt, Args&&... args) {
+      std::vector<llvm::Value*> result;
+      (result.push_back(serializeArgumentToIR(builder, &(*(irArgIt++)), std::forward<Args>(args))), ...);
+      return result;
     }
   };
 
