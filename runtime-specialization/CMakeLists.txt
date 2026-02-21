@@ -15,10 +15,24 @@ if (LLVM_INCLUDE_TESTS)
             ${CMAKE_CURRENT_SOURCE_DIR}/test/lit.cfg.py
     )
 
-    add_lit_testsuite(check-runtime-specializer "Running RuntimeSpecializer tests"
+    add_lit_testsuite(check-smoke-runtime-specializer "Running RuntimeSpecializer smoketests"
+            ${CMAKE_CURRENT_BINARY_DIR}/test/WIP
+            ${CMAKE_CURRENT_BINARY_DIR}/test/smoke
+            DEPENDS LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer opt FileCheck clang
+            ARGS -va
+    )
+
+
+    add_lit_testsuite(check-wip-runtime-specializer "Running RuntimeSpecializer WIP tests"
+            ${CMAKE_CURRENT_BINARY_DIR}/test/WIP
+            DEPENDS LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer opt FileCheck clang
+            ARGS -va
+    )
+
+    add_lit_testsuite(check-all-runtime-specializer "Running RuntimeSpecializer all tests"
             ${CMAKE_CURRENT_BINARY_DIR}/test
             DEPENDS LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer opt FileCheck clang
-            ARGS
+            ARGS -va
     )
 
 endif()

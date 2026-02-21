@@ -79,6 +79,8 @@ namespace clangRuntimeSpecializer {
 
   static std::unique_ptr<ClangRuntimeSpecializer> Instance;
 
+
+  // TODO convert this initializer to throw exceptions when a fault occurs instead of returning nullptr.
   ClangRuntimeSpecializer* ClangRuntimeSpecializer::init() {
     if (Instance) {
       return Instance.get();
