@@ -77,6 +77,8 @@ namespace clangRuntimeSpecializer {
         throw std::runtime_error("[ClangRuntimeSpecializer] Mismatch between provided arguments and target function parameters.");
       }
 
+      if (TargetFunc->hasFnAttribute(llvm::Attribute::NoInline)) throw std::runtime_error("[ClangRuntimeSpecializer] The specialized function has a no inline attribute!");
+
       // Encourage inlining for the callee in the JIT pipeline.
       TargetFunc->removeFnAttr(llvm::Attribute::NoInline);
       TargetFunc->removeFnAttr(llvm::Attribute::OptimizeNone);
@@ -100,14 +102,43 @@ namespace clangRuntimeSpecializer {
       // Clone the module and add it to the JIT.
       // We need to move the Module into a ThreadSafeModule, but we want to keep it in the Specializer too.
       // So we clone it.
-      auto TSM = llvm::orc::ThreadSafeModule(llvm::CloneModule(*Module),
+      auto NewModule = llvm::CloneModule(*Module);
+      
+      // Every function except the specialized wrapper should have available_externally linkage
+      // if it has a definition. This allows the JIT inliner to see the bodies but won't
+      // produce a definition in the resulting object file, as we want to use the host's version
+      // if it's not inlined.
+      for (auto &F : *NewModule) {
+        if (F.getName() == SpecializationWrapperName) {
+           F.setLinkage(llvm::GlobalValue::ExternalLinkage);
+           continue;
+        }
+        if (!F.isDeclaration()) {
+           F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
+        }
+      }
+      
+      // Also convert global variables to available_externally or declarations.
+      // Special care for constant strings and other internal globals.
+      for (auto &G : NewModule->globals()) {
+        if (!G.isDeclaration()) {
+          // If it's a constant string or similar internal, we might want to keep it
+          // as private/internal if we can't find it in the host.
+          // However, available_externally for globals usually works if they are
+          // indeed available. For JIT, internal globals might NOT be available.
+          if (G.hasInternalLinkage() || G.hasPrivateLinkage()) {
+            continue; // Keep internal/private globals as is.
+          }
+          G.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
+        }
+      }
+
+      auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule),
                                              llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>()));
 
       if (auto Err = JIT->addIRModule(std::move(TSM))) {
         throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to add module to JIT: ") + llvm::toString(std::move(Err)));
       }
-
-      // TODO log the IR for the specialized function. I wanna see the optimizations actually work :)
 
       auto SpecializedFn = JIT->lookup(SpecializationWrapperName);
       if (!SpecializedFn) {

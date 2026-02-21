@@ -11,6 +11,7 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/ModuleInliner.h"
@@ -103,6 +104,10 @@ namespace clangRuntimeSpecializer {
       return nullptr;
     }
     Instance->JIT = std::move(*JITExp);
+
+    Instance->JIT->getMainJITDylib().addGenerator(
+        llvm::cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
+            Instance->JIT->getDataLayout().getGlobalPrefix())));
 
     // Install an IR transform to run optimizations and log the optimized IR of the
     // specialized wrapper function before compilation.
