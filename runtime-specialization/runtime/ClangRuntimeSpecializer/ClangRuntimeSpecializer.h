@@ -77,7 +77,15 @@ namespace clangRuntimeSpecializer {
         throw std::runtime_error("[ClangRuntimeSpecializer] Mismatch between provided arguments and target function parameters.");
       }
 
+      // Encourage inlining for the callee in the JIT pipeline.
+      TargetFunc->removeFnAttr(llvm::Attribute::NoInline);
+      TargetFunc->removeFnAttr(llvm::Attribute::OptimizeNone);
+      TargetFunc->addFnAttr(llvm::Attribute::AlwaysInline);
+
       auto *CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, ArgValues);
+      CallInst->setAttributes(TargetFunc->getAttributes());
+      CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
+
       if (TargetFunc->getReturnType()->isVoidTy()) {
         Builder.CreateRetVoid();
       } else {

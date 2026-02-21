@@ -6,9 +6,15 @@
 
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
+#include "llvm/IR/PassManager.h"
+#include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/TargetSelect.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/ModuleInliner.h"
+#include "llvm/Analysis/InlineCost.h"
 
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
@@ -95,6 +101,96 @@ namespace clangRuntimeSpecializer {
       return nullptr;
     }
     Instance->JIT = std::move(*JITExp);
+
+    // Install an IR transform to run optimizations and log the optimized IR of the
+    // specialized wrapper function before compilation.
+    Instance->JIT->getIRTransformLayer().setTransform(
+        [](llvm::orc::ThreadSafeModule TSM, llvm::orc::MaterializationResponsibility &R)
+            -> llvm::Expected<llvm::orc::ThreadSafeModule> {
+          TSM.withModuleDo([&](llvm::Module &M) {
+            llvm::PassBuilder PB;
+            llvm::LoopAnalysisManager LAM;
+            llvm::FunctionAnalysisManager FAM;
+            llvm::CGSCCAnalysisManager CGAM;
+            llvm::ModuleAnalysisManager MAM;
+
+            PB.registerModuleAnalyses(MAM);
+            PB.registerCGSCCAnalyses(CGAM);
+            PB.registerFunctionAnalyses(FAM);
+            PB.registerLoopAnalyses(LAM);
+            PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
+
+            // Enable very aggressive inlining prior to the regular O3 pipeline.
+            // We first run AlwaysInliner to respect any alwaysinline hints, then
+            // a ModuleInlinerPass configured with extremely high thresholds and
+            // relaxed deferral/recursion settings to inline as much as possible.
+            {
+              // Ensure that internal functions can be inlined by making them linkonce_odr
+              // or similar if they were just internal. Actually, for JIT it should be fine,
+              // but let's make sure the target functions are not marked as "noinline".
+              for (auto &F : M) {
+                if (!F.isDeclaration()) {
+                  F.removeFnAttr(llvm::Attribute::NoInline);
+                  F.removeFnAttr(llvm::Attribute::OptimizeNone);
+                }
+              }
+
+              llvm::ModulePassManager AggressiveMPM;
+
+              // Respect alwaysinline attributes.
+              AggressiveMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
+
+              // Configure aggressive inline parameters.
+              llvm::InlineParams IP = llvm::getInlineParams();
+              IP.DefaultThreshold = 100000; // very high budget
+              IP.HintThreshold = 100000;
+              IP.ColdThreshold = 100000;
+              IP.OptSizeThreshold = 100000;
+              IP.OptMinSizeThreshold = 100000;
+              IP.HotCallSiteThreshold = 100000;
+              IP.LocallyHotCallSiteThreshold = 100000;
+              IP.ColdCallSiteThreshold = 100000;
+              IP.ComputeFullInlineCost = true;
+              IP.EnableDeferral = false;      // do not defer, inline eagerly
+              IP.AllowRecursiveCall = true;   // allow recursive inlining when profitable
+
+              AggressiveMPM.addPass(llvm::ModuleInlinerPass(IP));
+              AggressiveMPM.run(M, MAM);
+            }
+
+            // After aggressive inlining, run the regular O3 pipeline to clean up
+            // and perform further optimizations on the now inlined code.
+            {
+              llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+              MPM.run(M, MAM);
+            }
+
+            // Log the optimized IR for any specialized wrapper functions in this module.
+            for (auto &F : M) {
+              if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
+                llvm::errs() << "[ClangRuntimeSpecializer] Optimized IR for " << F.getName() << ":\n";
+                F.print(llvm::errs());
+                llvm::errs() << "\n";
+
+                // Check if the target function is still called.
+                for (auto &BB : F) {
+                  for (auto &I : BB) {
+                    if (auto *CB = llvm::dyn_cast<llvm::CallBase>(&I)) {
+                      if (auto *Callee = CB->getCalledFunction()) {
+                        llvm::errs() << "[ClangRuntimeSpecializer] Still calling: " << Callee->getName();
+                        if (Callee->isDeclaration())
+                          llvm::errs() << " (declaration only)\n";
+                        else
+                          llvm::errs() << " (definition present)\n";
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          });
+          return std::move(TSM);
+        });
 
     Instance->Module = parse_module_from_runtime_data(data, Instance->Context);
 
