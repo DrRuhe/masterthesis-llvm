@@ -77,8 +77,6 @@ namespace clangRuntimeSpecializer {
         throw std::runtime_error("[ClangRuntimeSpecializer] Mismatch between provided arguments and target function parameters.");
       }
 
-      if (TargetFunc->hasFnAttribute(llvm::Attribute::NoInline)) throw std::runtime_error("[ClangRuntimeSpecializer] The specialized function has a no inline attribute!");
-
       // Encourage inlining for the callee in the JIT pipeline.
       TargetFunc->removeFnAttr(llvm::Attribute::NoInline);
       TargetFunc->removeFnAttr(llvm::Attribute::OptimizeNone);
