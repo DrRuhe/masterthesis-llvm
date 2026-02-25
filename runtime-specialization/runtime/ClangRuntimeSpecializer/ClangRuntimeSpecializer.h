@@ -6,7 +6,6 @@
 #include <utility>
 #include <memory>
 #include <vector>
-#include <typeinfo>
 #include <stdexcept>
 #include <cstdio>
 
@@ -47,7 +46,86 @@ namespace clangRuntimeSpecializer {
       llvm::Function *TargetFunc = Module->getFunction(FuncNameStr);
 
       if (TargetFunc == nullptr) {
-        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find function: ") + funcName);
+        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find function: ") + funcName + " (It might be optimized out already by dead-code-elimination?)");
+      }
+
+
+
+
+      // Try to find the call site of call_specialized in the IR to get more precise type information.
+      llvm::CallBase* CallSite = nullptr;
+      for (auto &F : *Module) {
+        for (auto &BB : F) {
+          for (auto &I : BB) {
+            if (auto *CB = llvm::dyn_cast<llvm::CallBase>(&I)) {
+              if (auto *Callee = CB->getCalledFunction()) {
+                std::string CalleeName = Callee->getName().str();
+                // Check if it's a call to call_specialized or its implementation
+                if (CalleeName.find("call_specialized") != std::string::npos) {
+                  // The first argument to call_specialized (after 'this' if it's a member) is the funcName.
+                  // For call_specialized_impl(const char* funcName, ...), it's the first arg.
+                  // We need to be careful about which arg it is.
+                  unsigned FuncNameArgIdx = 0;
+                  // If it's a member function of ClangRuntimeSpecializer, the first IR arg is 'this'.
+                  if (CalleeName.find("ClangRuntimeSpecializer") != std::string::npos && 
+                      CalleeName.find("call_specialized") != std::string::npos) {
+                      FuncNameArgIdx = 1;
+                  }
+                  
+                  if (CB->arg_size() > FuncNameArgIdx) {
+                    auto *Arg0 = CB->getArgOperand(FuncNameArgIdx);
+                    if (auto *CE = llvm::dyn_cast<llvm::ConstantExpr>(Arg0)) {
+                       if (CE->getOpcode() == llvm::Instruction::GetElementPtr) {
+                         Arg0 = CE->getOperand(0);
+                       }
+                    }
+                    if (auto *GV = llvm::dyn_cast<llvm::GlobalVariable>(Arg0)) {
+                      if (GV->hasInitializer()) {
+                        if (auto *CDS = llvm::dyn_cast<llvm::ConstantDataSequential>(GV->getInitializer())) {
+                          if (CDS->isString() && CDS->getAsString().starts_with(funcName)) {
+                            CallSite = CB;
+                            break;
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          if (CallSite) break;
+        }
+        if (CallSite) break;
+      }
+
+      if (CallSite) {
+        std::fprintf(stderr, "[ClangRuntimeSpecializer] Found IR call site for: %s\n", funcName);
+        // Extract the actual types from the IR call site.
+        // We skip the first 2 arguments of call_specialized (this and funcName).
+        // For call_specialized_impl, we skip 1 or 2 depending on whether it's a member.
+        // TODO this can be cleaned up: let the macro call create a UID, which we can use to cleanly retrieve the callsite. In the macro definition also
+        unsigned SkipArgs = (CallSite->getCalledFunction()->getName().find("ClangRuntimeSpecializer") != std::string::npos) ? 2 : 1;
+        
+        std::vector<llvm::Type*> PreciseTypes;
+        for (unsigned i = SkipArgs; i < CallSite->arg_size(); ++i) {
+            PreciseTypes.push_back(CallSite->getArgOperand(i)->getType());
+        }
+
+        if (PreciseTypes.size() == sizeof...(Args)) {
+             for (unsigned i = 0; i < PreciseTypes.size(); ++i) {
+                 llvm::Value* ArgOp = CallSite->getArgOperand(i + SkipArgs);
+                 if (auto *LI = llvm::dyn_cast<llvm::LoadInst>(ArgOp)) {
+                     ArgOp = LI->getPointerOperand();
+                 }
+                 if (auto *Alloca = llvm::dyn_cast<llvm::AllocaInst>(ArgOp)) {
+                     llvm::Type* AllocatedType = Alloca->getAllocatedType();
+                     std::fprintf(stderr, "[ClangRuntimeSpecializer] Arg %u is alloca of type: ", i);
+                     AllocatedType->print(llvm::errs());
+                     llvm::errs() << "\n";
+                 }
+             }
+        }
       }
 
       // Ensure the arity matches before creating the call.
@@ -58,20 +136,46 @@ namespace clangRuntimeSpecializer {
 
       // TODO reuse a clean copy of the llvm module. Possibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
       //   Currently we get conflicts, so specialization fails.
-      static uint64_t SpecializationCount = 0;
-      std::string SpecializationWrapperName = "specialized_wrapper_" + std::to_string(++SpecializationCount);
+      std::string UniqueWrapperName = "specialized_wrapper_" + std::to_string(++GlobalSpecializationCount) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+
+      // Clone the module first to avoid polluting the main Module with multiple wrappers.
+      auto NewModule = llvm::CloneModule(*Module);
       
       // Create a new function that takes no arguments and, inside, calls the target with serialized constants.
       llvm::IRBuilder<> Builder{Context};
       llvm::FunctionType* FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
-      llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, SpecializationWrapperName, *Module);
+      llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
 
       llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Context, "entry", NewFunc);
       Builder.SetInsertPoint(Entry);
 
       // Serialize the runtime arguments to IR constants and create a call to the target function with them.
       // We pass the TargetFunc's arguments to guide serialization.
-      auto ArgValues = serializeArgumentsToIR(Builder, TargetFunc->arg_begin(), std::forward<Args>(args)...);
+      auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
+      
+      std::vector<llvm::Value*> ArgValues;
+      if (CallSite) {
+          unsigned SkipArgs = (CallSite->getCalledFunction()->getName().find("ClangRuntimeSpecializer") != std::string::npos) ? 2 : 1;
+          std::vector<llvm::Type*> PreciseTypes;
+          for (unsigned i = 0; i < sizeof...(Args); ++i) {
+              llvm::Value* ArgOp = CallSite->getArgOperand(i + SkipArgs);
+              if (auto *LI = llvm::dyn_cast<llvm::LoadInst>(ArgOp)) {
+                  ArgOp = LI->getPointerOperand();
+              }
+              if (auto *Alloca = llvm::dyn_cast<llvm::AllocaInst>(ArgOp)) {
+                  PreciseTypes.push_back(Alloca->getAllocatedType());
+              } else {
+                  PreciseTypes.push_back(ArgOp->getType());
+              }
+          }
+          ArgValues = serializeArgumentsToIRWithPreciseTypes(Builder, TargetFuncInNewModule->arg_begin(), PreciseTypes, std::forward<Args>(args)...);
+      } else {
+          // Fallback to old method if call site not found.
+          // Note: we need to re-implement or keep serializeArgumentsToIR for this.
+          // Let's just use empty PreciseTypes.
+          std::vector<llvm::Type*> EmptyPreciseTypes(sizeof...(Args), nullptr);
+          ArgValues = serializeArgumentsToIRWithPreciseTypes(Builder, TargetFuncInNewModule->arg_begin(), EmptyPreciseTypes, std::forward<Args>(args)...);
+      }
 
 
       // Validate serialized args
@@ -85,15 +189,15 @@ namespace clangRuntimeSpecializer {
       }
 
       // Encourage inlining for the callee in the JIT pipeline.
-      TargetFunc->removeFnAttr(llvm::Attribute::NoInline);
-      TargetFunc->removeFnAttr(llvm::Attribute::OptimizeNone);
-      TargetFunc->addFnAttr(llvm::Attribute::AlwaysInline);
+      TargetFuncInNewModule->removeFnAttr(llvm::Attribute::NoInline);
+      TargetFuncInNewModule->removeFnAttr(llvm::Attribute::OptimizeNone);
+      TargetFuncInNewModule->addFnAttr(llvm::Attribute::AlwaysInline);
 
-      auto *CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, ArgValues);
-      CallInst->setAttributes(TargetFunc->getAttributes());
+      auto *CallInst = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(), TargetFuncInNewModule, ArgValues);
+      CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
       CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
 
-      if (TargetFunc->getReturnType()->isVoidTy()) {
+      if (TargetFuncInNewModule->getReturnType()->isVoidTy()) {
         Builder.CreateRetVoid();
       } else {
         Builder.CreateRet(CallInst);
@@ -104,17 +208,12 @@ namespace clangRuntimeSpecializer {
       NewFunc->print(llvm::errs());
       llvm::errs() << "\n";
 
-      // Clone the module and add it to the JIT.
-      // We need to move the Module into a ThreadSafeModule, but we want to keep it in the Specializer too.
-      // So we clone it.
-      auto NewModule = llvm::CloneModule(*Module);
-      
       // Every function except the specialized wrapper should have available_externally linkage
       // if it has a definition. This allows the JIT inliner to see the bodies but won't
       // produce a definition in the resulting object file, as we want to use the host's version
       // if it's not inlined.
       for (auto &F : *NewModule) {
-        if (F.getName() == SpecializationWrapperName) {
+        if (F.getName() == UniqueWrapperName) {
            F.setLinkage(llvm::GlobalValue::ExternalLinkage);
            continue;
         }
@@ -145,7 +244,7 @@ namespace clangRuntimeSpecializer {
         throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to add module to JIT: ") + llvm::toString(std::move(Err)));
       }
 
-      auto SpecializedFn = JIT->lookup(SpecializationWrapperName);
+      auto SpecializedFn = JIT->lookup(UniqueWrapperName);
       if (!SpecializedFn) {
         throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to lookup wrapper: ") + llvm::toString(SpecializedFn.takeError()));
       }
@@ -166,6 +265,7 @@ namespace clangRuntimeSpecializer {
     llvm::LLVMContext Context;
     std::unique_ptr<llvm::Module> Module;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
+    uint64_t GlobalSpecializationCount = 0;
     explicit ClangRuntimeSpecializer();
 
     // Recursively serialize a value of a given LLVM type from a memory location.
@@ -187,6 +287,8 @@ namespace clangRuntimeSpecializer {
         std::memcpy(&Val, valuePtr, sizeof(double));
         return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(Val));
       } else if (type->isPointerTy()) {
+
+
         uintptr_t Val;
         std::memcpy(&Val, valuePtr, sizeof(uintptr_t));
         llvm::Type* Ty = llvm::Type::getInt64Ty(builder.getContext());
@@ -259,10 +361,44 @@ namespace clangRuntimeSpecializer {
     }
 
     template <class... Args>
-    std::vector<llvm::Value*> serializeArgumentsToIR(llvm::IRBuilder<>& builder, llvm::Function::arg_iterator irArgIt, Args&&... args) {
+    std::vector<llvm::Value*> serializeArgumentsToIRWithPreciseTypes(llvm::IRBuilder<>& builder, llvm::Function::arg_iterator irArgIt, const std::vector<llvm::Type*>& preciseTypes, Args&&... args) {
       std::vector<llvm::Value*> result;
-      (result.push_back(serializeArgumentToIR(builder, &(*(irArgIt++)), std::forward<Args>(args))), ...);
+      unsigned i = 0;
+      (result.push_back(serializeArgumentToIRWithPreciseType(builder, &(*(irArgIt++)), preciseTypes[i++], std::forward<Args>(args))), ...);
       return result;
+    }
+
+    template <class T>
+    llvm::Value* serializeArgumentToIRWithPreciseType(llvm::IRBuilder<>& builder, llvm::Argument* irArg, llvm::Type* preciseType, T&& value) {
+      using Decayed = std::decay_t<T>;
+      llvm::Type* expectedType = irArg ? irArg->getType() : nullptr;
+      if (!expectedType) return nullptr;
+
+      if (expectedType->isPointerTy()) {
+        if constexpr (std::is_pointer_v<Decayed>) {
+          return serializeValueToIR(builder, expectedType, &value);
+        } else {
+          // It's a class/struct passed by reference or 'this'
+          const Decayed* ptr = &value;
+          
+          // If we have a precise struct type, we can serialize the struct as a constant
+          // and then take its address. This allows the JIT to see the fields.
+          if (preciseType && preciseType->isStructTy()) {
+              llvm::Value* structVal = serializeValueToIR(builder, preciseType, ptr);
+              if (auto *structConst = llvm::dyn_cast_or_null<llvm::Constant>(structVal)) {
+                  // Create a global variable for this constant struct so we can take its address.
+                  // (JIT will optimize this away anyway if it's inlined).
+                  auto *GV = new llvm::GlobalVariable(*Module, preciseType, true, 
+                                                      llvm::GlobalValue::InternalLinkage, structConst, "specialized_instance");
+                  return builder.CreateBitCast(GV, expectedType);
+              }
+          }
+          
+          return serializeValueToIR(builder, expectedType, &ptr);
+        }
+      }
+
+      return serializeValueToIR(builder, expectedType, &value);
     }
   };
 
