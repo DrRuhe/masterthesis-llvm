@@ -27,16 +27,6 @@ config.substitutions.append(("%shlibext", config.llvm_plugin_ext))
 
 
 
-# TODO there should be nothing at:
-#  config.llvm_obj_root = "/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug"
-#  config.llvm_src_root = "/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm"
-
-# TODO:
-# /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization/test/call-specialized.cpp:13:10: fatal error: 'ClangRuntimeSpecializer.h' file not found
-#    13 | #include "ClangRuntimeSpecializer.h"
-#       |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~
-# 1 error generated.
-
 llvm_config.use_clang(
     additional_flags=[
         config.additional_clang_flags,
