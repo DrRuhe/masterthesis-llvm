@@ -1,7 +1,7 @@
 #pragma once
 
 #include <cassert>
-#include <optional>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <memory>
@@ -330,5 +330,56 @@ namespace clangRuntimeSpecializer {
 
 #define call_specialized(fn, obj, ...) call_specialized_impl(#fn, fn, obj, ##__VA_ARGS__)
 #define call_specialized_free(fn, ...) call_specialized_free_impl(#fn, fn, ##__VA_ARGS__)
+
+  template <class Fn, class... Args>
+  void specialize_and_compare_impl(const char* funcName, Fn f, Args... args) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    if (!RS) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] could not init!");
+    }
+
+    // Copy arguments for both calls
+    auto args_orig = std::make_tuple(args...);
+    auto args_spec = std::make_tuple(args...);
+
+    using R = decltype(f(args...));
+
+    if constexpr (std::is_void_v<R>) {
+        // Call original
+        std::apply(f, args_orig);
+        // Call specialized
+        std::apply([&](auto&&... call_args) {
+            RS->template call_specialized<void>(funcName, std::forward<decltype(call_args)>(call_args)...);
+        }, args_spec);
+
+        // Compare modified arguments (if they were passed by reference/pointer)
+        if (args_orig != args_spec) {
+            std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
+            std::abort();
+        }
+    } else {
+        // Call original
+        R res_orig = std::apply(f, args_orig);
+        // Call specialized
+        R res_spec = std::apply([&](auto&&... call_args) -> R {
+            return RS->template call_specialized<R>(funcName, std::forward<decltype(call_args)>(call_args)...);
+        }, args_spec);
+
+        // Compare return values
+        if (res_orig != res_spec) {
+            std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: return values differ for %s\n", funcName);
+            std::abort();
+        }
+
+        // Compare modified arguments
+        if (args_orig != args_spec) {
+            std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
+            std::abort();
+        }
+    }
+  }
+
+#define CLANG_RUNTIME_SPECIALIZE_AND_COMPARE(fn, ...) \
+    clangRuntimeSpecializer::specialize_and_compare_impl(#fn, fn, ##__VA_ARGS__)
 
 } // namespace clangRuntimeSpecializer
