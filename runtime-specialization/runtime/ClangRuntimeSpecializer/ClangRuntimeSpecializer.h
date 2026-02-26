@@ -22,6 +22,16 @@
 // TODO refactor the error handling: create a special "ClangRuntimeSpecializationError" for this project.
 namespace clangRuntimeSpecializer {
 
+  template <typename T, typename = void>
+  struct has_equality_operator : std::false_type {};
+
+  template <typename T>
+  struct has_equality_operator<T, std::void_t<decltype(std::declval<const T&>() == std::declval<const T&>())>> : std::true_type {};
+
+  template <typename... Args>
+  constexpr bool all_comparable() {
+    return (has_equality_operator<std::decay_t<Args>>::value && ...);
+  }
 
   class ClangRuntimeSpecializer {
   public:
@@ -63,7 +73,7 @@ namespace clangRuntimeSpecializer {
       // - Always skip the implicit 'this' pointer (1)
       // - Additionally skip the explicit 'funcName' runtime argument if present (legacy path)
       unsigned CallArgCount = CallSite->arg_size();
-      
+
       unsigned SkipArgs = 1;
       if (CallArgCount != SkipArgs + static_cast<unsigned>(NumArgs))
       {
@@ -72,7 +82,7 @@ namespace clangRuntimeSpecializer {
           CallArgCount, NumArgs, static_cast<unsigned>(NumArgs) + 1);
         throw std::runtime_error("[ClangRuntimeSpecializer] Unexpected callsite arg count");
       }
-      
+
 
       if (NumArgs != TargetFunc->arg_size())
       {
@@ -528,6 +538,10 @@ namespace clangRuntimeSpecializer {
   template <const char* funcName, class Fn, class... ARGS>
   __attribute__((always_inline))
   void assertSpecializedFunctionIsEquivalent( Fn F, ARGS... Args) {
+    static_assert(all_comparable<ARGS...>(),
+        "All arguments passed to assertSpecializedFunctionIsEquivalent must support the equality operator (==). "
+        "This is required to ensure that the specialized function behavior matches the original when arguments are modified.");
+
     auto* RS = ClangRuntimeSpecializer::init();
     if (!RS) {
         throw std::runtime_error("[ClangRuntimeSpecializer] could not init!");
@@ -548,9 +562,11 @@ namespace clangRuntimeSpecializer {
         }, ArgsSpec);
 
         // Compare modified arguments (if they were passed by reference/pointer)
-        if (ArgsOrig != ArgsSpec) {
-            std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
-            std::abort();
+        if constexpr (all_comparable<ARGS...>()) {
+            if (ArgsOrig != ArgsSpec) {
+                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
+                std::abort();
+            }
         }
     } else {
         // Call original
@@ -561,16 +577,90 @@ namespace clangRuntimeSpecializer {
         }, ArgsSpec);
 
         // Compare return values
-        if (ResOrig != ResSpec) {
-            std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: return values differ for %s\n", funcName);
-            std::abort();
+        if constexpr (has_equality_operator<R>::value) {
+            if (ResOrig != ResSpec) {
+                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: return values differ for %s\n", funcName);
+                std::abort();
+            }
         }
 
         // Compare modified arguments
-        if (ArgsOrig != ArgsSpec) {
-            std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
-            std::abort();
+        if constexpr (all_comparable<ARGS...>()) {
+            if (ArgsOrig != ArgsSpec) {
+                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
+                std::abort();
+            }
         }
     }
+    std::fprintf(stderr, "[ClangRuntimeSpecializer] Successfully specialized %s! No differences could be observed. \n", funcName);
   }
+
+
+  template <const char* funcName, class MemFn, class Obj, class... ARGS>
+  __attribute__((always_inline))
+  void assertSpecializedMethodIsEquivalent(MemFn mf, Obj obj, ARGS... Args) {
+    static_assert(all_comparable<Obj, ARGS...>(),
+        "The object and all arguments passed to assertSpecializedMethodIsEquivalent must support the equality operator (==). "
+        "This is required to ensure that the specialized method behavior matches the original when the object or arguments are modified.");
+
+    auto* RS = ClangRuntimeSpecializer::init();
+    if (!RS) {
+        throw std::runtime_error("[ClangRuntimeSpecializer] could not init!");
+    }
+
+    // Copy object + arguments for both calls
+    auto ArgsOrig = std::forward_as_tuple(obj, Args...);
+    auto ArgsSpec = std::make_tuple(obj, Args...);
+
+    using R = decltype(std::invoke(mf, obj, Args...));
+
+    if constexpr (std::is_void_v<R>) {
+        // Call original
+        std::apply([&](auto&& ObjArg, auto&&... CallArgs) {
+            std::invoke(mf, std::forward<decltype(ObjArg)>(ObjArg), std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsOrig);
+
+        // Call specialized
+        std::apply([&](auto&& ObjArg, auto&&... CallArgs) {
+            RS->callSpecialized<funcName, void>(
+              std::forward<decltype(ObjArg)>(ObjArg),
+              std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
+
+        if constexpr (all_comparable<Obj, ARGS...>()) {
+            if (ArgsOrig != ArgsSpec) {
+                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: object/args differ after execution of %s\n", funcName);
+                std::abort();
+            }
+        }
+    } else {
+        // Call original
+        R ResOrig = std::apply([&](auto&& ObjArg, auto&&... CallArgs) -> R {
+            return std::invoke(mf, std::forward<decltype(ObjArg)>(ObjArg), std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsOrig);
+
+        // Call specialized
+        R ResSpec = std::apply([&](auto&& ObjArg, auto&&... CallArgs) -> R {
+            return RS->callSpecialized<funcName, R>(
+              std::forward<decltype(ObjArg)>(ObjArg),
+              std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
+
+        if constexpr (has_equality_operator<R>::value) {
+            if (ResOrig != ResSpec) {
+                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: return values differ for %s\n", funcName);
+                std::abort();
+            }
+        }
+
+        if constexpr (all_comparable<Obj, ARGS...>()) {
+            if (ArgsOrig != ArgsSpec) {
+                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: object/args differ after execution of %s\n", funcName);
+                std::abort();
+            }
+        }
+    }
+    std::fprintf(stderr, "[ClangRuntimeSpecializer] Successfully specialized %s! No differences could be observed. \n", funcName);
+  }
+
 } // namespace clangRuntimeSpecializer
