@@ -31,8 +31,13 @@ int mypow(int x)
   return result;
 }
 
-int main(int argc, char** argv) {
-  int r1 = SPECIALIZE_FN(mypow, argc);
+
+inline constexpr char Fn_mypow[] = "mypow";
+
+int main(int argc, char** argv)
+{
+  int r1 = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_mypow>(mypow, argc);
+
 
   if (r1 != 1 || r1 == 27)
   {

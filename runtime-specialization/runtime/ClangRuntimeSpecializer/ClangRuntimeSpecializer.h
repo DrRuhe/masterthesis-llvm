@@ -1,22 +1,21 @@
 #pragma once
 
 #include <cassert>
+#include <cstdio>
+#include <memory>
+#include <stdexcept>
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <memory>
 #include <vector>
-#include <stdexcept>
-#include <cstdio>
 
-//#include "llvm/IR/Constants.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
-#include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/IR/DebugInfoMetadata.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 
 #define CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME "call_specialized_func_name"
 
@@ -30,10 +29,10 @@ namespace clangRuntimeSpecializer {
     
     //TODO extract the non generic logic into the cpp file. So still perform the generic arg serialization 
     // in this header, but then call a method implemented in the cpp file.
-    template <const char* funcName, class R, class... Args>
+    template <const char* funcName, class R, class... ARGS>
     [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
     __attribute__((noinline))
-    R call_specialized(Args&&... args) {
+    R callSpecialized(ARGS&&... Args) {
       if (funcName == nullptr) {
         throw std::runtime_error("[ClangRuntimeSpecializer] funcName was null! ");
       }
@@ -58,32 +57,29 @@ namespace clangRuntimeSpecializer {
       llvm::CallBase* CallSite = findCallSpecializedFunctionInModule(__FUNCTION__,funcName);
 
       // Ensure the number of args between the callsite in the IR, the function to specialize and number of passed args are compatible.
-      size_t numArgs = sizeof...(Args);
+      size_t NumArgs = sizeof...(ARGS);
       
       // Determine how many leading arguments to skip at the callsite:
       // - Always skip the implicit 'this' pointer (1)
       // - Additionally skip the explicit 'funcName' runtime argument if present (legacy path)
-      unsigned callArgCount = CallSite->arg_size();
-      unsigned expectedWithThis = static_cast<unsigned>(numArgs) + 1;        // this + args
-      unsigned expectedWithThisAndName = static_cast<unsigned>(numArgs) + 2; // this + funcName + args
-      unsigned SKIP_ARGS = 1;
-      if (callArgCount == expectedWithThis) {
-        SKIP_ARGS = 1;
-      } else if (callArgCount == expectedWithThisAndName) {
-        SKIP_ARGS = 2;
-      } else {
+      unsigned CallArgCount = CallSite->arg_size();
+      
+      unsigned SkipArgs = 1;
+      if (CallArgCount != SkipArgs + static_cast<unsigned>(NumArgs))
+      {
         std::fprintf(stderr,
-          "[ClangRuntimeSpecializer] Unexpected callsite arg count. callArgCount=%u, numArgs=%zu (expected %u or %u)\n",
-          callArgCount, numArgs, expectedWithThis, expectedWithThisAndName);
+          "[ClangRuntimeSpecializer] Unexpected callsite arg count. callArgCount=%u, numArgs=%zu (expected %u)\n",
+          CallArgCount, NumArgs, static_cast<unsigned>(NumArgs) + 1);
         throw std::runtime_error("[ClangRuntimeSpecializer] Unexpected callsite arg count");
       }
+      
 
-      if (numArgs != TargetFunc->arg_size())
+      if (NumArgs != TargetFunc->arg_size())
       {
         std::fprintf(
           stderr,
           "[ClangRuntimeSpecializer] The number of args are incompatible! numArgs: %zu, TargetFunc->arg_size(): %zu\n",
-          numArgs, TargetFunc->arg_size());
+          NumArgs, TargetFunc->arg_size());
         throw std::runtime_error(std::string("[ClangRuntimeSpecializer] The number of args are incompatible! "));
       }
 
@@ -113,62 +109,61 @@ namespace clangRuntimeSpecializer {
       //TODO iterate through TargetFunc->uses()
 
 
-      auto serializeArgs = [&](auto&&... args_inner) {
-          unsigned i = 0;
+      auto SerializeArgs = [&](auto&&... ArgsInner) {
+          unsigned I = 0;
           ([&] {
-              llvm::Argument* irArg = TargetFunc->getArg(i);
-              llvm::Value* irCallArg = CallSite->getArgOperand(SKIP_ARGS + i);
+              llvm::Argument* IrArg = TargetFunc->getArg(I);
+              llvm::Value* IrCallArg = CallSite->getArgOperand(SkipArgs + I);
 
-              llvm::errs() << "[ClangRuntimeSpecializer] Argument " << i << ":\n";
+              llvm::errs() << "[ClangRuntimeSpecializer] Argument " << I << ":\n";
               llvm::errs() << "  - irArg type: ";
-              irArg->getType()->print(llvm::errs());
+              IrArg->getType()->print(llvm::errs());
               llvm::errs() << "\n";
               llvm::errs() << "  - irCallArg type: ";
-              irCallArg->getType()->print(llvm::errs());
+              IrCallArg->getType()->print(llvm::errs());
               llvm::errs() << "\n";
 
-              llvm::Type* preciseType = nullptr;
+              llvm::Type* PreciseType = nullptr;
               // If it's a load from an alloca, we can get the original type.
-              if (auto *LI = llvm::dyn_cast<llvm::LoadInst>(irCallArg)) {
+              if (auto *LI = llvm::dyn_cast<llvm::LoadInst>(IrCallArg)) {
                   llvm::Value *Ptr = LI->getPointerOperand();
                   if (auto *AI = llvm::dyn_cast<llvm::AllocaInst>(Ptr)) {
-                      preciseType = AI->getAllocatedType();
+                      PreciseType = AI->getAllocatedType();
                       
                       // Trace back stores to see if we can find a more specific alloca (e.g. from an inlined parameter)
-                      if (preciseType->isPointerTy()) {
+                      if (PreciseType->isPointerTy()) {
                           for (auto &U : AI->uses()) {
                               if (auto *SI = llvm::dyn_cast<llvm::StoreInst>(U.getUser())) {
                                   if (SI->getPointerOperand() == AI) {
                                       llvm::Value *StoredVal = SI->getValueOperand();
                                       if (auto *IncomingAI = llvm::dyn_cast<llvm::AllocaInst>(StoredVal)) {
-                                          preciseType = IncomingAI->getAllocatedType();
+                                          PreciseType = IncomingAI->getAllocatedType();
                                           break;
                                       }
                                   }
                               }
                           }
                       }
-                      llvm::errs() << "  - preciseType from alloca: ";
-                      if (preciseType) preciseType->print(llvm::errs());
-                      if (preciseType && preciseType->isStructTy()) {
-                          llvm::errs() << " (Struct: " << preciseType->getStructName() << ")";
-                      }
+                      llvm::errs() << "  - preciseType from alloca at CallSite: ";
+                      if (PreciseType) PreciseType->print(llvm::errs());
+
                       llvm::errs() << "\n";
                   }
               }
 
               // Check for byval type
-              if (auto *Ty = CallSite->getParamByValType(SKIP_ARGS + i)) {
+              if (auto *Ty = CallSite->getParamByValType(SkipArgs + I)) {
                   llvm::errs() << "  - ParamByValType: ";
                   Ty->print(llvm::errs());
                   llvm::errs() << "\n";
+                  throw std::runtime_error(std::string("TODO: encountered a byVal type. I'm unsure how to handle this. You can have a look now :) (Past Jakob sends his regards)"));
               }
 
-              ArgValues.push_back(serializeArgumentToIR(Builder, irArg, preciseType, std::forward<decltype(args_inner)>(args_inner)));
-              i++;
+              ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, PreciseType, std::forward<decltype(ArgsInner)>(ArgsInner)));
+              I++;
           }(), ...);
       };
-      serializeArgs(std::forward<Args>(args)...);
+      SerializeArgs(std::forward<ARGS>(Args)...);
 
       // Encourage inlining for the callee in the JIT pipeline.
       TargetFuncInNewModule->removeFnAttr(llvm::Attribute::NoInline);
@@ -231,7 +226,7 @@ namespace clangRuntimeSpecializer {
         throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to lookup wrapper: ") + llvm::toString(SpecializedFn.takeError()));
       }
 
-      auto SpecializedFnPtr = SpecializedFn->template toPtr<R()>();
+      auto SpecializedFnPtr = SpecializedFn->toPtr<R()>();
 
       if constexpr (std::is_void_v<R>) {
         SpecializedFnPtr();
@@ -250,7 +245,8 @@ namespace clangRuntimeSpecializer {
     uint64_t GlobalSpecializationCount = 0;
     explicit ClangRuntimeSpecializer();
 
-    llvm::CallBase* findCallSpecializedFunctionInModule(const char* functionName, const char* UID) {
+    llvm::CallBase* findCallSpecializedFunctionInModule(const char* functionName, const char* UID) const
+    {
       auto readCStringFromGlobal = [&](llvm::GlobalVariable *GV) -> std::string {
         if (!GV) return {};
         if (auto *CDA = llvm::dyn_cast<llvm::ConstantDataArray>(GV->getInitializer())) {
@@ -259,7 +255,7 @@ namespace clangRuntimeSpecializer {
         return {};
       };
 
-      auto getAnnotationValueForFunction = [&](llvm::Function &F, llvm::StringRef Key) -> std::optional<std::string> {
+      auto getAnnotationValueForFunction = [&](const llvm::Function &F, llvm::StringRef Key) -> std::optional<std::string> {
         llvm::GlobalVariable *AnnGV = Module->getGlobalVariable("llvm.global.annotations");
         if (!AnnGV || !AnnGV->hasInitializer()) return std::nullopt;
         auto *CA = llvm::dyn_cast<llvm::ConstantArray>(AnnGV->getInitializer());
@@ -326,11 +322,11 @@ namespace clangRuntimeSpecializer {
             for (auto &U : F.uses()) {
               if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U.getUser())) {
                 if (CB->getCalledFunction() == &F) {
-                  if (auto *EnclosingF = CB->getFunction()) {
-                    std::fprintf(stderr, "[ClangRuntimeSpecializer] Callback used in function: %s\n", EnclosingF->getName().data());
-                    //EnclosingF->print(llvm::errs());
-                    llvm::errs() << "\n";
-                  }
+                  // if (auto *EnclosingF = CB->getFunction()) {
+                  //   std::fprintf(stderr, "[ClangRuntimeSpecializer] Callback used in function: %s\n", EnclosingF->getName().data());
+                  //   EnclosingF->print(llvm::errs());
+                  //   llvm::errs() << "\n";
+                  // }
                   return CB;
                 }
               }
@@ -477,10 +473,10 @@ namespace clangRuntimeSpecializer {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
         using R = decltype(invoke());
         if constexpr (std::is_void_v<R>) {
-          RS->template call_specialized<funcName,void>(std::forward<Obj>(obj), std::forward<Args>(args)...);
+          RS->callSpecialized<funcName,void>(std::forward<Obj>(obj), std::forward<Args>(args)...);
           return;
         } else {
-          return RS->template call_specialized<funcName,R>( std::forward<Obj>(obj), std::forward<Args>(args)...);
+          return RS->callSpecialized<funcName,R>( std::forward<Obj>(obj), std::forward<Args>(args)...);
         }
       }
     } catch (const std::exception& e) {
@@ -497,94 +493,84 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  template <const char* funcName, class Fn, class... Args>
+  template <const char* funcName, class Fn, class... ARGS>
   __attribute__((always_inline))
-  decltype(auto) specializeFunctionOrFallback(Fn f, Args&&... args) {
-    auto invoke = [&]() -> decltype(auto) {
-      return f(std::forward<Args>(args)...);
+  decltype(auto) specializeFunctionOrFallback(Fn F, ARGS&&... Args) {
+    auto Invoke = [&]() -> decltype(auto) {
+      return F(std::forward<ARGS>(Args)...);
     };
 
     try {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
-        using R = decltype(invoke());
+        using R = decltype(Invoke());
         if constexpr (std::is_void_v<R>) {
-          RS->template call_specialized<funcName, void>(std::forward<Args>(args)...);
+          RS->callSpecialized<funcName, void>(std::forward<ARGS>(Args)...);
           return;
         } else {
-          return RS->template call_specialized<funcName, R>(std::forward<Args>(args)...);
+          return RS->callSpecialized<funcName, R>(std::forward<ARGS>(Args)...);
         }
 
       }
-    } catch (const std::exception& e) {
-      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed: %s\n", e.what());
+    } catch (const std::exception& E) {
+      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed: %s\n", E.what());
     } catch (...) {
       std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed with an unknown error.\n");
     }
 
-    if constexpr (std::is_void_v<decltype(invoke())>) {
-      invoke();
+    if constexpr (std::is_void_v<decltype(Invoke())>) {
+      Invoke();
       return;
     } else {
-      return invoke();
+      return Invoke();
     }
   }
 
-
-#define SPECIALIZE_METHOD(fn, obj, ...) \
-    clangRuntimeSpecializer::specializeMethodOrFallback<#fn>(&fn, obj, ##__VA_ARGS__)
-#define SPECIALIZE_FN(fn, ...) \
-    clangRuntimeSpecializer::specializeFunctionOrFallback<#fn>(fn, ##__VA_ARGS__)
-
-  template <const char* funcName, class Fn, class... Args>
+  template <const char* funcName, class Fn, class... ARGS>
   __attribute__((always_inline))
-  void specialize_and_compare_impl( Fn f, Args... args) {
+  void assertSpecializedFunctionIsEquivalent( Fn F, ARGS... Args) {
     auto* RS = ClangRuntimeSpecializer::init();
     if (!RS) {
         throw std::runtime_error("[ClangRuntimeSpecializer] could not init!");
     }
 
     // Copy arguments for both calls
-    auto args_orig = std::make_tuple(args...);
-    auto args_spec = std::make_tuple(args...);
+    auto ArgsOrig = std::make_tuple(Args...);
+    auto ArgsSpec = std::make_tuple(Args...);
 
-    using R = decltype(f(args...));
+    using R = decltype(F(Args...));
 
     if constexpr (std::is_void_v<R>) {
         // Call original
-        std::apply(f, args_orig);
+        std::apply(F, ArgsOrig);
         // Call specialized
-        std::apply([&](auto&&... call_args) {
-            RS->template call_specialized<funcName, void>(std::forward<decltype(call_args)>(call_args)...);
-        }, args_spec);
+        std::apply([&](auto&&... CallArgs) {
+            RS->callSpecialized<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
 
         // Compare modified arguments (if they were passed by reference/pointer)
-        if (args_orig != args_spec) {
+        if (ArgsOrig != ArgsSpec) {
             std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
             std::abort();
         }
     } else {
         // Call original
-        R res_orig = std::apply(f, args_orig);
+        R ResOrig = std::apply(F, ArgsOrig);
         // Call specialized
-        R res_spec = std::apply([&](auto&&... call_args) -> R {
-            return RS->template call_specialized<funcName, R>( std::forward<decltype(call_args)>(call_args)...);
-        }, args_spec);
+        R ResSpec = std::apply([&](auto&&... CallArgs) -> R {
+            return RS->callSpecialized<funcName, R>( std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
 
         // Compare return values
-        if (res_orig != res_spec) {
+        if (ResOrig != ResSpec) {
             std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: return values differ for %s\n", funcName);
             std::abort();
         }
 
         // Compare modified arguments
-        if (args_orig != args_spec) {
+        if (ArgsOrig != ArgsSpec) {
             std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
             std::abort();
         }
     }
   }
-
-#define CLANG_RUNTIME_SPECIALIZE_AND_COMPARE(fn, ...) \
-    clangRuntimeSpecializer::specialize_and_compare_impl<#fn>(fn, ##__VA_ARGS__)
-
 } // namespace clangRuntimeSpecializer
