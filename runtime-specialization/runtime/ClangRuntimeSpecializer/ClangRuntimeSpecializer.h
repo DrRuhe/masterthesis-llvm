@@ -16,6 +16,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 
 #define CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME "call_specialized_func_name"
 
@@ -105,20 +106,81 @@ namespace clangRuntimeSpecializer {
       auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
       
       std::vector<llvm::Value*> ArgValues;
-      
+
+      llvm::errs() << "[ClangRuntimeSpecializer] Function to specialize:\n";
+      TargetFunc->print(llvm::errs());
+      //TODO iterate through TargetFunc->uses()
+
+
       auto serializeArgs = [&](auto&&... args_inner) {
           unsigned i = 0;
           ([&] {
               llvm::Argument* irArg = TargetFunc->getArg(i);
               llvm::Value* irCallArg = CallSite->getArgOperand(SKIP_ARGS + i);
-              irArg->print(llvm::errs());
-              irCallArg->print(llvm::errs());
+
+              llvm::errs() << "[ClangRuntimeSpecializer] Argument " << i << ":\n";
+              llvm::errs() << "  - irArg type: ";
+              irArg->getType()->print(llvm::errs());
+              llvm::errs() << "\n";
+              llvm::errs() << "  - irCallArg type: ";
+              irCallArg->getType()->print(llvm::errs());
+              llvm::errs() << "\n";
 
               llvm::Type* preciseType = nullptr;
               // If it's a load from an alloca, we can get the original type.
               if (auto *LI = llvm::dyn_cast<llvm::LoadInst>(irCallArg)) {
-                  if (auto *AI = llvm::dyn_cast<llvm::AllocaInst>(LI->getPointerOperand())) {
+                  llvm::Value *Ptr = LI->getPointerOperand();
+                  if (auto *AI = llvm::dyn_cast<llvm::AllocaInst>(Ptr)) {
                       preciseType = AI->getAllocatedType();
+                      
+                      // Trace back stores to see if we can find a more specific alloca (e.g. from an inlined parameter)
+                      if (preciseType->isPointerTy()) {
+                          for (auto &U : AI->uses()) {
+                              if (auto *SI = llvm::dyn_cast<llvm::StoreInst>(U.getUser())) {
+                                  if (SI->getPointerOperand() == AI) {
+                                      llvm::Value *StoredVal = SI->getValueOperand();
+                                      if (auto *IncomingAI = llvm::dyn_cast<llvm::AllocaInst>(StoredVal)) {
+                                          preciseType = IncomingAI->getAllocatedType();
+                                          break;
+                                      }
+                                  }
+                              }
+                          }
+                      }
+
+                      llvm::errs() << "  - preciseType from alloca: ";
+                      if (preciseType) preciseType->print(llvm::errs());
+                      if (preciseType && preciseType->isStructTy()) {
+                          llvm::errs() << " (Struct: " << preciseType->getStructName() << ")";
+                      }
+                      llvm::errs() << "\n";
+                  }
+              }
+
+              // Check for byval type
+              if (auto *Ty = CallSite->getParamByValType(SKIP_ARGS + i)) {
+                  llvm::errs() << "  - ParamByValType: ";
+                  Ty->print(llvm::errs());
+                  llvm::errs() << "\n";
+              }
+
+              // Try to get info from debug info if available
+              if (auto *SP = TargetFunc->getSubprogram()) {
+                  if (auto *Type = SP->getType()) {
+                      auto Array = Type->getTypeArray();
+                      if (i + 1 < Array.size()) {
+                          if (auto *ArgType = Array[i + 1]) {
+                              if (auto *DITy = llvm::dyn_cast<llvm::DIType>(ArgType)) {
+                                  llvm::errs() << "  - Debug Info Type: " << DITy->getName();
+                                  if (auto *Derived = llvm::dyn_cast<llvm::DIDerivedType>(DITy)) {
+                                      if (auto *Base = Derived->getBaseType()) {
+                                          llvm::errs() << " (Base: " << Base->getName() << ")";
+                                      }
+                                  }
+                                  llvm::errs() << "\n";
+                              }
+                          }
+                      }
                   }
               }
 
@@ -286,6 +348,11 @@ namespace clangRuntimeSpecializer {
             for (auto &U : F.uses()) {
               if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U.getUser())) {
                 if (CB->getCalledFunction() == &F) {
+                  if (auto *EnclosingF = CB->getFunction()) {
+                    std::fprintf(stderr, "[ClangRuntimeSpecializer] Callback used in function: %s\n", EnclosingF->getName().data());
+                    EnclosingF->print(llvm::errs());
+                    llvm::errs() << "\n";
+                  }
                   return CB;
                 }
               }
@@ -422,7 +489,7 @@ namespace clangRuntimeSpecializer {
 
   // call_specialized_impl stellt bereit:
   template <const char* funcName, class MemFn, class Obj, class... Args>
-  __attribute__((noinline))
+  __attribute__((always_inline))
   decltype(auto) specializeMethodOrFallback(MemFn mf, Obj&& obj, Args&&... args) {
     auto invoke = [&]() -> decltype(auto) {
       return (std::forward<Obj>(obj).*mf)(std::forward<Args>(args)...);
@@ -453,7 +520,7 @@ namespace clangRuntimeSpecializer {
   }
 
   template <const char* funcName, class Fn, class... Args>
-  __attribute__((noinline))
+  __attribute__((always_inline))
   decltype(auto) specializeFunctionOrFallback(Fn f, Args&&... args) {
     auto invoke = [&]() -> decltype(auto) {
       return f(std::forward<Args>(args)...);
@@ -491,7 +558,7 @@ namespace clangRuntimeSpecializer {
     clangRuntimeSpecializer::specializeFunctionOrFallback<#fn>(fn, ##__VA_ARGS__)
 
   template <uint64_t UID, class Fn, class... Args>
-  __attribute__((noinline))
+  __attribute__((always_inline))
   void specialize_and_compare_impl(const char* funcName, Fn f, Args... args) {
     auto* RS = ClangRuntimeSpecializer::init();
     if (!RS) {
