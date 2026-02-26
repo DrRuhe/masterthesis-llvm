@@ -17,8 +17,11 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 
+#define CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME "call_specialized_func_name"
+
 // TODO refactor the error handling: create a special "ClangRuntimeSpecializationError" for this project.
 namespace clangRuntimeSpecializer {
+
 
   class ClangRuntimeSpecializer {
   public:
@@ -26,8 +29,9 @@ namespace clangRuntimeSpecializer {
     
     //TODO extract the non generic logic into the cpp file. So still perform the generic arg serialization 
     // in this header, but then call a method implemented in the cpp file.
-    template <unsigned UID, class R, class... Args>
-    R call_specialized(const char* funcName, Args&&... args) {
+    template <const char* funcName, class R, class... Args>
+    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    R call_specialized(Args&&... args) {
       if (funcName == nullptr) {
         throw std::runtime_error("[ClangRuntimeSpecializer] funcName was null! ");
       }
@@ -49,12 +53,28 @@ namespace clangRuntimeSpecializer {
       }
 
       // Try to find the call site of call_specialized in the IR to get more precise type information.
-      llvm::CallBase* CallSite = findCallSiteByUID(__FUNCTION__,UID);
+      llvm::CallBase* CallSite = findCallSpecializedFunctionInModule(__FUNCTION__,funcName);
 
       // Ensure the number of args between the callsite in the IR, the function to specialize and number of passed args are compatible.
       size_t numArgs = sizeof...(Args);
       
-      const unsigned SKIP_ARGS = 2;
+      // Determine how many leading arguments to skip at the callsite:
+      // - Always skip the implicit 'this' pointer (1)
+      // - Additionally skip the explicit 'funcName' runtime argument if present (legacy path)
+      unsigned callArgCount = CallSite->arg_size();
+      unsigned expectedWithThis = static_cast<unsigned>(numArgs) + 1;        // this + args
+      unsigned expectedWithThisAndName = static_cast<unsigned>(numArgs) + 2; // this + funcName + args
+      unsigned SKIP_ARGS = 1;
+      if (callArgCount == expectedWithThis) {
+        SKIP_ARGS = 1;
+      } else if (callArgCount == expectedWithThisAndName) {
+        SKIP_ARGS = 2;
+      } else {
+        std::fprintf(stderr,
+          "[ClangRuntimeSpecializer] Unexpected callsite arg count. callArgCount=%u, numArgs=%zu (expected %u or %u)\n",
+          callArgCount, numArgs, expectedWithThis, expectedWithThisAndName);
+        throw std::runtime_error("[ClangRuntimeSpecializer] Unexpected callsite arg count");
+      }
 
       if (numArgs != TargetFunc->arg_size())
       {
@@ -91,7 +111,9 @@ namespace clangRuntimeSpecializer {
           ([&] {
               llvm::Argument* irArg = TargetFunc->getArg(i);
               llvm::Value* irCallArg = CallSite->getArgOperand(SKIP_ARGS + i);
-              
+              irArg->print(llvm::errs());
+              irCallArg->print(llvm::errs());
+
               llvm::Type* preciseType = nullptr;
               // If it's a load from an alloca, we can get the original type.
               if (auto *LI = llvm::dyn_cast<llvm::LoadInst>(irCallArg)) {
@@ -187,44 +209,92 @@ namespace clangRuntimeSpecializer {
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
     explicit ClangRuntimeSpecializer();
-    
-    llvm::CallBase* findCallSiteByUID(const char* functionName, unsigned UID) {
-      llvm::CallBase* result = nullptr;
-      std::string UIDStr = std::to_string(UID);
+
+    llvm::CallBase* findCallSpecializedFunctionInModule(const char* functionName, const char* UID) {
+      auto readCStringFromGlobal = [&](llvm::GlobalVariable *GV) -> std::string {
+        if (!GV) return {};
+        if (auto *CDA = llvm::dyn_cast<llvm::ConstantDataArray>(GV->getInitializer())) {
+          if (CDA->isCString()) return CDA->getAsCString().str();
+        }
+        return {};
+      };
+
+      auto getAnnotationValueForFunction = [&](llvm::Function &F, llvm::StringRef Key) -> std::optional<std::string> {
+        llvm::GlobalVariable *AnnGV = Module->getGlobalVariable("llvm.global.annotations");
+        if (!AnnGV || !AnnGV->hasInitializer()) return std::nullopt;
+        auto *CA = llvm::dyn_cast<llvm::ConstantArray>(AnnGV->getInitializer());
+        if (!CA) return std::nullopt;
+        for (unsigned i = 0; i < CA->getNumOperands(); ++i) {
+          auto *Elt = llvm::dyn_cast<llvm::ConstantStruct>(CA->getOperand(i));
+          if (!Elt || Elt->getNumOperands() < 4) continue;
+          // 0: ptr to annotated global (function), 1: ptr to anno string, 4: extra args (optional)
+          llvm::Value *Op0 = Elt->getOperand(0);
+          llvm::Value *Op1 = Elt->getOperand(1);
+          llvm::Value *Op4 = (Elt->getNumOperands() >= 5) ? Elt->getOperand(4) : nullptr;
+
+          if (auto *Op0C = llvm::dyn_cast<llvm::Constant>(Op0)) {
+            if (auto *Target = Op0C->stripPointerCasts()) {
+              if (Target == &F) {
+                // Extract key
+                std::string KeyStr;
+                if (auto *Op1C = llvm::dyn_cast<llvm::Constant>(Op1)) {
+                  if (auto *KeyGV = llvm::dyn_cast<llvm::GlobalVariable>(Op1C->stripPointerCasts())) {
+                    KeyStr = readCStringFromGlobal(KeyGV);
+                  }
+                }
+
+                if (KeyStr == Key) {
+                  // Try to extract first argument string from args struct if present
+                  if (Op4) {
+                    if (auto *Op4C = llvm::dyn_cast<llvm::Constant>(Op4)) {
+                      if (auto *ArgsGV = llvm::dyn_cast<llvm::GlobalVariable>(Op4C->stripPointerCasts())) {
+                        if (auto *ArgsInit = llvm::dyn_cast<llvm::ConstantStruct>(ArgsGV->getInitializer())) {
+                          if (ArgsInit->getNumOperands() >= 1) {
+                            if (auto *Arg0C = llvm::dyn_cast<llvm::Constant>(ArgsInit->getOperand(0))) {
+                              if (auto *StrGV = llvm::dyn_cast<llvm::GlobalVariable>(Arg0C->stripPointerCasts())) {
+                                std::string V = readCStringFromGlobal(StrGV);
+                                if (!V.empty()) return V;
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                  // No value available
+                  return std::string();
+                }
+              }
+            }
+          }
+        }
+        return std::nullopt;
+      };
+
       for (auto &F : *Module) {
         std::string FName = F.getName().str();
-        // TODO this is VERY brittle, as the UID might easily accidentally be included in the mangled function name.
-        if (FName.find(functionName) != std::string::npos && FName.find(UIDStr) != std::string::npos) {
-          // Found a function that represents our call_specialized instantiation.
-          // Now find calls to it.
+        if (FName.find(functionName) != std::string::npos) {
+          auto AnnoVal = getAnnotationValueForFunction(F, CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME);
+          if (!AnnoVal)
+          {
+            continue;
+          }
 
-          //TODO assert that there is only a single e
-
-          for (auto &U : F.uses()) {
-            if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U.getUser())) {
-              if (CB->getCalledFunction() == &F) {
-                std::fprintf(stderr, "[ClangRuntimeSpecializer] found Callsite for %s with UID %u: %s\n", functionName, UID, FName.c_str());
-
-
-                // Verify that this call base has enough arguments.
-                // call_specialized_impl(const char*, MemFn, Obj, Args...)
-                // For a 0-args member function, it should have 3 arguments (funcName, MemFn, Obj).
-                // Actually, findCallSiteByUID is also used for call_specialized (the method in this class).
-                // Let's check if the caller is what we expect.
-                result = CB;
+          if (*AnnoVal == UID) {
+            std::fprintf(stderr, "[ClangRuntimeSpecializer] Found Function %s responsible for specializing %s \n",FName.c_str(),UID);
+            // Found a function that represents our call_specialized instantiation. Now find calls to it
+            for (auto &U : F.uses()) {
+              if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U.getUser())) {
+                if (CB->getCalledFunction() == &F) {
+                  return CB;
+                }
               }
             }
           }
         }
       }
 
-      if (!result)
-      {
-        throw std::runtime_error(
-          std::string("[ClangRuntimeSpecializer] Could not find callsite for UID: ") + std::to_string(UID));
-      }
-
-      return result;
+      throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find callsite for UID: ") + UID);
     }
 
     // Recursively serialize a value of a given LLVM type from a memory location.
@@ -351,9 +421,9 @@ namespace clangRuntimeSpecializer {
   };
 
   // call_specialized_impl stellt bereit:
-  template <unsigned UID, class MemFn, class Obj, class... Args>
+  template <const char* funcName, class MemFn, class Obj, class... Args>
   __attribute__((noinline))
-  decltype(auto) specializeMethodOrFallback(const char* funcName, MemFn mf, Obj&& obj, Args&&... args) {
+  decltype(auto) specializeMethodOrFallback(MemFn mf, Obj&& obj, Args&&... args) {
     auto invoke = [&]() -> decltype(auto) {
       return (std::forward<Obj>(obj).*mf)(std::forward<Args>(args)...);
     };
@@ -362,10 +432,10 @@ namespace clangRuntimeSpecializer {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
         using R = decltype(invoke());
         if constexpr (std::is_void_v<R>) {
-          RS->template call_specialized<UID, void>(funcName, std::forward<Obj>(obj), std::forward<Args>(args)...);
+          RS->template call_specialized<funcName,void>(std::forward<Obj>(obj), std::forward<Args>(args)...);
           return;
         } else {
-          return RS->template call_specialized<UID, R>(funcName, std::forward<Obj>(obj), std::forward<Args>(args)...);
+          return RS->template call_specialized<funcName,R>( std::forward<Obj>(obj), std::forward<Args>(args)...);
         }
       }
     } catch (const std::exception& e) {
@@ -382,9 +452,9 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  template <unsigned UID, class Fn, class... Args>
+  template <const char* funcName, class Fn, class... Args>
   __attribute__((noinline))
-  decltype(auto) specializeFunctionOrFallback(const char* funcName, Fn f, Args&&... args) {
+  decltype(auto) specializeFunctionOrFallback(Fn f, Args&&... args) {
     auto invoke = [&]() -> decltype(auto) {
       return f(std::forward<Args>(args)...);
     };
@@ -393,10 +463,10 @@ namespace clangRuntimeSpecializer {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
         using R = decltype(invoke());
         if constexpr (std::is_void_v<R>) {
-          RS->template call_specialized<UID, void>(funcName, std::forward<Args>(args)...);
+          RS->template call_specialized<funcName, void>(std::forward<Args>(args)...);
           return;
         } else {
-          return RS->template call_specialized<UID, R>(funcName, std::forward<Args>(args)...);
+          return RS->template call_specialized<funcName, R>(std::forward<Args>(args)...);
         }
 
       }
@@ -416,9 +486,9 @@ namespace clangRuntimeSpecializer {
 
 
 #define SPECIALIZE_METHOD(fn, obj, ...) \
-    clangRuntimeSpecializer::specializeMethodOrFallback<__COUNTER__>(#fn, &fn, obj, ##__VA_ARGS__)
+    clangRuntimeSpecializer::specializeMethodOrFallback<#fn>(&fn, obj, ##__VA_ARGS__)
 #define SPECIALIZE_FN(fn, ...) \
-    clangRuntimeSpecializer::specializeFunctionOrFallback<__COUNTER__>(#fn, fn, ##__VA_ARGS__)
+    clangRuntimeSpecializer::specializeFunctionOrFallback<#fn>(fn, ##__VA_ARGS__)
 
   template <uint64_t UID, class Fn, class... Args>
   __attribute__((noinline))

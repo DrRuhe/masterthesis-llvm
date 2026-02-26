@@ -30,13 +30,18 @@ public:
   }
 };
 
+inline constexpr char kFn_A_getMod2[] = "A::getMod2";
+inline constexpr char kFn_A_add[] = "A::add";
+
 int main(int argc, char** argv) {
 
   A instance(argc);
 
-  // We can add a FileCheck
-  int r1 = SPECIALIZE_METHOD(A::getMod2, instance);
-  int r2 = SPECIALIZE_METHOD(A::add, instance, 7, 11);
+
+
+  int r1 = clangRuntimeSpecializer::specializeMethodOrFallback<kFn_A_getMod2>(&A::getMod2, instance);
+  int r2 = clangRuntimeSpecializer::specializeMethodOrFallback<kFn_A_add>(&A::add, instance,7, 11);
+
 
   int r3 = instance.getMod2();
   int r4 = instance.add(7,11);

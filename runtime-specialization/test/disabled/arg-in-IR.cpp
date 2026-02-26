@@ -1,8 +1,11 @@
 // RUN: %clangxx -S -O0 -emit-llvm -c %s -o -
 // RUN: false
 
-// : opt -S %t.opt.bc -o - | FileCheck %s --check-prefix=POST-DUMP
-
+// THIS IS A WIP TEST TO CHECK HOW AN ATTRIBUTE IS REPRESENTED IN IR, TO SEE:
+// is it possible to obtain the callsite by annotating it and then querying the IR for the annotation.
+// For that the annotation is passed a counter, ideally, there is a wrapping macro that invokes the counter
+// macro and annotates the function call with the counter while passing it to the function itself, so that the
+// function knows which annotation UID to look for.
 
 
 
