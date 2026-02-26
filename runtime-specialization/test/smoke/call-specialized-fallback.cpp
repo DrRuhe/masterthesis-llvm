@@ -35,7 +35,7 @@ int mypow(int x)
 
 int main(int argc, char** argv) {
 
-  int r1 = clangRuntimeSpecializer::call_specialized_free(mypow, argc);
+  int r1 = SPECIALIZE_FN(mypow, argc);
 
   if (r1 != 1 || r1 == 27)
   {

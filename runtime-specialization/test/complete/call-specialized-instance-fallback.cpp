@@ -43,8 +43,8 @@ int main(int argc, char** argv) {
 
   A instance(argc);
 
-  int r1 = clangRuntimeSpecializer::call_specialized(&A::getMod2, instance);
-  int r2 = clangRuntimeSpecializer::call_specialized(&A::add, instance, 7, 11);
+  int r1 = SPECIALIZE_METHOD(A::getMod2, instance);
+  int r2 = SPECIALIZE_METHOD(A::add, instance, 7, 11);
 
   if (r1 != 1)
   {

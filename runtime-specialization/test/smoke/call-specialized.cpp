@@ -32,12 +32,7 @@ int mypow(int x)
 }
 
 int main(int argc, char** argv) {
-  auto* RuntimeSpecializer = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-  if (!RuntimeSpecializer)
-  {
-    throw std::runtime_error("[ClangRuntimeSpecializer] could not init! ");
-  }
-  int r1 = RuntimeSpecializer->template call_specialized<int>("mypow", argc);
+  int r1 = SPECIALIZE_FN(mypow, argc);
 
   if (r1 != 1 || r1 == 27)
   {

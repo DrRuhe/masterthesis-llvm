@@ -34,14 +34,9 @@ int main(int argc, char** argv) {
 
   A instance(argc);
 
-  auto* RuntimeSpecializer = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-  if (!RuntimeSpecializer)
-  {
-    throw std::runtime_error("[ClangRuntimeSpecializer] could not init! ");
-  }
   // We can add a FileCheck
-  int r1 = RuntimeSpecializer->template call_specialized<int>("A::getMod2", instance);
-  int r2 = RuntimeSpecializer->template call_specialized<int>("A::add", instance, 7, 11);
+  int r1 = SPECIALIZE_METHOD(A::getMod2, instance);
+  int r2 = SPECIALIZE_METHOD(A::add, instance, 7, 11);
 
   int r3 = instance.getMod2();
   int r4 = instance.add(7,11);
