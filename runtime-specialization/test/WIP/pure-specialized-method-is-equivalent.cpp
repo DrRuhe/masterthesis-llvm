@@ -1,7 +1,7 @@
 // RUN: %clangxx -g -O0 -emit-llvm -c %s -o %t.bc
 // RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
-// RUN: %t.exe 1
+// RUN: %t.exe 1 2>&1 | FileCheck %s --check-prefix=EXE
 
 
 
@@ -48,3 +48,8 @@ int main(int argc, char** argv) {
   clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_A_add>(&A::add, instance,7, 11);
   return 0;
 }
+
+// EXE: [ClangRuntimeSpecializer] Optimized IR for specialized_wrapper
+// EXE: define noundef i32 @specialized_wrapper
+// EXE: entry:
+// EXE:   ret i32 0
