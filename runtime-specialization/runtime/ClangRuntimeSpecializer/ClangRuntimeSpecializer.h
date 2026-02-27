@@ -2,6 +2,8 @@
 
 #include <cassert>
 #include <cstdio>
+#include <cstring>
+#include <cstdarg>
 #include <memory>
 #include <stdexcept>
 #include <tuple>
@@ -123,53 +125,7 @@ namespace clangRuntimeSpecializer {
           unsigned I = 0;
           ([&] {
               llvm::Argument* IrArg = TargetFunc->getArg(I);
-              llvm::Value* IrCallArg = CallSite->getArgOperand(SkipArgs + I);
-
-              llvm::errs() << "[ClangRuntimeSpecializer] Argument " << I << ":\n";
-              llvm::errs() << "  - irArg type: ";
-              IrArg->getType()->print(llvm::errs());
-              llvm::errs() << "\n";
-              llvm::errs() << "  - irCallArg type: ";
-              IrCallArg->getType()->print(llvm::errs());
-              llvm::errs() << "\n";
-
-              llvm::Type* PreciseType = nullptr;
-              // If it's a load from an alloca, we can get the original type.
-              if (auto *LI = llvm::dyn_cast<llvm::LoadInst>(IrCallArg)) {
-                  llvm::Value *Ptr = LI->getPointerOperand();
-                  if (auto *AI = llvm::dyn_cast<llvm::AllocaInst>(Ptr)) {
-                      PreciseType = AI->getAllocatedType();
-                      
-                      // Trace back stores to see if we can find a more specific alloca (e.g. from an inlined parameter)
-                      if (PreciseType->isPointerTy()) {
-                          for (auto &U : AI->uses()) {
-                              if (auto *SI = llvm::dyn_cast<llvm::StoreInst>(U.getUser())) {
-                                  if (SI->getPointerOperand() == AI) {
-                                      llvm::Value *StoredVal = SI->getValueOperand();
-                                      if (auto *IncomingAI = llvm::dyn_cast<llvm::AllocaInst>(StoredVal)) {
-                                          PreciseType = IncomingAI->getAllocatedType();
-                                          break;
-                                      }
-                                  }
-                              }
-                          }
-                      }
-                      llvm::errs() << "  - preciseType from alloca at CallSite: ";
-                      if (PreciseType) PreciseType->print(llvm::errs());
-
-                      llvm::errs() << "\n";
-                  }
-              }
-
-              // Check for byval type
-              if (auto *Ty = CallSite->getParamByValType(SkipArgs + I)) {
-                  llvm::errs() << "  - ParamByValType: ";
-                  Ty->print(llvm::errs());
-                  llvm::errs() << "\n";
-                  throw std::runtime_error(std::string("TODO: encountered a byVal type. I'm unsure how to handle this. You can have a look now :) (Past Jakob sends his regards)"));
-              }
-
-              ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, PreciseType, std::forward<decltype(ArgsInner)>(ArgsInner)));
+              ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner)));
               I++;
           }(), ...);
       };
@@ -348,6 +304,29 @@ namespace clangRuntimeSpecializer {
       throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find callsite for UID: ") + UID);
     }
 
+    template<typename T>
+    static std::string getTypeNameViaDumpStruct(const T& value) {
+      if constexpr (std::is_class_v<T> || std::is_union_v<T>) {
+        std::string name;
+        auto callback = [](void* ctx, const char* fmt, ...) -> int {
+          std::string* namePtr = static_cast<std::string*>(ctx);
+          if (!namePtr->empty()) return 0;
+          
+          va_list args;
+          va_start(args, fmt);
+          if (std::strcmp(fmt, "%s") == 0) {
+            const char* n = va_arg(args, const char*);
+            if (n) *namePtr = n;
+          }
+          va_end(args);
+          return 0;
+        };
+        __builtin_dump_struct(&value, callback, (void*)&name);
+        return name;
+      }
+      return "";
+    }
+
     // Recursively serialize a value of a given LLVM type from a memory location.
     llvm::Value* serializeValueToIR(llvm::IRBuilder<>& builder, llvm::Type* type, const void* valuePtr) {
       if (type->isIntegerTy()) {
@@ -414,24 +393,39 @@ namespace clangRuntimeSpecializer {
     }
 
     template <class T>
-    llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, llvm::Argument* irArg, llvm::Type* preciseType, T&& value) {
+    llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, llvm::Argument* irArg, T&& value) {
       using Decayed = std::decay_t<T>;
-
 
       llvm::Type* expectedType = irArg ? irArg->getType() : nullptr;
       if (!expectedType) {
           throw std::runtime_error("[ClangRuntimeSpecializer] expectedType was null during serialization.");
       }
 
+      auto findPreciseType = [&](const auto& val) -> llvm::Type* {
+          using ValType = std::decay_t<decltype(val)>;
+          if constexpr (std::is_class_v<ValType> || std::is_union_v<ValType>) {
+              std::string name = getTypeNameViaDumpStruct(val);
+              if (!name.empty()) {
+                  if (auto* Ty = llvm::StructType::getTypeByName(Module->getContext(), "struct." + name)) return Ty;
+                  if (auto* Ty = llvm::StructType::getTypeByName(Module->getContext(), "class." + name)) return Ty;
+                  if (auto* Ty = llvm::StructType::getTypeByName(Module->getContext(), name)) return Ty;
+              }
+          }
+          return nullptr;
+      };
+
+      llvm::Type* preciseType = nullptr;
+      if (irArg && irArg->hasByValAttr()) {
+          preciseType = irArg->getParamByValType();
+      } else {
+          preciseType = findPreciseType(value);
+      }
+
       if (expectedType->isPointerTy()) {
         if constexpr (std::is_pointer_v<Decayed>) {
-          // If it's a pointer at runtime, we can only pass its address as a constant.
-          // Unless it's a pointer to a known struct and we want to serialize it?
-          // For now, if it's a pointer at runtime, we just serialize it as a pointer.
-          // But the requirement says: throw an error if the best we can do is infer that the argument is a pointer.
-          // However, if the user PASSES a pointer, maybe they want it specialized to THAT address.
-          // Let's see what "infer that the argument is a pointer" means.
-          // Probably it means when we have an opaque pointer in IR and we don't have preciseType.
+          if (!preciseType && value != nullptr) {
+              preciseType = findPreciseType(*value);
+          }
           
           if (!preciseType) {
               throw std::runtime_error("[ClangRuntimeSpecializer] Could not infer precise type for pointer argument.");
@@ -611,6 +605,7 @@ namespace clangRuntimeSpecializer {
     // Copy object + arguments for both calls
     auto ArgsOrig = std::forward_as_tuple(obj, Args...);
     auto ArgsSpec = std::make_tuple(obj, Args...);
+
 
     using R = decltype(std::invoke(mf, obj, Args...));
 
