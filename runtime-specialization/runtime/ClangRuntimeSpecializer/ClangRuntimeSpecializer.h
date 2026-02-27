@@ -304,29 +304,6 @@ namespace clangRuntimeSpecializer {
       throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find callsite for UID: ") + UID);
     }
 
-    template<typename T>
-    static std::string getTypeNameViaDumpStruct(const T& value) {
-      if constexpr (std::is_class_v<T> || std::is_union_v<T>) {
-        std::string name;
-        auto callback = [](void* ctx, const char* fmt, ...) -> int {
-          std::string* namePtr = static_cast<std::string*>(ctx);
-          if (!namePtr->empty()) return 0;
-          
-          va_list args;
-          va_start(args, fmt);
-          if (std::strcmp(fmt, "%s") == 0) {
-            const char* n = va_arg(args, const char*);
-            if (n) *namePtr = n;
-          }
-          va_end(args);
-          return 0;
-        };
-        __builtin_dump_struct(&value, callback, (void*)&name);
-        return name;
-      }
-      return "";
-    }
-
     // Recursively serialize a value of a given LLVM type from a memory location.
     llvm::Value* serializeValueToIR(llvm::IRBuilder<>& builder, llvm::Type* type, const void* valuePtr) {
       if (type->isIntegerTy()) {
@@ -395,73 +372,190 @@ namespace clangRuntimeSpecializer {
     template <class T>
     llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, llvm::Argument* irArg, T&& value) {
       using Decayed = std::decay_t<T>;
-
       llvm::Type* expectedType = irArg ? irArg->getType() : nullptr;
       if (!expectedType) {
           throw std::runtime_error("[ClangRuntimeSpecializer] expectedType was null during serialization.");
       }
 
-      auto findPreciseType = [&](const auto& val) -> llvm::Type* {
-          using ValType = std::decay_t<decltype(val)>;
-          if constexpr (std::is_class_v<ValType> || std::is_union_v<ValType>) {
-              std::string name = getTypeNameViaDumpStruct(val);
-              if (!name.empty()) {
-                  if (auto* Ty = llvm::StructType::getTypeByName(Module->getContext(), "struct." + name)) return Ty;
-                  if (auto* Ty = llvm::StructType::getTypeByName(Module->getContext(), "class." + name)) return Ty;
-                  if (auto* Ty = llvm::StructType::getTypeByName(Module->getContext(), name)) return Ty;
+      using ElementType = std::conditional_t<std::is_pointer_v<Decayed>, std::remove_pointer_t<Decayed>, Decayed>;
+      
+      if constexpr (std::is_class_v<ElementType> || std::is_union_v<ElementType>) {
+          struct DumpContext {
+              ClangRuntimeSpecializer* self;
+              llvm::IRBuilder<>& builder;
+              llvm::Type* expectedType;
+              llvm::Type* preciseType = nullptr;
+              
+              struct Frame {
+                  llvm::Type* type;
+                  std::vector<llvm::Constant*> elements;
+                  unsigned nextElemIdx = 0;
+              };
+              std::vector<Frame> stack;
+              llvm::Constant* result = nullptr;
+              bool lastWasFieldHeader = false;
+
+              DumpContext(ClangRuntimeSpecializer* s, llvm::IRBuilder<>& b, llvm::Type* t)
+                  : self(s), builder(b), expectedType(t) {}
+
+              void handleTypeName(const char* name) {
+                  if (preciseType) return;
+                  std::string n = name;
+                  // Strip "struct " or "class " prefix if present in the dump name
+                  if (n.compare(0, 7, "struct ") == 0) n = n.substr(7);
+                  else if (n.compare(0, 6, "class ") == 0) n = n.substr(6);
+
+                  auto& Ctx = self->Module->getContext();
+                  if (auto* Ty = llvm::StructType::getTypeByName(Ctx, "struct." + n)) preciseType = Ty;
+                  else if (auto* Ty = llvm::StructType::getTypeByName(Ctx, "class." + n)) preciseType = Ty;
+                  else if (auto* Ty = llvm::StructType::getTypeByName(Ctx, n)) preciseType = Ty;
+                  
+                  if (!preciseType) {
+                      if (expectedType->isStructTy()) preciseType = expectedType;
+                      else if (expectedType->isPointerTy()) {
+                          // Try to find if there's a byval type or similar.
+                          // For now, if we can't find it by name, we might be in trouble
+                          // if expectedType is just i8*.
+                      }
+                  }
+
+                  if (preciseType && stack.empty()) {
+                      stack.push_back({preciseType, {}, 0});
+                  }
               }
-          }
-          return nullptr;
-      };
 
-      llvm::Type* preciseType = nullptr;
-      if (irArg && irArg->hasByValAttr()) {
-          preciseType = irArg->getParamByValType();
-      } else {
-          preciseType = findPreciseType(value);
-      }
+              void pushFrame() {
+                  if (stack.empty()) return;
+                  auto& top = stack.back();
+                  skipPadding(top);
+                  llvm::Type* nextTy = nullptr;
+                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(top.type)) {
+                      if (top.nextElemIdx < STy->getNumElements())
+                          nextTy = STy->getElementType(top.nextElemIdx);
+                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(top.type)) {
+                      nextTy = ATy->getElementType();
+                  }
+                  if (nextTy) stack.push_back({nextTy, {}, 0});
+              }
 
-      if (expectedType->isPointerTy()) {
-        if constexpr (std::is_pointer_v<Decayed>) {
-          if (!preciseType && value != nullptr) {
-              preciseType = findPreciseType(*value);
-          }
-          
-          if (!preciseType) {
-              throw std::runtime_error("[ClangRuntimeSpecializer] Could not infer precise type for pointer argument.");
+              void popFrame() {
+                  if (stack.empty()) return;
+                  Frame f = std::move(stack.back());
+                  stack.pop_back();
+
+                  llvm::Constant* C = nullptr;
+                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(f.type)) {
+                      while (f.elements.size() < STy->getNumElements()) {
+                          f.elements.push_back(llvm::UndefValue::get(STy->getElementType(f.elements.size())));
+                      }
+                      C = llvm::ConstantStruct::get(STy, f.elements);
+                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(f.type)) {
+                      C = llvm::ConstantArray::get(ATy, f.elements);
+                  }
+
+                  if (stack.empty()) result = C;
+                  else {
+                      stack.back().elements.push_back(C);
+                      stack.back().nextElemIdx++;
+                  }
+              }
+
+              void skipPadding(Frame& f) {
+                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(f.type)) {
+                      while (f.nextElemIdx < STy->getNumElements()) {
+                          llvm::Type* ETy = STy->getElementType(f.nextElemIdx);
+                          // Heuristic: padding is often anonymous [N x i8]
+                          if (ETy->isArrayTy() && ETy->getArrayElementType()->isIntegerTy(8)) {
+                              f.elements.push_back(llvm::UndefValue::get(ETy));
+                              f.nextElemIdx++;
+                          } else break;
+                      }
+                  }
+              }
+
+              void addConstant(llvm::Constant* C) {
+                  if (stack.empty()) { result = C; return; }
+                  auto& top = stack.back();
+                  skipPadding(top);
+                  top.elements.push_back(C);
+                  top.nextElemIdx++;
+              }
+          };
+
+          DumpContext ctx{this, builder, expectedType};
+          auto callback = [](void* context, const char* fmt, ...) -> int {
+              auto* c = static_cast<DumpContext*>(context);
+              va_list args;
+              va_start(args, fmt);
+              if (std::strcmp(fmt, "%s") == 0) {
+                  c->handleTypeName(va_arg(args, char*));
+              } else if (std::strcmp(fmt, " {\n") == 0) {
+                  if (c->lastWasFieldHeader) c->pushFrame();
+              } else if (std::strcmp(fmt, "}\n") == 0 || std::strcmp(fmt, "%s}\n") == 0) {
+                  c->popFrame();
+              } else if (std::strstr(fmt, "=")) {
+                  va_arg(args, char*); // indent
+                  va_arg(args, char*); // type
+                  va_arg(args, char*); // name
+                  int specifiers = 0;
+                  for (const char* p = fmt; *p; ++p) if (*p == '%') specifiers++;
+                  
+                  if (specifiers >= 4) {
+                      c->lastWasFieldHeader = false;
+                      // Primitive or pointer leaf
+                      if (c->stack.empty()) { va_end(args); return 0; }
+                      auto& top = c->stack.back();
+                      c->skipPadding(top);
+                      if (top.nextElemIdx >= (llvm::isa<llvm::StructType>(top.type) ? llvm::cast<llvm::StructType>(top.type)->getNumElements() : 0xFFFFFFFF)) {
+                          va_end(args); return 0;
+                      }
+                      llvm::Type* ETy = nullptr;
+                      if (auto* STy = llvm::dyn_cast<llvm::StructType>(top.type)) ETy = STy->getElementType(top.nextElemIdx);
+                      else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(top.type)) ETy = ATy->getElementType();
+
+                      if (ETy) {
+                          if (std::strstr(fmt, "%d") || std::strstr(fmt, "%u") || std::strstr(fmt, "%x")) {
+                              if (ETy->isIntegerTy(64)) c->addConstant(llvm::ConstantInt::get(ETy, va_arg(args, long long)));
+                              else c->addConstant(llvm::ConstantInt::get(ETy, va_arg(args, int)));
+                          } else if (std::strstr(fmt, "%f")) {
+                              c->addConstant(llvm::ConstantFP::get(ETy, va_arg(args, double)));
+                          } else if (std::strstr(fmt, "%p") || std::strstr(fmt, "%.32s")) {
+                              void* ptr = va_arg(args, void*);
+                              if (ETy->isPointerTy()) {
+                                  uintptr_t val = reinterpret_cast<uintptr_t>(ptr);
+                                  c->addConstant(llvm::ConstantExpr::getIntToPtr(llvm::ConstantInt::get(llvm::Type::getInt64Ty(c->builder.getContext()), val), ETy));
+                              } else if (ETy->isArrayTy()) {
+                                  // Nested array - use fallback
+                                  c->addConstant(llvm::cast<llvm::Constant>(c->self->serializeValueToIR(c->builder, ETy, ptr)));
+                              }
+                          }
+                      }
+                  } else {
+                      c->lastWasFieldHeader = true;
+                  }
+              }
+              va_end(args);
+              return 0;
+          };
+
+          if constexpr (std::is_pointer_v<Decayed>) {
+              if (!value) return serializeValueToIR(builder, expectedType, &value);
+              __builtin_dump_struct(value, callback, &ctx);
+          } else {
+              __builtin_dump_struct(&value, callback, &ctx);
           }
 
-          return serializeValueToIR(builder, expectedType, &value);
-        } else {
-          // It's a class/struct passed by reference or 'this'
-          const Decayed* ptr = &value;
-          
-          // If we have a precise struct type, we can serialize the struct as a constant
-          // and then take its address. This allows the JIT to see the fields.
-          if (preciseType && preciseType->isStructTy()) {
-              llvm::Value* structVal = serializeValueToIR(builder, preciseType, ptr);
-              if (auto *structConst = llvm::dyn_cast_or_null<llvm::Constant>(structVal)) {
-                  // Create a global variable for this constant struct so we can take its address.
-                  // (JIT will optimize this away anyway if it's inlined).
-                  auto *GV = new llvm::GlobalVariable(*Module, preciseType, true, 
-                                                      llvm::GlobalValue::InternalLinkage, structConst, "specialized_instance");
+          if (ctx.result) {
+              if (expectedType->isPointerTy()) {
+                  auto *GV = new llvm::GlobalVariable(*Module, ctx.result->getType(), true, 
+                                                      llvm::GlobalValue::InternalLinkage, ctx.result, "specialized_instance");
                   return builder.CreateBitCast(GV, expectedType);
               }
+              return ctx.result;
           }
-          
-          if (!preciseType) {
-              throw std::runtime_error("[ClangRuntimeSpecializer] Could not infer precise type for pointer argument (passed by reference).");
-          }
-
-          return serializeValueToIR(builder, expectedType, &ptr);
-        }
       }
 
-      llvm::Value* val = serializeValueToIR(builder, expectedType, &value);
-      if (!val) {
-          throw std::runtime_error("[ClangRuntimeSpecializer] Failed to serialize argument of type " + std::to_string(expectedType->getTypeID()));
-      }
-      return val;
+      return serializeValueToIR(builder, expectedType, &value);
     }
   };
 
