@@ -1,5 +1,4 @@
 // RUN: %clangxx -g -O0 -emit-llvm -c %s -o %t.bc
-// RUN: opt --strip-debug -S %t.bc|grep addAndSum
 // RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
 // RUN: %t.exe 1

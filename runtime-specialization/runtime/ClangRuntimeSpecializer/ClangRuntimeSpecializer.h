@@ -1,10 +1,9 @@
 #pragma once
 
-#include <cassert>
 #include <cstdarg>
-#include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
@@ -17,12 +16,33 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
 #define CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME "call_specialized_func_name"
 
 // TODO refactor the error handling: create a special "ClangRuntimeSpecializationError" for this project.
 namespace clangRuntimeSpecializer {
+
+  class ClangRuntimeSpecializerError : public std::runtime_error {
+  public:
+    using std::runtime_error::runtime_error;
+  };
+
+  class ClangRuntimeSpecializerArgSerializationError : public ClangRuntimeSpecializerError {
+  public:
+    using ClangRuntimeSpecializerError::ClangRuntimeSpecializerError;
+  };
+
+  class ClangRuntimeSpecializerDumpedIRError : public ClangRuntimeSpecializerError {
+  public:
+    using ClangRuntimeSpecializerError::ClangRuntimeSpecializerError;
+  };
+
+  class ClangRuntimeSpecializerChangesBehaviorError : public ClangRuntimeSpecializerError {
+  public:
+    using ClangRuntimeSpecializerError::ClangRuntimeSpecializerError;
+  };
 
   template <typename T, typename = void>
   struct HasEqualityOperator : std::false_type {};
@@ -37,8 +57,43 @@ namespace clangRuntimeSpecializer {
 
   class ClangRuntimeSpecializer {
   public:
+    enum class LogLevel {
+      None,
+      Error,
+      Info,
+      Debug
+    };
+
+    static void setLogLevel(LogLevel Level);
+    static LogLevel getLogLevel();
+
+    static void log(LogLevel Level, const char* FuncName, const llvm::Twine Message);
+    static void log(LogLevel Level, const char* FuncName, const char* Message);
+
+    template <typename Callback, typename = std::enable_if_t<std::is_invocable_v<Callback>>>
+    static void log(LogLevel Level, const char* FuncName, Callback&& CB) {
+      if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
+          log(Level, FuncName, CB());
+      }
+    }
+
+    template <typename T>
+    static std::string printLLVM(T Val) {
+      std::string S;
+      llvm::raw_string_ostream OS(S);
+      if (Val) {
+        Val->print(OS);
+      } else {
+        OS << "nullptr";
+      }
+      return S;
+    }
+#define CRS_LOG(Level, Msg) clangRuntimeSpecializer::ClangRuntimeSpecializer::log(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Level, __FUNCTION__, Msg)
+
+
     static ClangRuntimeSpecializer* init();
-    
+
+
     //TODO extract the non generic logic into the cpp file. So still perform the generic arg serialization 
     // in this header, but then call a method implemented in the cpp file.
     template <const char* funcName, class R, class... ARGS>
@@ -46,23 +101,24 @@ namespace clangRuntimeSpecializer {
     __attribute__((noinline))
     R callSpecialized(ARGS&&... Args) {
       if (funcName == nullptr) {
-        throw std::runtime_error("[ClangRuntimeSpecializer] funcName was null! ");
+        throw ClangRuntimeSpecializerError("funcName was null!");
       }
       if (Module == nullptr) {
-        throw std::runtime_error("[ClangRuntimeSpecializer] Module was null! ");
+        throw ClangRuntimeSpecializerError("Module was null!");
       }
       if (!JIT) {
-        throw std::runtime_error("[ClangRuntimeSpecializer] JIT was not initialized!");
+        throw ClangRuntimeSpecializerError("JIT was not initialized!");
       }
 
       std::string FuncNameStr(funcName);
+      CRS_LOG(Info, (llvm::Twine("Specializing call to: ") + funcName).str());
 
       if (!FuncNameStr.empty() && FuncNameStr.front() == '&') {
         FuncNameStr.erase(0, 1);
       }
       llvm::Function *TargetFunc = Module->getFunction(FuncNameStr);
       if (TargetFunc == nullptr) {
-        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find function: ") + funcName + " (It might be optimized out already by dead-code-elimination?)");
+        throw ClangRuntimeSpecializerDumpedIRError((llvm::Twine("Could not find function: ") + funcName + " (It might be optimized out already by dead-code-elimination?)").str());
       }
 
       // Try to find the call site of call_specialized in the IR to get more precise type information.
@@ -79,21 +135,17 @@ namespace clangRuntimeSpecializer {
       unsigned SkipArgs = 1;
       if (CallArgCount != SkipArgs + static_cast<unsigned>(NumArgs))
       {
-        std::fprintf(stderr,
-          "[ClangRuntimeSpecializer] Unexpected callsite arg count. callArgCount=%u, numArgs=%zu (expected %u)\n",
-          CallArgCount, NumArgs, static_cast<unsigned>(NumArgs) + 1);
-        throw std::runtime_error("[ClangRuntimeSpecializer] Unexpected callsite arg count");
+        throw ClangRuntimeSpecializerError((llvm::Twine("Unexpected callsite arg count. callArgCount=") + llvm::Twine(CallArgCount) + ", numArgs=" + llvm::Twine(NumArgs) + " (expected " + llvm::Twine(static_cast<unsigned>(NumArgs) + 1) + ")").str());
       }
 
 
       if (NumArgs != TargetFunc->arg_size())
       {
-        std::fprintf(
-          stderr,
-          "[ClangRuntimeSpecializer] The number of args are incompatible! numArgs: %zu, TargetFunc->arg_size(): %zu\n",
-          NumArgs, TargetFunc->arg_size());
-        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] The number of args are incompatible! "));
+        throw ClangRuntimeSpecializerError((llvm::Twine("The number of args are incompatible! numArgs: ") + llvm::Twine(NumArgs) + ", TargetFunc->arg_size(): " + llvm::Twine(TargetFunc->arg_size())).str());
       }
+
+
+
 
       // TODO reuse a clean copy of the llvm module. Possibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
       //   Currently we get conflicts, so specialization fails.
@@ -134,9 +186,7 @@ namespace clangRuntimeSpecializer {
 
       for (llvm::Value* Arg : ArgValues)
       {
-          std::fprintf(stderr, "[ClangRuntimeSpecializer] Arg Serialized to: ");
-          Arg->print(llvm::errs());
-          std::fprintf(stderr, "\n");
+          CRS_LOG(Debug,[&]{return (llvm::Twine("Arg Serialized to: ") + printLLVM(Arg)).str();});
       }
 
       // Encourage inlining for the callee in the JIT pipeline.
@@ -154,10 +204,8 @@ namespace clangRuntimeSpecializer {
         Builder.CreateRet(CallInst);
       }
 
-      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specializing call to: %s\n", funcName);
-      // Print the new function to stderr as requested.
-      NewFunc->print(llvm::errs());
-      llvm::errs() << "\n";
+      CRS_LOG(Debug,[&]{return (llvm::Twine("Specialized function IR:\n") + printLLVM(NewFunc)).str();});
+
 
       // Every function except the specialized wrapper should have available_externally linkage
       // if it has a definition. This allows the JIT inliner to see the bodies but won't
@@ -192,12 +240,14 @@ namespace clangRuntimeSpecializer {
                                              llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>()));
 
       if (auto Err = JIT->addIRModule(std::move(TSM))) {
-        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to add module to JIT: ") + llvm::toString(std::move(Err)));
+        std::string ErrMsg = llvm::toString(std::move(Err));
+        throw ClangRuntimeSpecializerError("Failed to add module to JIT: " + ErrMsg);
       }
 
       auto SpecializedFn = JIT->lookup(UniqueWrapperName);
       if (!SpecializedFn) {
-        throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Failed to lookup wrapper: ") + llvm::toString(SpecializedFn.takeError()));
+        std::string ErrMsg = llvm::toString(SpecializedFn.takeError());
+        throw ClangRuntimeSpecializerError("Failed to lookup wrapper: " + ErrMsg);
       }
 
       auto SpecializedFnPtr = SpecializedFn->toPtr<R()>();
@@ -229,8 +279,12 @@ namespace clangRuntimeSpecializer {
       using Decayed = std::decay_t<T>;
       llvm::Type* ExpectedType = IrArg ? IrArg->getType() : nullptr;
       if (!ExpectedType) {
-          throw std::runtime_error("[ClangRuntimeSpecializer] expectedType was null during serialization.");
+          throw ClangRuntimeSpecializerArgSerializationError("expectedType was null during serialization.");
       }
+
+      CRS_LOG(Debug,[&] {
+          return (llvm::Twine("Inferred type for serialized argument: ") + printLLVM(ExpectedType)).str();
+      });
 
       using ElementType = std::conditional_t<std::is_pointer_v<Decayed>, std::remove_pointer_t<Decayed>, Decayed>;
       
@@ -274,8 +328,13 @@ namespace clangRuntimeSpecializer {
                       }
                   }
 
-                  if (PreciseType && Stack.empty()) {
-                      Stack.push_back({PreciseType, {}, 0});
+                  if (PreciseType) {
+                      CRS_LOG(Debug,[&] {
+                          return (llvm::Twine("Discovered precise type: ") + printLLVM(PreciseType) + " for " + Name).str();
+                      });
+                      if (Stack.empty()) {
+                          Stack.push_back({PreciseType, {}, 0});
+                      }
                   }
               }
 
@@ -284,10 +343,10 @@ namespace clangRuntimeSpecializer {
                   auto& Top = Stack.back();
                   skipPadding(Top);
                   llvm::Type* NextTy = nullptr;
-                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(Top.type)) {
-                      if (Top.nextElemIdx < STy->getNumElements())
-                          NextTy = STy->getElementType(Top.nextElemIdx);
-                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Top.type)) {
+                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(Top.Type)) {
+                      if (Top.NextElemIdx < STy->getNumElements())
+                          NextTy = STy->getElementType(Top.NextElemIdx);
+                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Top.Type)) {
                       NextTy = ATy->getElementType();
                   }
                   if (NextTy) Stack.push_back({NextTy, {}, 0});
@@ -299,30 +358,30 @@ namespace clangRuntimeSpecializer {
                   Stack.pop_back();
 
                   llvm::Constant* C = nullptr;
-                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(F.type)) {
-                      while (F.elements.size() < STy->getNumElements()) {
-                          F.elements.push_back(llvm::UndefValue::get(STy->getElementType(F.elements.size())));
+                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(F.Type)) {
+                      while (F.Elements.size() < STy->getNumElements()) {
+                          F.Elements.push_back(llvm::UndefValue::get(STy->getElementType(F.Elements.size())));
                       }
-                      C = llvm::ConstantStruct::get(STy, F.elements);
-                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(F.type)) {
-                      C = llvm::ConstantArray::get(ATy, F.elements);
+                      C = llvm::ConstantStruct::get(STy, F.Elements);
+                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(F.Type)) {
+                      C = llvm::ConstantArray::get(ATy, F.Elements);
                   }
 
                   if (Stack.empty()) Result = C;
                   else {
-                      Stack.back().elements.push_back(C);
-                      ++Stack.back().nextElemIdx;
+                      Stack.back().Elements.push_back(C);
+                      ++Stack.back().NextElemIdx;
                   }
               }
 
               void skipPadding(Frame& F) {
-                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(F.type)) {
-                      while (F.nextElemIdx < STy->getNumElements()) {
-                          llvm::Type* ETy = STy->getElementType(F.nextElemIdx);
+                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(F.Type)) {
+                      while (F.NextElemIdx < STy->getNumElements()) {
+                          llvm::Type* ETy = STy->getElementType(F.NextElemIdx);
                           // Heuristic: padding is often anonymous [N x i8]
                           if (ETy->isArrayTy() && ETy->getArrayElementType()->isIntegerTy(8)) {
-                              F.elements.push_back(llvm::UndefValue::get(ETy));
-                              ++F.nextElemIdx;
+                              F.Elements.push_back(llvm::UndefValue::get(ETy));
+                              ++F.NextElemIdx;
                           } else break;
                       }
                   }
@@ -332,8 +391,8 @@ namespace clangRuntimeSpecializer {
                   if (Stack.empty()) { Result = C; return; }
                   auto& Top = Stack.back();
                   skipPadding(Top);
-                  Top.elements.push_back(C);
-                  Top.nextElemIdx++;
+                  Top.Elements.push_back(C);
+                  Top.NextElemIdx++;
               }
           };
 
@@ -345,7 +404,7 @@ namespace clangRuntimeSpecializer {
               if (std::strcmp(Fmt, "%s") == 0) {
                   C->handleTypeName(va_arg(Args, char*));
               } else if (std::strcmp(Fmt, " {\n") == 0) {
-                  if (C->lastWasFieldHeader) C->pushFrame();
+                  if (C->LastWasFieldHeader) C->pushFrame();
               } else if (std::strcmp(Fmt, "}\n") == 0 || std::strcmp(Fmt, "%s}\n") == 0) {
                   C->popFrame();
               } else if (std::strstr(Fmt, "=")) {
@@ -356,17 +415,17 @@ namespace clangRuntimeSpecializer {
                   for (const char* P = Fmt; *P; ++P) if (*P == '%') Specifiers++;
                   
                   if (Specifiers >= 4) {
-                      C->lastWasFieldHeader = false;
+                      C->LastWasFieldHeader = false;
                       // Primitive or pointer leaf
-                      if (C->stack.empty()) { va_end(Args); return 0; }
-                      auto& Top = C->stack.back();
+                      if (C->Stack.empty()) { va_end(Args); return 0; }
+                      auto& Top = C->Stack.back();
                       C->skipPadding(Top);
-                      if (Top.nextElemIdx >= (llvm::isa<llvm::StructType>(Top.type) ? llvm::cast<llvm::StructType>(Top.type)->getNumElements() : 0xFFFFFFFF)) {
+                      if (Top.NextElemIdx >= (llvm::isa<llvm::StructType>(Top.Type) ? llvm::cast<llvm::StructType>(Top.Type)->getNumElements() : 0xFFFFFFFF)) {
                           va_end(Args); return 0;
                       }
                       llvm::Type* ETy = nullptr;
-                      if (auto* STy = llvm::dyn_cast<llvm::StructType>(Top.type)) ETy = STy->getElementType(Top.nextElemIdx);
-                      else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Top.type)) ETy = ATy->getElementType();
+                      if (auto* STy = llvm::dyn_cast<llvm::StructType>(Top.Type)) ETy = STy->getElementType(Top.NextElemIdx);
+                      else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Top.Type)) ETy = ATy->getElementType();
 
                       if (ETy) {
                           if (std::strstr(Fmt, "%d") || std::strstr(Fmt, "%u") || std::strstr(Fmt, "%x")) {
@@ -378,15 +437,15 @@ namespace clangRuntimeSpecializer {
                               void* Ptr = va_arg(Args, void*);
                               if (ETy->isPointerTy()) {
                                   uintptr_t Val = reinterpret_cast<uintptr_t>(Ptr);
-                                  C->addConstant(llvm::ConstantExpr::getIntToPtr(llvm::ConstantInt::get(llvm::Type::getInt64Ty(C->builder.getContext()), Val), ETy));
+                                  C->addConstant(llvm::ConstantExpr::getIntToPtr(llvm::ConstantInt::get(llvm::Type::getInt64Ty(C->Builder.getContext()), Val), ETy));
                               } else if (ETy->isArrayTy()) {
                                   // Nested array - use fallback
-                                  C->addConstant(llvm::cast<llvm::Constant>(C->self->serializeValueToIR(C->builder, ETy, Ptr)));
+                                  C->addConstant(llvm::cast<llvm::Constant>(C->Self->serializeValueToIR(C->Builder, ETy, Ptr)));
                               }
                           }
                       }
                   } else {
-                      C->lastWasFieldHeader = true;
+                      C->LastWasFieldHeader = true;
                   }
               }
               va_end(Args);
@@ -400,13 +459,13 @@ namespace clangRuntimeSpecializer {
               __builtin_dump_struct(&Value, Callback, &Ctx);
           }
 
-          if (Ctx.result) {
+          if (Ctx.Result) {
               if (ExpectedType->isPointerTy()) {
-                  auto *GV = new llvm::GlobalVariable(*Module, Ctx.result->getType(), true,
-                                                      llvm::GlobalValue::InternalLinkage, Ctx.result, "specialized_instance");
+                  auto *GV = new llvm::GlobalVariable(*Module, Ctx.Result->getType(), true,
+                                                      llvm::GlobalValue::InternalLinkage, Ctx.Result, "specialized_instance");
                   return Builder.CreateBitCast(GV, ExpectedType);
               }
-              return Ctx.result;
+              return Ctx.Result;
           }
       }
 
@@ -432,9 +491,9 @@ namespace clangRuntimeSpecializer {
         }
       }
     } catch (const std::exception& E) {
-      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed: %s\n", E.what());
+      CRS_LOG(Error, (llvm::Twine("Specialization failed: ") + E.what()).str());
     } catch (...) {
-      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed with an unknown error.\n");
+      CRS_LOG(Error, "Specialization failed with an unknown error.");
     }
 
     if constexpr (std::is_void_v<decltype(Invoke())>) {
@@ -464,9 +523,9 @@ namespace clangRuntimeSpecializer {
 
       }
     } catch (const std::exception& E) {
-      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed: %s\n", E.what());
+      CRS_LOG(Error, (llvm::Twine("Specialization failed: ") + E.what()).str());
     } catch (...) {
-      std::fprintf(stderr, "[ClangRuntimeSpecializer] Specialization failed with an unknown error.\n");
+      CRS_LOG(Error, "Specialization failed with an unknown error.");
     }
 
     if constexpr (std::is_void_v<decltype(Invoke())>) {
@@ -486,7 +545,7 @@ namespace clangRuntimeSpecializer {
 
     auto* RS = ClangRuntimeSpecializer::init();
     if (!RS) {
-        throw std::runtime_error("[ClangRuntimeSpecializer] could not init!");
+        throw ClangRuntimeSpecializerError("could not init!");
     }
 
     // Copy arguments for both calls
@@ -506,8 +565,7 @@ namespace clangRuntimeSpecializer {
         // Compare modified arguments (if they were passed by reference/pointer)
         if constexpr (allComparable<ARGS...>()) {
             if (ArgsOrig != ArgsSpec) {
-                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
-                std::abort();
+                throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: arguments differ after execution of ") + funcName).str());
             }
         }
     } else {
@@ -521,33 +579,31 @@ namespace clangRuntimeSpecializer {
         // Compare return values
         if constexpr (HasEqualityOperator<R>::value) {
             if (ResOrig != ResSpec) {
-                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: return values differ for %s\n", funcName);
-                std::abort();
+                throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: return values differ for ") + funcName).str());
             }
         }
 
         // Compare modified arguments
         if constexpr (allComparable<ARGS...>()) {
             if (ArgsOrig != ArgsSpec) {
-                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: arguments differ after execution of %s\n", funcName);
-                std::abort();
+                throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: arguments differ after execution of ") + funcName).str());
             }
         }
     }
-    std::fprintf(stderr, "[ClangRuntimeSpecializer] Successfully specialized %s! No differences could be observed. \n", funcName);
+    CRS_LOG(Info, (llvm::Twine("Successfully specialized ") + funcName + "! No differences could be observed.").str());
   }
 
 
   template <const char* funcName, class MemFn, class OBJ, class... ARGS>
   __attribute__((always_inline))
   void assertSpecializedMethodIsEquivalent(MemFn Mf, OBJ Obj, ARGS... Args) {
-    static_assert(allComparable<OBJ, ARGS...>(),
-        "The object and all arguments passed to assertSpecializedMethodIsEquivalent must support the equality operator (==). "
-        "This is required to ensure that the specialized method behavior matches the original when the object or arguments are modified.");
+    static_assert(allComparable<ARGS...>(),
+        "All arguments passed to assertSpecializedMethodIsEquivalent must support the equality operator (==). "
+        "This is required to ensure that the specialized method behavior matches the original when arguments are modified.");
 
     auto* RS = ClangRuntimeSpecializer::init();
     if (!RS) {
-        throw std::runtime_error("[ClangRuntimeSpecializer] could not init!");
+        throw ClangRuntimeSpecializerError("could not init!");
     }
 
     // Copy object + arguments for both calls
@@ -570,10 +626,9 @@ namespace clangRuntimeSpecializer {
               std::forward<decltype(CallArgs)>(CallArgs)...);
         }, ArgsSpec);
 
-        if constexpr (allComparable<OBJ, ARGS...>()) {
+        if constexpr (HasEqualityOperator<OBJ>::value && allComparable<ARGS...>()) {
             if (ArgsOrig != ArgsSpec) {
-                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: object/args differ after execution of %s\n", funcName);
-                std::abort();
+                throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: object/args differ after execution of ") + funcName).str());
             }
         }
     } else {
@@ -591,19 +646,17 @@ namespace clangRuntimeSpecializer {
 
         if constexpr (HasEqualityOperator<R>::value) {
             if (ResOrig != ResSpec) {
-                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: return values differ for %s\n", funcName);
-                std::abort();
+                throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: return values differ for ") + funcName).str());
             }
         }
 
-        if constexpr (allComparable<OBJ, ARGS...>()) {
+        if constexpr (HasEqualityOperator<OBJ>::value && allComparable<ARGS...>()) {
             if (ArgsOrig != ArgsSpec) {
-                std::fprintf(stderr, "[ClangRuntimeSpecializer] Comparison failed: object/args differ after execution of %s\n", funcName);
-                std::abort();
+                throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: object/args differ after execution of ") + funcName).str());
             }
         }
     }
-    std::fprintf(stderr, "[ClangRuntimeSpecializer] Successfully specialized %s! No differences could be observed. \n", funcName);
+    CRS_LOG(Info, (llvm::Twine("Successfully specialized ") + funcName + "! No differences could be observed.").str());
   }
 
 } // namespace clangRuntimeSpecializer

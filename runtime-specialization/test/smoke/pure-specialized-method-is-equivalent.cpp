@@ -42,14 +42,29 @@ inline constexpr char Fn_A_add[] = "A::add";
 
 int main(int argc, char** argv) {
 
+  clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
   A instance(argc);
 
+  // EXE: INFO: [callSpecialized] Specializing call to: A::getMod2
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance = internal constant %class.A { i32 2 }
+  // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+  // EXE: define noundef i32 @specialized_wrapper_1_
+  // EXE: entry:
+  // EXE:   ret i32 0
+  // EXE: }
+  // EXE: INFO: [assertSpecializedMethodIsEquivalent] Successfully specialized A::getMod2! No differences could be observed.
   clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_A_getMod2>(&A::getMod2, instance);
+
+  // EXE: INFO: [callSpecialized] Specializing call to: A::add
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance.1 = internal constant %class.A { i32 2 }
+  // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+  // EXE: define noundef i32 @specialized_wrapper_2_
+  // EXE: entry:
+  // EXE:   ret i32 20
+  // EXE: }
+  // EXE: INFO: [assertSpecializedMethodIsEquivalent] Successfully specialized A::add! No differences could be observed.
   clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_A_add>(&A::add, instance,7, 11);
   return 0;
 }
 
-// EXE: [ClangRuntimeSpecializer] Optimized IR for specialized_wrapper
-// EXE: define noundef i32 @specialized_wrapper
-// EXE: entry:
-// EXE:   ret i32 0
+

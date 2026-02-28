@@ -1,7 +1,7 @@
 // RUN: %clangxx -g -O0 -emit-llvm -c %s -o %t.bc
 // RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
-// RUN: %t.exe 1 2>&1 | FileCheck %s --check-prefix=EXE
+// RUN: %t.exe 1 | FileCheck %s --check-prefix=EXE
 
 
 
@@ -9,8 +9,6 @@
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
 
-// PRE-DUMP-NOT: RuntimeSpecializeableIR_ptr
-// POST-DUMP: RuntimeSpecializeableIR_ptr
 
 class A {
   int value;
@@ -34,10 +32,31 @@ inline constexpr char Fn_A_getMod2[] = "A::getMod2";
 inline constexpr char Fn_A_add[] = "A::add";
 
 int main(int argc, char** argv) {
+  clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
+
 
   A instance(argc);
 
+  // EXE: INFO: [callSpecialized] Specializing call to: A::getMod2
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance = internal constant %class.A { i32 2 }
+
+  // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+
+  // EXE: define noundef i32 @specialized_wrapper_1
+  // EXE: entry:
+  // EXE:   ret i32 0
+  // EXE: }
   int r1 = clangRuntimeSpecializer::specializeMethodOrFallback<Fn_A_getMod2>(&A::getMod2, instance);
+
+  // EXE: INFO: [callSpecialized] Specializing call to: A::add
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance.1 = internal constant %class.A { i32 2 }
+
+  // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+
+  // EXE: define noundef i32 @specialized_wrapper_2_
+  // EXE: entry:
+  // EXE:   ret i32 20
+  // EXE: }
   int r2 = clangRuntimeSpecializer::specializeMethodOrFallback<Fn_A_add>(&A::add, instance,7, 11);
 
 
@@ -54,12 +73,6 @@ int main(int argc, char** argv) {
 }
 
 
-// EXE: [ClangRuntimeSpecializer] Optimized IR for specialized_wrapper_1
-// EXE: define noundef i32 @specialized_wrapper
-// EXE: entry:
-// EXE:   ret i32 0
 
-// EXE: [ClangRuntimeSpecializer] Optimized IR for specialized_wrapper_2
-// EXE: define noundef i32 @specialized_wrapper
-// EXE: entry:
-// EXE:   ret i32 20
+
+

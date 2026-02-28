@@ -36,6 +36,8 @@ inline constexpr char Fn_mypow[] = "mypow";
 
 int main(int argc, char** argv)
 {
+  clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
+
   int r1 = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_mypow>(mypow, argc);
 
 

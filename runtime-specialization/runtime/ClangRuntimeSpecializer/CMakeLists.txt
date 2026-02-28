@@ -14,6 +14,10 @@ set_target_properties(ClangRuntimeSpecializer PROPERTIES
         POSITION_INDEPENDENT_CODE ON
 )
 
+if(NOT LLVM_ENABLE_RTTI)
+    target_compile_options(ClangRuntimeSpecializer PRIVATE -fno-rtti)
+endif()
+
 target_link_libraries(ClangRuntimeSpecializer
         PUBLIC
         LLVMCore

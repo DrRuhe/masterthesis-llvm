@@ -17,16 +17,7 @@
 #include "llvm/Transforms/IPO/ModuleInliner.h"
 #include "llvm/Analysis/InlineCost.h"
 
-
 extern "C" void clang_runtime_specializer_link_anchor() {}
-
-// Weak-Deklarationen (keine Definitionen), damit wir nicht selbst starke/common Symbole erzeugen.
-extern "C" {
-  extern void* RuntimeSpecializeableIR_ptr __attribute__((weak));
-  extern std::uint64_t RuntimeSpecializeableIR_len __attribute__((weak));
-}
-
-
 
 namespace {
 
@@ -36,16 +27,10 @@ namespace {
   };
 
   RuntimeSpecializableData read_runtime_specializable_data() {
-    // Robust on ELF/Linux: don't try to "probe" weak object symbols via &sym.
-    // In PIC code &sym may refer to a GOT slot even when the symbol is undefined.
-    // Instead, query the dynamic loader and only read if the variable exists.
     void* ptrSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_ptr");
     void* lenSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_len");
 
     if (!ptrSym || !lenSym) {
-      std::fprintf(stderr,
-                   "[ClangRuntimeSpecializer] RuntimeSpecializeableIR symbols not present. "
-                   "Ensure the IR is dumped and pass -Wl,--export-dynamic\n");
       return {nullptr, 0};
     }
 
@@ -65,10 +50,7 @@ namespace {
 
     if (!M) {
       std::string Err = llvm::toString(M.takeError());
-      std::fprintf(stderr,
-                   "[ClangRuntimeSpecializer] Failed to parse bitcode: %s\n",
-                   Err.c_str());
-      return nullptr;
+      throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError("Failed to parse bitcode: " + Err);
     }
 
     return std::move(*M);
@@ -78,30 +60,62 @@ namespace {
 
 namespace clangRuntimeSpecializer {
 
+  static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Info;
+
+  void ClangRuntimeSpecializer::setLogLevel(LogLevel Level) {
+      CurrentLogLevel = Level;
+  }
+
+  ClangRuntimeSpecializer::LogLevel ClangRuntimeSpecializer::getLogLevel() {
+      return CurrentLogLevel;
+  }
+
+  __attribute__((always_inline))
+  void ClangRuntimeSpecializer::log(LogLevel Level, const char* FuncName, const llvm::Twine Message)
+  {
+    if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
+        log(Level, FuncName, Message.str().c_str());
+    }
+  }
+
+  __attribute__((always_inline))
+  void ClangRuntimeSpecializer::log(LogLevel Level, const char* FuncName, const char* Message) {
+      if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
+        const char* LevelStr = "UNKNOWN";
+        switch (Level) {
+          case LogLevel::None: LevelStr = "NONE"; break;
+          case LogLevel::Error: LevelStr = "ERROR"; break;
+          case LogLevel::Info: LevelStr = "INFO"; break;
+          case LogLevel::Debug: LevelStr = "DEBUG"; break;
+        }
+        std::fprintf(stdout, "%s: [%s] %s\n", LevelStr, FuncName, Message);
+      }
+  }
+
+
+
   static std::unique_ptr<ClangRuntimeSpecializer> Instance;
 
-
-  // TODO convert this initializer to throw exceptions when a fault occurs instead of returning nullptr.
   ClangRuntimeSpecializer* ClangRuntimeSpecializer::init() {
     if (Instance) {
       return Instance.get();
     }
-
+    
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
 
     RuntimeSpecializableData data = read_runtime_specializable_data();
     if (!data.Ptr || data.Len == 0) {
-      return nullptr;
+      std::fprintf(stderr, "No dumped IR found in the executable.\n");
+      std::abort();
     }
 
     Instance.reset(new ClangRuntimeSpecializer);
 
     auto JITExp = llvm::orc::LLJITBuilder().create();
     if (!JITExp) {
-      llvm::errs() << "[ClangRuntimeSpecializer] Failed to create JIT: "
-                   << JITExp.takeError() << "\n";
-      return nullptr;
+      std::string ErrMsg = llvm::toString(JITExp.takeError());
+      throw ClangRuntimeSpecializerError("Failed to create JIT: " + ErrMsg);
     }
     Instance->JIT = std::move(*JITExp);
 
@@ -149,7 +163,7 @@ namespace clangRuntimeSpecializer {
 
               // Configure aggressive inline parameters.
               llvm::InlineParams IP = llvm::getInlineParams();
-              IP.DefaultThreshold = 100000; // very high budget
+              IP.DefaultThreshold = 100000;
               IP.HintThreshold = 100000;
               IP.ColdThreshold = 100000;
               IP.OptSizeThreshold = 100000;
@@ -158,8 +172,8 @@ namespace clangRuntimeSpecializer {
               IP.LocallyHotCallSiteThreshold = 100000;
               IP.ColdCallSiteThreshold = 100000;
               IP.ComputeFullInlineCost = true;
-              IP.EnableDeferral = false;      // do not defer, inline eagerly
-              IP.AllowRecursiveCall = true;   // allow recursive inlining when profitable
+              IP.EnableDeferral = false;
+              IP.AllowRecursiveCall = true;
 
               AggressiveMPM.addPass(llvm::ModuleInlinerPass(IP));
               AggressiveMPM.run(M, MAM);
@@ -172,27 +186,11 @@ namespace clangRuntimeSpecializer {
               MPM.run(M, MAM);
             }
 
-            // Log the optimized IR for any specialized wrapper functions in this module.
             for (auto &F : M) {
               if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
-                llvm::errs() << "[ClangRuntimeSpecializer] Optimized IR for " << F.getName() << ":\n";
-                F.print(llvm::errs());
-                llvm::errs() << "\n";
-
-                // Check if the target function is still called.
-                for (auto &BB : F) {
-                  for (auto &I : BB) {
-                    if (auto *CB = llvm::dyn_cast<llvm::CallBase>(&I)) {
-                      if (auto *Callee = CB->getCalledFunction()) {
-                        llvm::errs() << "[ClangRuntimeSpecializer] Still calling: " << Callee->getName();
-                        if (Callee->isDeclaration())
-                          llvm::errs() << " (declaration only)\n";
-                        else
-                          llvm::errs() << " (definition present)\n";
-                      }
-                    }
-                  }
-                }
+                log(LogLevel::Debug, "IRTransform", [&] {
+                    return llvm::formatv("Optimized specialized function IR:\n{0}", printLLVM(&F)).str();
+                });
               }
             }
           });
@@ -204,11 +202,9 @@ namespace clangRuntimeSpecializer {
     return Instance.get();
   }
 
-  ClangRuntimeSpecializer::ClangRuntimeSpecializer(){}
+  ClangRuntimeSpecializer::ClangRuntimeSpecializer() {}
 
-  llvm::CallBase* ClangRuntimeSpecializer::findCallSpecializedFunctionInModule(const char* FunctionName,
-    const char* UID) const
-  {
+  llvm::CallBase* ClangRuntimeSpecializer::findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const {
     auto readCStringFromGlobal = [&](llvm::GlobalVariable *GV) -> std::string {
       if (!GV) return {};
       if (auto *CDA = llvm::dyn_cast<llvm::ConstantDataArray>(GV->getInitializer())) {
@@ -273,22 +269,14 @@ namespace clangRuntimeSpecializer {
       std::string FName = F.getName().str();
       if (FName.find(FunctionName) != std::string::npos) {
         auto AnnoVal = getAnnotationValueForFunction(F, CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME);
-        if (!AnnoVal)
-        {
-          continue;
-        }
+        if (!AnnoVal) continue;
 
         if (*AnnoVal == UID) {
-          std::fprintf(stderr, "[ClangRuntimeSpecializer] Found Function %s responsible for specializing %s \n",FName.c_str(),UID);
-          // Found a function that represents our call_specialized instantiation. Now find calls to it
+          log(LogLevel::Info, "findCallSpecializedFunctionInModule",
+              llvm::formatv("Found Function {0} responsible for specializing {1}", FName, UID));
           for (auto &U : F.uses()) {
             if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U.getUser())) {
               if (CB->getCalledFunction() == &F) {
-                // if (auto *EnclosingF = CB->getFunction()) {
-                //   std::fprintf(stderr, "[ClangRuntimeSpecializer] Callback used in function: %s\n", EnclosingF->getName().data());
-                //   EnclosingF->print(llvm::errs());
-                //   llvm::errs() << "\n";
-                // }
                 return CB;
               }
             }
@@ -297,34 +285,38 @@ namespace clangRuntimeSpecializer {
       }
     }
 
-    throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find callsite for UID: ") + UID);
+    throw ClangRuntimeSpecializerDumpedIRError("Could not find callsite for UID: " + std::string(UID));
   }
 
-  llvm::Value* ClangRuntimeSpecializer::serializeValueToIR(llvm::IRBuilder<>& Builder, llvm::Type* Type,
-    const void* ValuePtr)
-  {
+  llvm::Value* ClangRuntimeSpecializer::serializeValueToIR(llvm::IRBuilder<>& Builder, llvm::Type* Type, const void* ValuePtr) {
+    log(LogLevel::Debug, "serializeValueToIR", [&] {
+        return llvm::formatv("Serializing value of type {0}", printLLVM(Type)).str();
+    });
+
+    llvm::Value* Result = nullptr;
     if (Type->isIntegerTy()) {
       unsigned BitWidth = Type->getIntegerBitWidth();
       if (BitWidth <= 64) {
         uint64_t Val = 0;
         std::memcpy(&Val, ValuePtr, (BitWidth + 7) / 8);
-        return llvm::ConstantInt::get(Type, Val);
+        Result = llvm::ConstantInt::get(Type, Val);
+      } else {
+        throw ClangRuntimeSpecializerArgSerializationError("Integers > 64 bits are not supported yet.");
       }
-      throw std::runtime_error("[ClangRuntimeSpecializer] Integers > 64 bits are not supported yet.");
     } else if (Type->isFloatTy()) {
       float Val;
       std::memcpy(&Val, ValuePtr, sizeof(float));
-      return llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
+      Result = llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
     } else if (Type->isDoubleTy()) {
       double Val;
       std::memcpy(&Val, ValuePtr, sizeof(double));
-      return llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
+      Result = llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
     } else if (Type->isPointerTy()) {
       uintptr_t Val;
       std::memcpy(&Val, ValuePtr, sizeof(uintptr_t));
       llvm::Type* Ty = llvm::Type::getInt64Ty(Builder.getContext());
       llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
-      return llvm::ConstantExpr::getIntToPtr(IntVal, Type);
+      Result = llvm::ConstantExpr::getIntToPtr(IntVal, Type);
     } else if (Type->isStructTy()) {
       llvm::StructType* STy = llvm::cast<llvm::StructType>(Type);
       const llvm::DataLayout& DL = Module->getDataLayout();
@@ -340,10 +332,10 @@ namespace clangRuntimeSpecializer {
         if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
           Elements.push_back(C);
         } else {
-          throw std::runtime_error("[ClangRuntimeSpecializer] Failed to serialize struct element " + std::to_string(i));
+          throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize struct element " + std::to_string(i));
         }
       }
-      return llvm::ConstantStruct::get(STy, Elements);
+      Result = llvm::ConstantStruct::get(STy, Elements);
     } else if (Type->isArrayTy()) {
       llvm::ArrayType* ATy = llvm::cast<llvm::ArrayType>(Type);
       llvm::Type* ElemTy = ATy->getElementType();
@@ -357,13 +349,21 @@ namespace clangRuntimeSpecializer {
         if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
           Elements.push_back(C);
         } else {
-          throw std::runtime_error("[ClangRuntimeSpecializer] Failed to serialize array element " + std::to_string(i));
+          throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize array element " + std::to_string(i));
         }
       }
-      return llvm::ConstantArray::get(ATy, Elements);
+      Result = llvm::ConstantArray::get(ATy, Elements);
+    } else {
+      throw ClangRuntimeSpecializerArgSerializationError("Unsupported type for serialization: " + printLLVM(Type));
     }
 
-    throw std::runtime_error("[ClangRuntimeSpecializer] Unsupported type for serialization: " + std::to_string(Type->getTypeID()));
+    if (Result) {
+        log(LogLevel::Debug, "serializeValueToIR", [&] {
+            return llvm::formatv("Serialized to LLVM value: {0}", printLLVM(Result)).str();
+        });
+    }
+
+    return Result;
   }
 
   ClangRuntimeSpecializer::~ClangRuntimeSpecializer() = default;
