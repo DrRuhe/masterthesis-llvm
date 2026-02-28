@@ -19,19 +19,19 @@ if (LLVM_INCLUDE_TESTS)
             ${CMAKE_CURRENT_BINARY_DIR}/test/WIP
             ${CMAKE_CURRENT_BINARY_DIR}/test/smoke
             DEPENDS LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer opt FileCheck clang
-            ARGS -vsa --no-progress-bar
+            ARGS -vsa --no-progress-bar --xunit-xml-output ${CMAKE_CURRENT_BINARY_DIR}/test/smoke/llvm-lit-test-results.xml
     )
 
 
     add_lit_testsuite(check-wip-runtime-specializer "Running RuntimeSpecializer WIP tests"
             ${CMAKE_CURRENT_BINARY_DIR}/test/WIP
             DEPENDS LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer opt FileCheck clang
-            ARGS -vsa --no-progress-bar
+            ARGS -vsa --no-progress-bar --xunit-xml-output ${CMAKE_CURRENT_BINARY_DIR}/test/WIP/llvm-lit-test-results.xml
     )
 
     add_lit_testsuite(check-all-runtime-specializer "Running RuntimeSpecializer all tests"
             ${CMAKE_CURRENT_BINARY_DIR}/test
             DEPENDS LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer opt FileCheck clang
-            ARGS -vsa --no-progress-bar
+            ARGS -vsa --no-progress-bar --xunit-xml-output ${CMAKE_CURRENT_BINARY_DIR}/test/llvm-lit-test-results.xml
     )
 endif()
