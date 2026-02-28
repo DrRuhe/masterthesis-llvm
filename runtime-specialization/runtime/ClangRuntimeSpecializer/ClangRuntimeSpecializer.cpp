@@ -206,6 +206,166 @@ namespace clangRuntimeSpecializer {
 
   ClangRuntimeSpecializer::ClangRuntimeSpecializer(){}
 
+  llvm::CallBase* ClangRuntimeSpecializer::findCallSpecializedFunctionInModule(const char* FunctionName,
+    const char* UID) const
+  {
+    auto readCStringFromGlobal = [&](llvm::GlobalVariable *GV) -> std::string {
+      if (!GV) return {};
+      if (auto *CDA = llvm::dyn_cast<llvm::ConstantDataArray>(GV->getInitializer())) {
+        if (CDA->isCString()) return CDA->getAsCString().str();
+      }
+      return {};
+    };
+
+    auto getAnnotationValueForFunction = [&](const llvm::Function &F, llvm::StringRef Key) -> std::optional<std::string> {
+      llvm::GlobalVariable *AnnGV = Module->getGlobalVariable("llvm.global.annotations");
+      if (!AnnGV || !AnnGV->hasInitializer()) return std::nullopt;
+      auto *CA = llvm::dyn_cast<llvm::ConstantArray>(AnnGV->getInitializer());
+      if (!CA) return std::nullopt;
+      for (unsigned i = 0; i < CA->getNumOperands(); ++i) {
+        auto *Elt = llvm::dyn_cast<llvm::ConstantStruct>(CA->getOperand(i));
+        if (!Elt || Elt->getNumOperands() < 4) continue;
+        // 0: ptr to annotated global (function), 1: ptr to anno string, 4: extra args (optional)
+        llvm::Value *Op0 = Elt->getOperand(0);
+        llvm::Value *Op1 = Elt->getOperand(1);
+        llvm::Value *Op4 = (Elt->getNumOperands() >= 5) ? Elt->getOperand(4) : nullptr;
+
+        if (auto *Op0C = llvm::dyn_cast<llvm::Constant>(Op0)) {
+          if (auto *Target = Op0C->stripPointerCasts()) {
+            if (Target == &F) {
+              // Extract key
+              std::string KeyStr;
+              if (auto *Op1C = llvm::dyn_cast<llvm::Constant>(Op1)) {
+                if (auto *KeyGV = llvm::dyn_cast<llvm::GlobalVariable>(Op1C->stripPointerCasts())) {
+                  KeyStr = readCStringFromGlobal(KeyGV);
+                }
+              }
+
+              if (KeyStr == Key) {
+                // Try to extract first argument string from args struct if present
+                if (Op4) {
+                  if (auto *Op4C = llvm::dyn_cast<llvm::Constant>(Op4)) {
+                    if (auto *ArgsGV = llvm::dyn_cast<llvm::GlobalVariable>(Op4C->stripPointerCasts())) {
+                      if (auto *ArgsInit = llvm::dyn_cast<llvm::ConstantStruct>(ArgsGV->getInitializer())) {
+                        if (ArgsInit->getNumOperands() >= 1) {
+                          if (auto *Arg0C = llvm::dyn_cast<llvm::Constant>(ArgsInit->getOperand(0))) {
+                            if (auto *StrGV = llvm::dyn_cast<llvm::GlobalVariable>(Arg0C->stripPointerCasts())) {
+                              std::string V = readCStringFromGlobal(StrGV);
+                              if (!V.empty()) return V;
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+                // No value available
+                return std::string();
+              }
+            }
+          }
+        }
+      }
+      return std::nullopt;
+    };
+
+    for (auto &F : *Module) {
+      std::string FName = F.getName().str();
+      if (FName.find(FunctionName) != std::string::npos) {
+        auto AnnoVal = getAnnotationValueForFunction(F, CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME);
+        if (!AnnoVal)
+        {
+          continue;
+        }
+
+        if (*AnnoVal == UID) {
+          std::fprintf(stderr, "[ClangRuntimeSpecializer] Found Function %s responsible for specializing %s \n",FName.c_str(),UID);
+          // Found a function that represents our call_specialized instantiation. Now find calls to it
+          for (auto &U : F.uses()) {
+            if (auto *CB = llvm::dyn_cast<llvm::CallBase>(U.getUser())) {
+              if (CB->getCalledFunction() == &F) {
+                // if (auto *EnclosingF = CB->getFunction()) {
+                //   std::fprintf(stderr, "[ClangRuntimeSpecializer] Callback used in function: %s\n", EnclosingF->getName().data());
+                //   EnclosingF->print(llvm::errs());
+                //   llvm::errs() << "\n";
+                // }
+                return CB;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    throw std::runtime_error(std::string("[ClangRuntimeSpecializer] Could not find callsite for UID: ") + UID);
+  }
+
+  llvm::Value* ClangRuntimeSpecializer::serializeValueToIR(llvm::IRBuilder<>& Builder, llvm::Type* Type,
+    const void* ValuePtr)
+  {
+    if (Type->isIntegerTy()) {
+      unsigned BitWidth = Type->getIntegerBitWidth();
+      if (BitWidth <= 64) {
+        uint64_t Val = 0;
+        std::memcpy(&Val, ValuePtr, (BitWidth + 7) / 8);
+        return llvm::ConstantInt::get(Type, Val);
+      }
+      throw std::runtime_error("[ClangRuntimeSpecializer] Integers > 64 bits are not supported yet.");
+    } else if (Type->isFloatTy()) {
+      float Val;
+      std::memcpy(&Val, ValuePtr, sizeof(float));
+      return llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
+    } else if (Type->isDoubleTy()) {
+      double Val;
+      std::memcpy(&Val, ValuePtr, sizeof(double));
+      return llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
+    } else if (Type->isPointerTy()) {
+      uintptr_t Val;
+      std::memcpy(&Val, ValuePtr, sizeof(uintptr_t));
+      llvm::Type* Ty = llvm::Type::getInt64Ty(Builder.getContext());
+      llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
+      return llvm::ConstantExpr::getIntToPtr(IntVal, Type);
+    } else if (Type->isStructTy()) {
+      llvm::StructType* STy = llvm::cast<llvm::StructType>(Type);
+      const llvm::DataLayout& DL = Module->getDataLayout();
+      const llvm::StructLayout* SL = DL.getStructLayout(STy);
+
+      std::vector<llvm::Constant*> Elements;
+      for (unsigned i = 0; i < STy->getNumElements(); ++i) {
+        llvm::Type* ElemTy = STy->getElementType(i);
+        uint64_t Offset = SL->getElementOffset(i);
+        const void* ElemPtr = static_cast<const char*>(ValuePtr) + Offset;
+
+        llvm::Value* ElemVal = serializeValueToIR(Builder, ElemTy, ElemPtr);
+        if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
+          Elements.push_back(C);
+        } else {
+          throw std::runtime_error("[ClangRuntimeSpecializer] Failed to serialize struct element " + std::to_string(i));
+        }
+      }
+      return llvm::ConstantStruct::get(STy, Elements);
+    } else if (Type->isArrayTy()) {
+      llvm::ArrayType* ATy = llvm::cast<llvm::ArrayType>(Type);
+      llvm::Type* ElemTy = ATy->getElementType();
+      const llvm::DataLayout& DL = Module->getDataLayout();
+      uint64_t ElemSize = DL.getTypeAllocSize(ElemTy);
+
+      std::vector<llvm::Constant*> Elements;
+      for (uint64_t i = 0; i < ATy->getNumElements(); ++i) {
+        const void* ElemPtr = static_cast<const char*>(ValuePtr) + (i * ElemSize);
+        llvm::Value* ElemVal = serializeValueToIR(Builder, ElemTy, ElemPtr);
+        if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
+          Elements.push_back(C);
+        } else {
+          throw std::runtime_error("[ClangRuntimeSpecializer] Failed to serialize array element " + std::to_string(i));
+        }
+      }
+      return llvm::ConstantArray::get(ATy, Elements);
+    }
+
+    throw std::runtime_error("[ClangRuntimeSpecializer] Unsupported type for serialization: " + std::to_string(Type->getTypeID()));
+  }
+
   ClangRuntimeSpecializer::~ClangRuntimeSpecializer() = default;
 
 } // namespace clangRuntimeSpecializer
