@@ -60,7 +60,7 @@ namespace {
 
 namespace clangRuntimeSpecializer {
 
-  static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Info;
+  static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Debug;
 
   void ClangRuntimeSpecializer::setLogLevel(LogLevel Level) {
       CurrentLogLevel = Level;

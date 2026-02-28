@@ -57,6 +57,12 @@ namespace clangRuntimeSpecializer {
 
   class ClangRuntimeSpecializer {
   public:
+    struct WriteBack {
+        llvm::GlobalVariable* GV;
+        void* OriginalPtr;
+        uint64_t Size;
+    };
+
     enum class LogLevel {
       None,
       Error,
@@ -173,11 +179,12 @@ namespace clangRuntimeSpecializer {
       //TODO iterate through TargetFunc->uses()
 
 
+      std::vector<WriteBack> WriteBacks;
       auto SerializeArgs = [&](auto&&... ArgsInner) {
           unsigned I = 0;
           ([&] {
               llvm::Argument* IrArg = TargetFunc->getArg(I);
-              ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner)));
+              ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner), WriteBacks));
               I++;
           }(), ...);
       };
@@ -197,6 +204,13 @@ namespace clangRuntimeSpecializer {
       auto *CallInst = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(), TargetFuncInNewModule, ArgValues);
       CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
       CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
+
+      for (const auto& WB : WriteBacks) {
+          llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
+          llvm::Constant* OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
+          llvm::Value* OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
+          Builder.CreateMemCpy(OriginalPtr, llvm::MaybeAlign(), WB.GV, llvm::MaybeAlign(), WB.Size);
+      }
 
       if (TargetFuncInNewModule->getReturnType()->isVoidTy()) {
         Builder.CreateRetVoid();
@@ -267,6 +281,7 @@ namespace clangRuntimeSpecializer {
     std::unique_ptr<llvm::Module> Module;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
+
     explicit ClangRuntimeSpecializer();
 
     llvm::CallBase* findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const;
@@ -275,7 +290,7 @@ namespace clangRuntimeSpecializer {
     llvm::Value* serializeValueToIR(llvm::IRBuilder<>& Builder, llvm::Type* Type, const void* ValuePtr);
 
     template <class T>
-    llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& Builder, llvm::Argument* IrArg, T&& Value) {
+    llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& Builder, llvm::Argument* IrArg, T&& Value, std::vector<WriteBack>& WriteBacks) {
       using Decayed = std::decay_t<T>;
       llvm::Type* ExpectedType = IrArg ? IrArg->getType() : nullptr;
       if (!ExpectedType) {
@@ -288,7 +303,7 @@ namespace clangRuntimeSpecializer {
 
       using ElementType = std::conditional_t<std::is_pointer_v<Decayed>, std::remove_pointer_t<Decayed>, Decayed>;
       
-      if constexpr (std::is_class_v<ElementType> || std::is_union_v<ElementType>) {
+      if constexpr ((std::is_class_v<ElementType> || std::is_union_v<ElementType>) && !std::is_polymorphic_v<ElementType>) {
           struct DumpContext {
               ClangRuntimeSpecializer* Self;
               llvm::IRBuilder<>& Builder;
@@ -461,8 +476,26 @@ namespace clangRuntimeSpecializer {
 
           if (Ctx.Result) {
               if (ExpectedType->isPointerTy()) {
-                  auto *GV = new llvm::GlobalVariable(*Module, Ctx.Result->getType(), true,
+                  // Determine if we need write-back.
+                  // If the original was a pointer/reference, we should write back modifications to it.
+                  // We only do this if it's not a byval argument.
+                  bool IsByVal = IrArg && IrArg->hasByValAttr();
+                  bool ShouldWriteBack = !IsByVal;
+
+                  auto *CurrentModule = Builder.GetInsertBlock()->getModule();
+                  auto *GV = new llvm::GlobalVariable(*CurrentModule, Ctx.Result->getType(), !ShouldWriteBack,
                                                       llvm::GlobalValue::InternalLinkage, Ctx.Result, "specialized_instance");
+                  if (ShouldWriteBack) {
+                      void* Ptr = nullptr;
+                      if constexpr (std::is_pointer_v<Decayed>) {
+                          Ptr = reinterpret_cast<void*>(Value);
+                      } else {
+                          Ptr = const_cast<void*>(static_cast<const void*>(&Value));
+                      }
+                      if (Ptr) {
+                          WriteBacks.push_back({GV, Ptr, CurrentModule->getDataLayout().getTypeStoreSize(Ctx.Result->getType())});
+                      }
+                  }
                   return Builder.CreateBitCast(GV, ExpectedType);
               }
               return Ctx.Result;
