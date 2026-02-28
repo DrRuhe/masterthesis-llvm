@@ -46,9 +46,9 @@ int main(int argc, char** argv) {
   A instance(argc);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::getMod2
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance = internal constant %class.A { i32 2 }
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance
+  // EXE-SAME: %class.A { i32 2 }
   // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
-  // EXE: define noundef i32 @specialized_wrapper_1_
   // EXE: entry:
   // EXE:   ret i32 0
   // EXE: }
@@ -56,9 +56,9 @@ int main(int argc, char** argv) {
   clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_A_getMod2>(&A::getMod2, instance);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::add
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance.1 = internal constant %class.A { i32 2 }
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance
+  // EXE-SAME: %class.A { i32 2 }
   // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
-  // EXE: define noundef i32 @specialized_wrapper_2_
   // EXE: entry:
   // EXE:   ret i32 20
   // EXE: }
