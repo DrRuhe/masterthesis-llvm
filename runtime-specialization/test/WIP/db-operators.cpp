@@ -90,18 +90,9 @@ int main(int argc, char* argv[]) {
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
 
-    while (true) {
-        // Specialize the execute_query function for the specific query_plan pointer
-        int result = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_execute_query>(&execute_query, query_plan);
-        if (result == -1) break;
-        std::printf("%d\n", result);
-    }
-
+    int result = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_execute_query>(&execute_query, query_plan);
+    std::fprintf(stdout, "Operators returned %d \n",result);
     return 0;
 }
 
-// EXE: 95
-// EXE: 96
-// EXE: 97
-// EXE: 98
-// EXE: 99
+// EXE: Operators returned 95
