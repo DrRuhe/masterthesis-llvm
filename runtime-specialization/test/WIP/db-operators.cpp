@@ -1,7 +1,6 @@
 // RUN: %clangxx -g -O0 -emit-llvm -c %s -o %t.bc
 // RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
-// RUN: %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
 
 #include <iostream>
 #include <string>
@@ -41,11 +40,21 @@ public:
     }
 };
 
-// Wrapper function to be specialized
-extern "C" int execute_query(Operator* op) __asm__("execute_query");
-int execute_query(Operator* op) {
+
+
+int wrapped(Operator* op)
+{
     return op->next();
 }
+
+// Wrapper function to be specialized
+extern "C" int execute_query(int i) __asm__("execute_query");
+int execute_query(int i) {
+    Scan scan;
+    Filter op = Filter(&scan, i, true);
+    return op.next();
+}
+
 
 inline constexpr char Fn_execute_query[] = "execute_query";
 
@@ -86,11 +95,13 @@ namespace SqlParser {
     }
 }
 
+// RUN: %t.exe '>=95' '<100'
+// | FileCheck %s --check-prefix=EXE --dump-input=always
 int main(int argc, char* argv[]) {
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
 
-    int result = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_execute_query>(&execute_query, query_plan);
+    int result = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_execute_query>(&execute_query, 5);
     std::fprintf(stdout, "Operators returned %d \n",result);
     return 0;
 }
