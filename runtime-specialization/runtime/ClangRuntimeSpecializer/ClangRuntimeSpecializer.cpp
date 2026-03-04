@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <dlfcn.h>
 #include <utility>
+#include <algorithm>
+#include <vector>
 
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
@@ -58,6 +60,18 @@ namespace {
 
 } // namespace
 
+extern "C" {
+    uint64_t g_inst_count = 0;
+    uint64_t g_load_count = 0;
+    uint64_t g_store_count = 0;
+    uint64_t g_call_count = 0;
+    uint64_t g_arith_count = 0;
+    uint64_t g_cmp_count = 0;
+    uint64_t g_branch_count = 0;
+    uint64_t g_ret_count = 0;
+    uint64_t g_other_count = 0;
+}
+
 namespace clangRuntimeSpecializer {
 
   static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Debug;
@@ -92,9 +106,69 @@ namespace clangRuntimeSpecializer {
       }
   }
 
-
-
   static std::unique_ptr<ClangRuntimeSpecializer> Instance;
+
+  void ClangRuntimeSpecializer::resetCounters() {
+    g_inst_count = 0;
+    g_load_count = 0;
+    g_store_count = 0;
+    g_call_count = 0;
+    g_arith_count = 0;
+    g_cmp_count = 0;
+    g_branch_count = 0;
+    g_ret_count = 0;
+    g_other_count = 0;
+  }
+
+  ClangRuntimeSpecializer::InstructionCounts ClangRuntimeSpecializer::getCurrentCounters() {
+    return { g_inst_count, g_load_count, g_store_count, g_call_count, g_arith_count, g_cmp_count, g_branch_count, g_ret_count, g_other_count };
+  }
+
+  void ClangRuntimeSpecializer::printComparisonTable(const char* funcName, const InstructionCounts& Before, const InstructionCounts& After) {
+      std::fprintf(stdout, "Comparing instruction counts from specializing %s:\n", funcName);
+      std::fprintf(stdout, "%10s %10s %-15s %s\n", "before", "after", "instruction", "change");
+
+      struct Row {
+          const char* Name;
+          uint64_t B;
+          uint64_t A;
+      };
+
+      auto printRow = [](const Row& r) {
+          int64_t Diff = static_cast<int64_t>(r.A) - static_cast<int64_t>(r.B);
+          double Percent = (r.B == 0) ? (r.A == 0 ? 0.0 : 100.0) : (static_cast<double>(std::abs(Diff)) / r.B) * 100.0;
+          if (Diff > 0) {
+              std::fprintf(stdout, "%10lu %10lu %-15s +%ld, %.0f%%\n", r.B, r.A, r.Name, Diff, Percent);
+          } else if (Diff < 0) {
+              std::fprintf(stdout, "%10lu %10lu %-15s %ld, -%.0f%%\n", r.B, r.A, r.Name, Diff, Percent);
+          } else {
+              std::fprintf(stdout, "%10lu %10lu %-15s 0, 0%%\n", r.B, r.A, r.Name);
+          }
+      };
+
+      printRow({"total", Before.Total, After.Total});
+      std::fprintf(stdout, "\n");
+
+      std::vector<Row> IndividualRows = {
+          {"load", Before.Loads, After.Loads},
+          {"store", Before.Stores, After.Stores},
+          {"call", Before.Calls, After.Calls},
+          {"arith", Before.Arith, After.Arith},
+          {"cmp", Before.Cmp, After.Cmp},
+          {"branch", Before.Branches, After.Branches},
+          {"ret", Before.Returns, After.Returns},
+          {"other", Before.Other, After.Other}
+      };
+
+      std::sort(IndividualRows.begin(), IndividualRows.end(), [](const Row& a, const Row& b) {
+          if (a.B != b.B) return a.B > b.B;
+          return std::string(a.Name) < std::string(b.Name);
+      });
+
+      for (const auto& r : IndividualRows) {
+          printRow(r);
+      }
+  }
 
   ClangRuntimeSpecializer* ClangRuntimeSpecializer::init() {
     if (Instance) {
@@ -123,6 +197,21 @@ namespace clangRuntimeSpecializer {
         llvm::cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
             Instance->JIT->getDataLayout().getGlobalPrefix())));
 
+    // Explicitly export instrumentation counters to the JIT.
+    if (isInstructionInstrumentationEnabled()) {
+      auto &JD = Instance->JIT->getMainJITDylib();
+      llvm::orc::SymbolMap Symbols;
+      Symbols[Instance->JIT->mangleAndIntern("g_inst_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_inst_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_load_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_load_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_store_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_store_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_call_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_call_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_arith_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_arith_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_cmp_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_cmp_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_branch_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_branch_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_ret_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_ret_count), llvm::JITSymbolFlags::Exported };
+      Symbols[Instance->JIT->mangleAndIntern("g_other_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_other_count), llvm::JITSymbolFlags::Exported };
+      cantFail(JD.define(llvm::orc::absoluteSymbols(Symbols)));
+    }
     // Install an IR transform to run optimizations and log the optimized IR of the
     // specialized wrapper function before compilation.
     Instance->JIT->getIRTransformLayer().setTransform(
@@ -184,6 +273,62 @@ namespace clangRuntimeSpecializer {
             {
               llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
               MPM.run(M, MAM);
+            }
+
+            // After optimization, perform dynamic instruction counting instrumentation if enabled.
+            if (Instance->isInstructionInstrumentationEnabled()) {
+              for (auto &F : M) {
+                if (F.isDeclaration()) continue;
+                // Instrument only the specialized wrapper or everything that was inlined into it.
+                // For simplicity, let's instrument all functions in the module.
+                for (auto &BB : F) {
+                  uint64_t BBInstCount = 0;
+                  uint64_t BBLoadCount = 0;
+                  uint64_t BBStoreCount = 0;
+                  uint64_t BBCallCount = 0;
+                  uint64_t BBArithCount = 0;
+                  uint64_t BBCmpCount = 0;
+                  uint64_t BBBranchCount = 0;
+                  uint64_t BBRetCount = 0;
+                  uint64_t BBOtherCount = 0;
+                  for (auto &I : BB) {
+                    BBInstCount++;
+                    if (llvm::isa<llvm::LoadInst>(&I)) BBLoadCount++;
+                    else if (llvm::isa<llvm::StoreInst>(&I)) BBStoreCount++;
+                    else if (llvm::isa<llvm::CallBase>(&I)) BBCallCount++;
+                    else if (llvm::isa<llvm::BinaryOperator>(&I) || llvm::isa<llvm::UnaryOperator>(&I)) BBArithCount++;
+                    else if (llvm::isa<llvm::CmpInst>(&I)) BBCmpCount++;
+                    else if (llvm::isa<llvm::ReturnInst>(&I)) BBRetCount++;
+                    else if (I.isTerminator()) BBBranchCount++;
+                    else BBOtherCount++;
+                  }
+
+                  if (BBInstCount > 0) {
+                    llvm::IRBuilder<> Builder(&*BB.getFirstInsertionPt());
+                    auto CreateIncrement = [&](const char* Name, uint64_t Count) {
+                      if (Count == 0) return;
+                      auto *CounterGV = M.getGlobalVariable(Name, true);
+                      if (!CounterGV) {
+                        CounterGV = new llvm::GlobalVariable(M, llvm::Type::getInt64Ty(M.getContext()), false,
+                                                             llvm::GlobalValue::ExternalLinkage, nullptr, Name);
+                      }
+                      Builder.CreateAtomicRMW(llvm::AtomicRMWInst::Add, CounterGV,
+                                             Builder.getInt64(Count), llvm::MaybeAlign(),
+                                             llvm::AtomicOrdering::Monotonic);
+                    };
+
+                    CreateIncrement("g_inst_count", BBInstCount);
+                    CreateIncrement("g_load_count", BBLoadCount);
+                    CreateIncrement("g_store_count", BBStoreCount);
+                    CreateIncrement("g_call_count", BBCallCount);
+                    CreateIncrement("g_arith_count", BBArithCount);
+                    CreateIncrement("g_cmp_count", BBCmpCount);
+                    CreateIncrement("g_branch_count", BBBranchCount);
+                    CreateIncrement("g_ret_count", BBRetCount);
+                    CreateIncrement("g_other_count", BBOtherCount);
+                  }
+                }
+              }
             }
 
             for (auto &F : M) {

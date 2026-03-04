@@ -73,6 +73,22 @@ namespace clangRuntimeSpecializer {
     static void setLogLevel(LogLevel Level);
     static LogLevel getLogLevel();
 
+    struct InstructionCounts {
+      uint64_t Total;
+      uint64_t Loads;
+      uint64_t Stores;
+      uint64_t Calls;
+      uint64_t Arith;
+      uint64_t Cmp;
+      uint64_t Branches;
+      uint64_t Returns;
+      uint64_t Other;
+    };
+
+    static void resetCounters();
+    static InstructionCounts getCurrentCounters();
+    static void printComparisonTable(const char* funcName, const InstructionCounts& Before, const InstructionCounts& After);
+
     static void log(LogLevel Level, const char* FuncName, const llvm::Twine Message);
     static void log(LogLevel Level, const char* FuncName, const char* Message);
 
@@ -97,7 +113,22 @@ namespace clangRuntimeSpecializer {
 #define CRS_LOG(Level, Msg) clangRuntimeSpecializer::ClangRuntimeSpecializer::log(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Level, __FUNCTION__, Msg)
 
 
+    struct Options {
+      bool EnableInstructionInstrumentation = false;
+    };
+
     static ClangRuntimeSpecializer* init();
+    ClangRuntimeSpecializer* enableInstructionInstrumentation() {
+      CurrentOptions.EnableInstructionInstrumentation = true;
+      return this;
+    }
+
+    bool isInstructionInstrumentationEnabled() const {
+      return CurrentOptions.EnableInstructionInstrumentation;
+    }
+
+    Options& getOptions() { return CurrentOptions; }
+    const Options& getOptions() const { return CurrentOptions; }
 
 
     //TODO extract the non generic logic into the cpp file. So still perform the generic arg serialization 
@@ -133,25 +164,17 @@ namespace clangRuntimeSpecializer {
       // Ensure the number of args between the callsite in the IR, the function to specialize and the number of passed args are compatible.
       size_t NumArgs = sizeof...(ARGS);
       
-      // Determine how many leading arguments to skip at the callsite:
-      // - Always skip the implicit 'this' pointer (1)
-      // - Additionally skip the explicit 'funcName' runtime argument if present (legacy path)
       unsigned CallArgCount = CallSite->arg_size();
-
-      unsigned SkipArgs = 1;
+      unsigned SkipArgs = 1; // 'this'
       if (CallArgCount != SkipArgs + static_cast<unsigned>(NumArgs))
       {
         throw ClangRuntimeSpecializerError((llvm::Twine("Unexpected callsite arg count. callArgCount=") + llvm::Twine(CallArgCount) + ", numArgs=" + llvm::Twine(NumArgs) + " (expected " + llvm::Twine(static_cast<unsigned>(NumArgs) + 1) + ")").str());
       }
 
-
       if (NumArgs != TargetFunc->arg_size())
       {
         throw ClangRuntimeSpecializerError((llvm::Twine("The number of args are incompatible! numArgs: ") + llvm::Twine(NumArgs) + ", TargetFunc->arg_size(): " + llvm::Twine(TargetFunc->arg_size())).str());
       }
-
-
-
 
       // TODO reuse a clean copy of the llvm module. Possibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
       //   Currently we get conflicts, so specialization fails.
@@ -168,31 +191,22 @@ namespace clangRuntimeSpecializer {
       llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Context, "entry", NewFunc);
       Builder.SetInsertPoint(Entry);
 
-      // Serialize the runtime arguments to IR constants and create a call to the target function with them.
-      // We pass the TargetFunc's arguments to guide serialization.
       auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
       
       std::vector<llvm::Value*> ArgValues;
-
-      //llvm::errs() << "[ClangRuntimeSpecializer] Function to specialize:\n";
-      //TargetFunc->print(llvm::errs());
-      //TODO iterate through TargetFunc->uses()
-
-
       std::vector<WriteBack> WriteBacks;
-      auto SerializeArgs = [&](auto&&... ArgsInner) {
-          unsigned I = 0;
-          ([&] {
-              llvm::Argument* IrArg = TargetFunc->getArg(I);
-              ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner), WriteBacks));
-              I++;
-          }(), ...);
-      };
-      SerializeArgs(std::forward<ARGS>(Args)...);
+          auto SerializeArgs = [&](auto&&... ArgsInner) {
+              unsigned I = 0;
+              ([&] {
+                  llvm::Argument* IrArg = TargetFunc->getArg(I);
+                  ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner), WriteBacks));
+                  I++;
+              }(), ...);
+          };
+          SerializeArgs(std::forward<ARGS>(Args)...);
 
-
-      for (llvm::Value* Arg : ArgValues)
-      {
+          for (llvm::Value* Arg : ArgValues)
+          {
           CRS_LOG(Debug,[&]{return (llvm::Twine("Arg Serialized to: ") + printLLVM(Arg)).str();});
       }
 
@@ -205,11 +219,11 @@ namespace clangRuntimeSpecializer {
       CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
       CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
 
-      for (const auto& WB : WriteBacks) {
-          llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
-          llvm::Constant* OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
-          llvm::Value* OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
-          Builder.CreateMemCpy(OriginalPtr, llvm::MaybeAlign(), WB.GV, llvm::MaybeAlign(), WB.Size);
+          for (const auto& WB : WriteBacks) {
+              llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
+              llvm::Constant* OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
+              llvm::Value* OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
+              Builder.CreateMemCpy(OriginalPtr, llvm::MaybeAlign(), WB.GV, llvm::MaybeAlign(), WB.Size);
       }
 
       if (TargetFuncInNewModule->getReturnType()->isVoidTy()) {
@@ -264,12 +278,11 @@ namespace clangRuntimeSpecializer {
         throw ClangRuntimeSpecializerError("Failed to lookup wrapper: " + ErrMsg);
       }
 
-      auto SpecializedFnPtr = SpecializedFn->toPtr<R()>();
-
-      if constexpr (std::is_void_v<R>) {
-        SpecializedFnPtr();
-        return;
-      } else {
+        auto SpecializedFnPtr = SpecializedFn->toPtr<R()>();
+        if constexpr (std::is_void_v<R>) {
+          SpecializedFnPtr();
+          return;
+        } else {
         return SpecializedFnPtr();
       }
     }
@@ -281,6 +294,7 @@ namespace clangRuntimeSpecializer {
     std::unique_ptr<llvm::Module> Module;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
+    Options CurrentOptions;
 
     explicit ClangRuntimeSpecializer();
 
@@ -577,9 +591,6 @@ namespace clangRuntimeSpecializer {
         "This is required to ensure that the specialized function behavior matches the original when arguments are modified.");
 
     auto* RS = ClangRuntimeSpecializer::init();
-    if (!RS) {
-        throw ClangRuntimeSpecializerError("could not init!");
-    }
 
     // Copy arguments for both calls
     auto ArgsOrig = std::make_tuple(Args...);
@@ -635,9 +646,6 @@ namespace clangRuntimeSpecializer {
         "This is required to ensure that the specialized method behavior matches the original when arguments are modified.");
 
     auto* RS = ClangRuntimeSpecializer::init();
-    if (!RS) {
-        throw ClangRuntimeSpecializerError("could not init!");
-    }
 
     // Copy object + arguments for both calls
     auto ArgsOrig = std::forward_as_tuple(Obj, Args...);
@@ -690,6 +698,48 @@ namespace clangRuntimeSpecializer {
         }
     }
     CRS_LOG(Info, (llvm::Twine("Successfully specialized ") + funcName + "! No differences could be observed.").str());
+  }
+
+  template <const char* funcName, class Fn, class... ARGS>
+  __attribute__((always_inline))
+  void compareFunctionInstructionCounts(Fn F, ARGS... Args) {
+    auto* RS = ClangRuntimeSpecializer::init()->enableInstructionInstrumentation();
+
+    // Copy arguments for both calls to ensure same initial state
+    auto ArgsOrig = std::make_tuple(Args...);
+    auto ArgsSpec = std::make_tuple(Args...);
+
+    using R = decltype(F(Args...));
+
+    ClangRuntimeSpecializer::InstructionCounts Before, After;
+
+    // Call baseline instrumented
+    RS->resetCounters();
+    if constexpr (std::is_void_v<R>) {
+        std::apply([&](auto&&... CallArgs) {
+            RS->callInstrumented<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsOrig);
+    } else {
+        std::apply([&](auto&&... CallArgs) {
+            RS->callInstrumented<funcName, R>(std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsOrig);
+    }
+    Before = RS->getCurrentCounters();
+
+    // Call specialized instrumented
+    RS->resetCounters();
+    if constexpr (std::is_void_v<R>) {
+        std::apply([&](auto&&... CallArgs) {
+            RS->callSpecialized<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
+    } else {
+        std::apply([&](auto&&... CallArgs) {
+            RS->callSpecialized<funcName, R>(std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
+    }
+    After = RS->getCurrentCounters();
+
+    ClangRuntimeSpecializer::printComparisonTable(funcName, Before, After);
   }
 
 } // namespace clangRuntimeSpecializer
