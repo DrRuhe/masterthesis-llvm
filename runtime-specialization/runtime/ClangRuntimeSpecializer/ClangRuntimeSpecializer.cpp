@@ -124,6 +124,20 @@ namespace clangRuntimeSpecializer {
     return { g_inst_count, g_load_count, g_store_count, g_call_count, g_arith_count, g_cmp_count, g_branch_count, g_ret_count, g_other_count };
   }
 
+  void ClangRuntimeSpecializer::printCounters() {
+    auto Counts = getCurrentCounters();
+    std::fprintf(stdout, "[Instruction Stats]\n");
+    std::fprintf(stdout, "Total Instructions: %lu\n", Counts.Total);
+    std::fprintf(stdout, "  Loads: %lu\n", Counts.Loads);
+    std::fprintf(stdout, "  Stores: %lu\n", Counts.Stores);
+    std::fprintf(stdout, "  Calls: %lu\n", Counts.Calls);
+    std::fprintf(stdout, "  Arith: %lu\n", Counts.Arith);
+    std::fprintf(stdout, "  Cmp: %lu\n", Counts.Cmp);
+    std::fprintf(stdout, "  Branch: %lu\n", Counts.Branches);
+    std::fprintf(stdout, "  Ret: %lu\n", Counts.Returns);
+    std::fprintf(stdout, "  Other: %lu\n", Counts.Other);
+  }
+
   void ClangRuntimeSpecializer::printComparisonTable(const char* funcName, const InstructionCounts& Before, const InstructionCounts& After) {
       std::fprintf(stdout, "Comparing instruction counts from specializing %s:\n", funcName);
       std::fprintf(stdout, "%10s %10s %-15s %s\n", "before", "after", "instruction", "change");
@@ -198,7 +212,7 @@ namespace clangRuntimeSpecializer {
             Instance->JIT->getDataLayout().getGlobalPrefix())));
 
     // Explicitly export instrumentation counters to the JIT.
-    if (isInstructionInstrumentationEnabled()) {
+    if (Instance->isInstructionInstrumentationEnabled()) {
       auto &JD = Instance->JIT->getMainJITDylib();
       llvm::orc::SymbolMap Symbols;
       Symbols[Instance->JIT->mangleAndIntern("g_inst_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_inst_count), llvm::JITSymbolFlags::Exported };
@@ -230,53 +244,73 @@ namespace clangRuntimeSpecializer {
             PB.registerLoopAnalyses(LAM);
             PB.crossRegisterProxies(LAM, FAM, CGAM, MAM);
 
-            // Enable very aggressive inlining prior to the regular O3 pipeline.
-            // We first run AlwaysInliner to respect any alwaysinline hints, then
-            // a ModuleInlinerPass configured with extremely high thresholds and
-            // relaxed deferral/recursion settings to inline as much as possible.
-            {
-              // Ensure that internal functions can be inlined by making them linkonce_odr
-              // or similar if they were just internal. Actually, for JIT it should be fine,
-              // but let's make sure the target functions are not marked as "noinline".
-              for (auto &F : M) {
-                if (!F.isDeclaration()) {
-                  F.removeFnAttr(llvm::Attribute::NoInline);
-                  F.removeFnAttr(llvm::Attribute::OptimizeNone);
+            bool Optimize = true;
+            for (auto &F : M) {
+                if (F.hasFnAttribute("force-no-optimize")) {
+                    Optimize = false;
+                    break;
                 }
-              }
-
-              llvm::ModulePassManager AggressiveMPM;
-
-              // Respect alwaysinline attributes.
-              AggressiveMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
-
-              // Configure aggressive inline parameters.
-              llvm::InlineParams IP = llvm::getInlineParams();
-              IP.DefaultThreshold = 100000;
-              IP.HintThreshold = 100000;
-              IP.ColdThreshold = 100000;
-              IP.OptSizeThreshold = 100000;
-              IP.OptMinSizeThreshold = 100000;
-              IP.HotCallSiteThreshold = 100000;
-              IP.LocallyHotCallSiteThreshold = 100000;
-              IP.ColdCallSiteThreshold = 100000;
-              IP.ComputeFullInlineCost = true;
-              IP.EnableDeferral = false;
-              IP.AllowRecursiveCall = true;
-
-              AggressiveMPM.addPass(llvm::ModuleInlinerPass(IP));
-              AggressiveMPM.run(M, MAM);
             }
 
-            // After aggressive inlining, run the regular O3 pipeline to clean up
-            // and perform further optimizations on the now inlined code.
-            {
-              llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
-              MPM.run(M, MAM);
+            if (Optimize) {
+              // Enable very aggressive inlining prior to the regular O3 pipeline.
+              // We first run AlwaysInliner to respect any alwaysinline hints, then
+              // a ModuleInlinerPass configured with extremely high thresholds and
+              // relaxed deferral/recursion settings to inline as much as possible.
+              {
+                // Ensure that internal functions can be inlined by making them linkonce_odr
+                // or similar if they were just internal. Actually, for JIT it should be fine,
+                // but let's make sure the target functions are not marked as "noinline".
+                for (auto &F : M) {
+                  if (!F.isDeclaration()) {
+                    F.removeFnAttr(llvm::Attribute::NoInline);
+                    F.removeFnAttr(llvm::Attribute::OptimizeNone);
+                  }
+                }
+
+                llvm::ModulePassManager AggressiveMPM;
+
+                // Respect alwaysinline attributes.
+                AggressiveMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
+
+                // Configure aggressive inline parameters.
+                llvm::InlineParams IP = llvm::getInlineParams();
+                IP.DefaultThreshold = 100000;
+                IP.HintThreshold = 100000;
+                IP.ColdThreshold = 100000;
+                IP.OptSizeThreshold = 100000;
+                IP.OptMinSizeThreshold = 100000;
+                IP.HotCallSiteThreshold = 100000;
+                IP.LocallyHotCallSiteThreshold = 100000;
+                IP.ColdCallSiteThreshold = 100000;
+                IP.ComputeFullInlineCost = true;
+                IP.EnableDeferral = false;
+                IP.AllowRecursiveCall = true;
+
+                AggressiveMPM.addPass(llvm::ModuleInlinerPass(IP));
+                AggressiveMPM.run(M, MAM);
+              }
+
+              // After aggressive inlining, run the regular O3 pipeline to clean up
+              // and perform further optimizations on the now inlined code.
+              {
+                llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+                MPM.run(M, MAM);
+              }
             }
 
             // After optimization, perform dynamic instruction counting instrumentation if enabled.
-            if (Instance->isInstructionInstrumentationEnabled()) {
+            bool Instrument = Instance->isInstructionInstrumentationEnabled();
+            if (!Instrument) {
+                for (auto &F : M) {
+                    if (F.hasFnAttribute("force-instrument")) {
+                        Instrument = true;
+                        break;
+                    }
+                }
+            }
+
+            if (Instrument) {
               for (auto &F : M) {
                 if (F.isDeclaration()) continue;
                 // Instrument only the specialized wrapper or everything that was inlined into it.
@@ -348,6 +382,155 @@ namespace clangRuntimeSpecializer {
   }
 
   ClangRuntimeSpecializer::ClangRuntimeSpecializer() {}
+
+  void ClangRuntimeSpecializer::checkInitialization(const char* funcName) const {
+    if (funcName == nullptr) {
+      throw ClangRuntimeSpecializerError("funcName was null!");
+    }
+    if (Module == nullptr) {
+      throw ClangRuntimeSpecializerError("Module was null!");
+    }
+    if (!JIT) {
+      throw ClangRuntimeSpecializerError("JIT was not initialized!");
+    }
+  }
+
+  llvm::Function* ClangRuntimeSpecializer::getTargetFunction(const char* funcName) const {
+    std::string FuncNameStr(funcName);
+    if (!FuncNameStr.empty() && FuncNameStr.front() == '&') {
+      FuncNameStr.erase(0, 1);
+    }
+    llvm::Function *TargetFunc = Module->getFunction(FuncNameStr);
+    if (TargetFunc == nullptr) {
+      throw ClangRuntimeSpecializerDumpedIRError((llvm::Twine("Could not find function: ") + funcName + " (It might be optimized out already by dead-code-elimination?)").str());
+    }
+    return TargetFunc;
+  }
+
+  void ClangRuntimeSpecializer::validateArgs(llvm::Function* TargetFunc, llvm::CallBase* CallSite, size_t NumArgs) const {
+    unsigned CallArgCount = CallSite->arg_size();
+    unsigned SkipArgs = 1; // 'this'
+    if (CallArgCount != SkipArgs + static_cast<unsigned>(NumArgs))
+    {
+      throw ClangRuntimeSpecializerError((llvm::Twine("Unexpected callsite arg count. callArgCount=") + llvm::Twine(CallArgCount) + ", numArgs=" + llvm::Twine(NumArgs) + " (expected " + llvm::Twine(static_cast<unsigned>(NumArgs) + 1) + ")").str());
+    }
+
+    if (NumArgs != TargetFunc->arg_size())
+    {
+      throw ClangRuntimeSpecializerError((llvm::Twine("The number of args are incompatible! numArgs: ") + llvm::Twine(NumArgs) + ", TargetFunc->arg_size(): " + llvm::Twine(TargetFunc->arg_size())).str());
+    }
+  }
+
+  std::string ClangRuntimeSpecializer::createUniqueWrapperName() {
+    return "specialized_wrapper_" + std::to_string(++GlobalSpecializationCount) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+  }
+
+  void ClangRuntimeSpecializer::prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) {
+    bool Optimize = true;
+    for (auto &F : M) {
+        if (F.hasFnAttribute("force-no-optimize")) {
+            Optimize = false;
+            break;
+        }
+    }
+
+    // Every function except the specialized wrapper should have available_externally linkage
+    // if it has a definition. This allows the JIT inliner to see the bodies but won't
+    // produce a definition in the resulting object file, as we want to use the host's version
+    // if it's not inlined.
+    // If we are in baseline mode (no optimize), we want to make sure the target functions
+    // are compiled and instrumented, so we use internal linkage.
+    for (auto &F : M) {
+      if (F.getName() == WrapperName) {
+         F.setLinkage(llvm::GlobalValue::ExternalLinkage);
+         continue;
+      }
+      if (!F.isDeclaration()) {
+         if (!Optimize) {
+             F.setLinkage(llvm::GlobalValue::InternalLinkage);
+         } else {
+             F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
+         }
+      }
+    }
+    
+    // Also convert global variables to available_externally or declarations.
+    // Special care for constant strings and other internal globals.
+    for (auto &G : M.globals()) {
+      if (!G.isDeclaration()) {
+        // If it's a constant string or similar internal, we might want to keep it
+        // as private/internal if we can't find it in the host.
+        // However, available_externally for globals usually works if they are
+        // indeed available. For JIT, internal globals might NOT be available.
+        if (G.hasInternalLinkage() || G.hasPrivateLinkage()) {
+          continue; // Keep internal/private globals as is.
+        }
+        G.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
+      }
+    }
+  }
+
+  uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName) {
+    if (auto Err = JIT->addIRModule(std::move(TSM))) {
+      std::string ErrMsg = llvm::toString(std::move(Err));
+      throw ClangRuntimeSpecializerError("Failed to add module to JIT: " + ErrMsg);
+    }
+
+    auto SpecializedFn = JIT->lookup(WrapperName);
+    if (!SpecializedFn) {
+      std::string ErrMsg = llvm::toString(SpecializedFn.takeError());
+      throw ClangRuntimeSpecializerError("Failed to lookup wrapper: " + ErrMsg);
+    }
+    return SpecializedFn->getValue();
+  }
+
+  void ClangRuntimeSpecializer::encourageInlining(llvm::Function* F) {
+    if (!F) return;
+    F->removeFnAttr(llvm::Attribute::NoInline);
+    F->removeFnAttr(llvm::Attribute::OptimizeNone);
+    F->addFnAttr(llvm::Attribute::AlwaysInline);
+  }
+
+  llvm::Function* ClangRuntimeSpecializer::buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
+                                                         llvm::ArrayRef<llvm::Constant*> SpecializedArgs, llvm::ArrayRef<WriteBack> WriteBacks,
+                                                         const bool ForceInstrument, const bool Optimize) {
+    llvm::LLVMContext& Ctx = M.getContext();
+    llvm::FunctionType* FTy= llvm::FunctionType::get(TargetFunc->getReturnType(), false);
+
+
+    llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, WrapperName, M);
+    if (ForceInstrument) {
+        NewFunc->addFnAttr("force-instrument");
+    }
+    if (!Optimize) {
+        NewFunc->addFnAttr("force-no-optimize");
+    }
+
+    llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Ctx, "entry", NewFunc);
+    llvm::IRBuilder<> Builder(Entry);
+
+    std::vector<llvm::Value*> CallArgs;
+    for (auto* C : SpecializedArgs) CallArgs.push_back(C);
+
+    auto *CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, CallArgs);
+    CallInst->setAttributes(TargetFunc->getAttributes());
+    CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
+
+    for (const auto& WB : WriteBacks) {
+        llvm::Type* Ty = llvm::Type::getInt64Ty(Ctx);
+        llvm::Constant* OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
+        llvm::Value* OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
+        Builder.CreateMemCpy(OriginalPtr, llvm::MaybeAlign(), WB.GV, llvm::MaybeAlign(), WB.Size);
+    }
+
+    if (TargetFunc->getReturnType()->isVoidTy()) {
+        Builder.CreateRetVoid();
+    } else {
+        Builder.CreateRet(CallInst);
+    }
+
+    return NewFunc;
+  }
 
   llvm::CallBase* ClangRuntimeSpecializer::findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const {
     auto readCStringFromGlobal = [&](llvm::GlobalVariable *GV) -> std::string {
@@ -433,12 +616,13 @@ namespace clangRuntimeSpecializer {
     throw ClangRuntimeSpecializerDumpedIRError("Could not find callsite for UID: " + std::string(UID));
   }
 
-  llvm::Value* ClangRuntimeSpecializer::serializeValueToIR(llvm::IRBuilder<>& Builder, llvm::Type* Type, const void* ValuePtr) {
+  llvm::Constant* ClangRuntimeSpecializer::serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr) {
     log(LogLevel::Debug, "serializeValueToIR", [&] {
         return llvm::formatv("Serializing value of type {0}", printLLVM(Type)).str();
     });
 
-    llvm::Value* Result = nullptr;
+    llvm::Constant* Result = nullptr;
+    llvm::LLVMContext& Context = M.getContext();
     if (Type->isIntegerTy()) {
       unsigned BitWidth = Type->getIntegerBitWidth();
       if (BitWidth <= 64) {
@@ -451,20 +635,20 @@ namespace clangRuntimeSpecializer {
     } else if (Type->isFloatTy()) {
       float Val;
       std::memcpy(&Val, ValuePtr, sizeof(float));
-      Result = llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
+      Result = llvm::ConstantFP::get(Context, llvm::APFloat(Val));
     } else if (Type->isDoubleTy()) {
       double Val;
       std::memcpy(&Val, ValuePtr, sizeof(double));
-      Result = llvm::ConstantFP::get(Builder.getContext(), llvm::APFloat(Val));
+      Result = llvm::ConstantFP::get(Context, llvm::APFloat(Val));
     } else if (Type->isPointerTy()) {
       uintptr_t Val;
       std::memcpy(&Val, ValuePtr, sizeof(uintptr_t));
-      llvm::Type* Ty = llvm::Type::getInt64Ty(Builder.getContext());
+      llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
       llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
       Result = llvm::ConstantExpr::getIntToPtr(IntVal, Type);
     } else if (Type->isStructTy()) {
       llvm::StructType* STy = llvm::cast<llvm::StructType>(Type);
-      const llvm::DataLayout& DL = Module->getDataLayout();
+      const llvm::DataLayout& DL = M.getDataLayout();
       const llvm::StructLayout* SL = DL.getStructLayout(STy);
 
       std::vector<llvm::Constant*> Elements;
@@ -473,9 +657,9 @@ namespace clangRuntimeSpecializer {
         uint64_t Offset = SL->getElementOffset(i);
         const void* ElemPtr = static_cast<const char*>(ValuePtr) + Offset;
 
-        llvm::Value* ElemVal = serializeValueToIR(Builder, ElemTy, ElemPtr);
-        if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
-          Elements.push_back(C);
+        llvm::Constant* ElemVal = serializeValueToIR(M, ElemTy, ElemPtr);
+        if (ElemVal) {
+          Elements.push_back(ElemVal);
         } else {
           throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize struct element " + std::to_string(i));
         }
@@ -484,15 +668,15 @@ namespace clangRuntimeSpecializer {
     } else if (Type->isArrayTy()) {
       llvm::ArrayType* ATy = llvm::cast<llvm::ArrayType>(Type);
       llvm::Type* ElemTy = ATy->getElementType();
-      const llvm::DataLayout& DL = Module->getDataLayout();
+      const llvm::DataLayout& DL = M.getDataLayout();
       uint64_t ElemSize = DL.getTypeAllocSize(ElemTy);
 
       std::vector<llvm::Constant*> Elements;
       for (uint64_t i = 0; i < ATy->getNumElements(); ++i) {
         const void* ElemPtr = static_cast<const char*>(ValuePtr) + (i * ElemSize);
-        llvm::Value* ElemVal = serializeValueToIR(Builder, ElemTy, ElemPtr);
-        if (auto* C = llvm::dyn_cast_or_null<llvm::Constant>(ElemVal)) {
-          Elements.push_back(C);
+        llvm::Constant* ElemVal = serializeValueToIR(M, ElemTy, ElemPtr);
+        if (ElemVal) {
+          Elements.push_back(ElemVal);
         } else {
           throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize array element " + std::to_string(i));
         }

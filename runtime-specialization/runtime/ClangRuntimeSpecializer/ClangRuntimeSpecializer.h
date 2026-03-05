@@ -87,6 +87,7 @@ namespace clangRuntimeSpecializer {
 
     static void resetCounters();
     static InstructionCounts getCurrentCounters();
+    static void printCounters();
     static void printComparisonTable(const char* funcName, const InstructionCounts& Before, const InstructionCounts& After);
 
     static void log(LogLevel Level, const char* FuncName, const llvm::Twine Message);
@@ -131,180 +132,130 @@ namespace clangRuntimeSpecializer {
     const Options& getOptions() const { return CurrentOptions; }
 
 
-    //TODO extract the non generic logic into the cpp file. So still perform the generic arg serialization 
-    // in this header, but then call a method implemented in the cpp file.
     template <const char* funcName, class R, class... ARGS>
     [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
     __attribute__((noinline))
     R callSpecialized(ARGS&&... Args) {
-      if (funcName == nullptr) {
-        throw ClangRuntimeSpecializerError("funcName was null!");
-      }
-      if (Module == nullptr) {
-        throw ClangRuntimeSpecializerError("Module was null!");
-      }
-      if (!JIT) {
-        throw ClangRuntimeSpecializerError("JIT was not initialized!");
-      }
+      return callImpl<funcName, R, false, true>(__FUNCTION__, std::forward<ARGS>(Args)...);
+    }
 
-      std::string FuncNameStr(funcName);
-      CRS_LOG(Info, (llvm::Twine("Specializing call to: ") + funcName).str());
+    template <const char* funcName, class R, class... ARGS>
+    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    __attribute__((noinline))
+    R call_instrumented(ARGS&&... Args) {
+      return callImpl<funcName, R, true, true>(__FUNCTION__, std::forward<ARGS>(Args)...);
+    }
 
-      if (!FuncNameStr.empty() && FuncNameStr.front() == '&') {
-        FuncNameStr.erase(0, 1);
-      }
-      llvm::Function *TargetFunc = Module->getFunction(FuncNameStr);
-      if (TargetFunc == nullptr) {
-        throw ClangRuntimeSpecializerDumpedIRError((llvm::Twine("Could not find function: ") + funcName + " (It might be optimized out already by dead-code-elimination?)").str());
-      }
+    template <const char* funcName, class R, class... ARGS>
+    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    __attribute__((noinline))
+    R call_instrumented_baseline(ARGS&&... Args) {
+      return callImpl<funcName, R, true, false>(__FUNCTION__, std::forward<ARGS>(Args)...);
+    }
 
-      // Try to find the call site of call_specialized in the IR to get more precise type information.
-      llvm::CallBase* CallSite = findCallSpecializedFunctionInModule(__FUNCTION__,funcName);
+    ~ClangRuntimeSpecializer();
 
-      // Ensure the number of args between the callsite in the IR, the function to specialize and the number of passed args are compatible.
-      size_t NumArgs = sizeof...(ARGS);
-      
-      unsigned CallArgCount = CallSite->arg_size();
-      unsigned SkipArgs = 1; // 'this'
-      if (CallArgCount != SkipArgs + static_cast<unsigned>(NumArgs))
+  private:
+
+    template <const char* funcName, class R, bool Instrument,  bool Optimize = true, class... ARGS>
+    R callImpl(const char* CallerName, ARGS&&... Args) {
+      checkInitialization(funcName);
+      llvm::Function *TargetFunc = getTargetFunction(funcName);
+      llvm::CallBase* CallSite = findCallSpecializedFunctionInModule(CallerName, funcName);
+      validateArgs(TargetFunc, CallSite, sizeof...(ARGS));
+
+      if constexpr (Instrument)
       {
-        throw ClangRuntimeSpecializerError((llvm::Twine("Unexpected callsite arg count. callArgCount=") + llvm::Twine(CallArgCount) + ", numArgs=" + llvm::Twine(NumArgs) + " (expected " + llvm::Twine(static_cast<unsigned>(NumArgs) + 1) + ")").str());
+          log(LogLevel::Info, CallerName, (llvm::Twine("Instrumenting call to: ") + funcName).str());
       }
-
-      if (NumArgs != TargetFunc->arg_size())
+      else
       {
-        throw ClangRuntimeSpecializerError((llvm::Twine("The number of args are incompatible! numArgs: ") + llvm::Twine(NumArgs) + ", TargetFunc->arg_size(): " + llvm::Twine(TargetFunc->arg_size())).str());
+          log(LogLevel::Info, CallerName, (llvm::Twine("Specializing call to: ") + funcName).str());
       }
-
       // TODO reuse a clean copy of the llvm module. Possibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
       //   Currently we get conflicts, so specialization fails.
-      std::string UniqueWrapperName = "specialized_wrapper_" + std::to_string(++GlobalSpecializationCount) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
-
-      // Clone the module first to avoid polluting the main Module with multiple wrappers.
+      std::string UniqueWrapperName = createUniqueWrapperName() + (Optimize ? "" : "_no_opt");
       auto NewModule = llvm::CloneModule(*Module);
-      
-      // Create a new function that takes no arguments and, inside, calls the target with serialized constants.
-      llvm::IRBuilder<> Builder{Context};
-      llvm::FunctionType* FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
-      llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
-
-      llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Context, "entry", NewFunc);
-      Builder.SetInsertPoint(Entry);
-
       auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
-      
-      std::vector<llvm::Value*> ArgValues;
+      encourageInlining(TargetFuncInNewModule);
+
+      std::vector<llvm::Constant*> ArgConstants;
       std::vector<WriteBack> WriteBacks;
-          auto SerializeArgs = [&](auto&&... ArgsInner) {
-              unsigned I = 0;
-              ([&] {
-                  llvm::Argument* IrArg = TargetFunc->getArg(I);
-                  ArgValues.push_back(serializeArgumentToIR(Builder, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner), WriteBacks));
-                  I++;
-              }(), ...);
-          };
-          SerializeArgs(std::forward<ARGS>(Args)...);
 
-          for (llvm::Value* Arg : ArgValues)
-          {
-          CRS_LOG(Debug,[&]{return (llvm::Twine("Arg Serialized to: ") + printLLVM(Arg)).str();});
+      auto SerializeArgs = [&](auto&&... ArgsInner) {
+          unsigned I = 0;
+          ([&] {
+              llvm::Argument* IrArg = TargetFunc->getArg(I);
+              ArgConstants.push_back(serializeArgumentToIR(*NewModule, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner), WriteBacks));
+              I++;
+          }(), ...);
+      };
+      SerializeArgs(std::forward<ARGS>(Args)...);
+
+      for (llvm::Value* Arg : ArgConstants)
+      {
+          log(LogLevel::Debug, CallerName, (llvm::Twine("Arg Serialized to: ") + printLLVM(Arg)).str());
       }
 
-      // Encourage inlining for the callee in the JIT pipeline.
-      TargetFuncInNewModule->removeFnAttr(llvm::Attribute::NoInline);
-      TargetFuncInNewModule->removeFnAttr(llvm::Attribute::OptimizeNone);
-      TargetFuncInNewModule->addFnAttr(llvm::Attribute::AlwaysInline);
+      buildWrapperIR(*NewModule, UniqueWrapperName, TargetFuncInNewModule, ArgConstants, WriteBacks, Instrument,  Optimize);
 
-      auto *CallInst = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(), TargetFuncInNewModule, ArgValues);
-      CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
-      CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
-
-          for (const auto& WB : WriteBacks) {
-              llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
-              llvm::Constant* OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
-              llvm::Value* OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
-              Builder.CreateMemCpy(OriginalPtr, llvm::MaybeAlign(), WB.GV, llvm::MaybeAlign(), WB.Size);
-      }
-
-      if (TargetFuncInNewModule->getReturnType()->isVoidTy()) {
-        Builder.CreateRetVoid();
-      } else {
-        Builder.CreateRet(CallInst);
-      }
-
-      CRS_LOG(Debug,[&]{return (llvm::Twine("Specialized function IR:\n") + printLLVM(NewFunc)).str();});
-
-
-      // Every function except the specialized wrapper should have available_externally linkage
-      // if it has a definition. This allows the JIT inliner to see the bodies but won't
-      // produce a definition in the resulting object file, as we want to use the host's version
-      // if it's not inlined.
-      for (auto &F : *NewModule) {
-        if (F.getName() == UniqueWrapperName) {
-           F.setLinkage(llvm::GlobalValue::ExternalLinkage);
-           continue;
-        }
-        if (!F.isDeclaration()) {
-           F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
-        }
-      }
-      
-      // Also convert global variables to available_externally or declarations.
-      // Special care for constant strings and other internal globals.
-      for (auto &G : NewModule->globals()) {
-        if (!G.isDeclaration()) {
-          // If it's a constant string or similar internal, we might want to keep it
-          // as private/internal if we can't find it in the host.
-          // However, available_externally for globals usually works if they are
-          // indeed available. For JIT, internal globals might NOT be available.
-          if (G.hasInternalLinkage() || G.hasPrivateLinkage()) {
-            continue; // Keep internal/private globals as is.
-          }
-          G.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
-        }
-      }
+      prepareModuleForJIT(*NewModule, UniqueWrapperName);
 
       auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule),
                                              llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>()));
 
-      if (auto Err = JIT->addIRModule(std::move(TSM))) {
-        std::string ErrMsg = llvm::toString(std::move(Err));
-        throw ClangRuntimeSpecializerError("Failed to add module to JIT: " + ErrMsg);
+      // Export serialized argument addresses to the JIT if they are external (for baseline runs).
+      {
+          auto &JD = JIT->getMainJITDylib();
+          llvm::orc::SymbolMap Symbols;
+          for (const auto& WB : WriteBacks) {
+              if (WB.GV->hasExternalLinkage()) {
+                  Symbols[JIT->mangleAndIntern(WB.GV->getName())] = { llvm::orc::ExecutorAddr::fromPtr(WB.OriginalPtr), llvm::JITSymbolFlags::Exported };
+              }
+          }
+          if (!Symbols.empty()) {
+              cantFail(JD.define(llvm::orc::absoluteSymbols(Symbols)));
+          }
       }
 
-      auto SpecializedFn = JIT->lookup(UniqueWrapperName);
-      if (!SpecializedFn) {
-        std::string ErrMsg = llvm::toString(SpecializedFn.takeError());
-        throw ClangRuntimeSpecializerError("Failed to lookup wrapper: " + ErrMsg);
-      }
+      uintptr_t Addr = addModuleAndLookup(std::move(TSM), UniqueWrapperName);
 
-        auto SpecializedFnPtr = SpecializedFn->toPtr<R()>();
+        auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
         if constexpr (std::is_void_v<R>) {
-          SpecializedFnPtr();
-          return;
+            SpecializedFnPtr();
+            return;
         } else {
-        return SpecializedFnPtr();
-      }
+            return SpecializedFnPtr();
+        }
     }
-
-    ~ClangRuntimeSpecializer();
-  private:
 
     llvm::LLVMContext Context;
     std::unique_ptr<llvm::Module> Module;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
     Options CurrentOptions;
+    std::vector<std::unique_ptr<char[]>> SerializationBuffers;
+
+    void checkInitialization(const char* funcName) const;
+    llvm::Function* getTargetFunction(const char* funcName) const;
+    void validateArgs(llvm::Function* TargetFunc, llvm::CallBase* CallSite, size_t NumArgs) const;
+    std::string createUniqueWrapperName();
+    void prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName);
+    uintptr_t addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName);
+    void encourageInlining(llvm::Function* F);
+    llvm::Function* buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
+                                   llvm::ArrayRef<llvm::Constant*> SpecializedArgs, llvm::ArrayRef<WriteBack> WriteBacks,
+                                   bool ForceInstrument, bool Optimize = true);
 
     explicit ClangRuntimeSpecializer();
 
     llvm::CallBase* findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const;
 
     // Recursively serialize a value of a given LLVM type from a memory location.
-    llvm::Value* serializeValueToIR(llvm::IRBuilder<>& Builder, llvm::Type* Type, const void* ValuePtr);
+    llvm::Constant* serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr);
 
     template <class T>
-    llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& Builder, llvm::Argument* IrArg, T&& Value, std::vector<WriteBack>& WriteBacks) {
+    llvm::Constant* serializeArgumentToIR(llvm::Module& M, llvm::Argument* IrArg, T&& Value, std::vector<WriteBack>& WriteBacks) {
       using Decayed = std::decay_t<T>;
       llvm::Type* ExpectedType = IrArg ? IrArg->getType() : nullptr;
       if (!ExpectedType) {
@@ -320,7 +271,7 @@ namespace clangRuntimeSpecializer {
       if constexpr ((std::is_class_v<ElementType> || std::is_union_v<ElementType>) && !std::is_polymorphic_v<ElementType>) {
           struct DumpContext {
               ClangRuntimeSpecializer* Self;
-              llvm::IRBuilder<>& Builder;
+              llvm::Module& Module;
               llvm::Type* ExpectedType;
               llvm::Type* PreciseType = nullptr;
               
@@ -333,8 +284,8 @@ namespace clangRuntimeSpecializer {
               llvm::Constant* Result = nullptr;
               bool LastWasFieldHeader = false;
 
-              DumpContext(ClangRuntimeSpecializer* ClangRuntimeSpecializer, llvm::IRBuilder<>& IrBuilder, llvm::Type* Type)
-                  : Self(ClangRuntimeSpecializer), Builder(IrBuilder), ExpectedType(Type) {}
+              DumpContext(ClangRuntimeSpecializer* ClangRuntimeSpecializer, llvm::Module& M, llvm::Type* Type)
+                  : Self(ClangRuntimeSpecializer), Module(M), ExpectedType(Type) {}
 
               void handleTypeName(const char* Name) {
                   if (PreciseType) return;
@@ -343,18 +294,13 @@ namespace clangRuntimeSpecializer {
                   if (N.compare(0, 7, "struct ") == 0) N = N.substr(7);
                   else if (N.compare(0, 6, "class ") == 0) N = N.substr(6);
 
-                  auto& Ctx = Self->Module->getContext();
+                  auto& Ctx = Module.getContext();
                   if (auto* StructTy = llvm::StructType::getTypeByName(Ctx, "struct." + N)) PreciseType = StructTy;
                   else if (auto* ClassTy = llvm::StructType::getTypeByName(Ctx, "class." + N)) PreciseType = ClassTy;
                   else if (auto* Ty = llvm::StructType::getTypeByName(Ctx, N)) PreciseType = Ty;
                   
                   if (!PreciseType) {
                       if (ExpectedType->isStructTy()) PreciseType = ExpectedType;
-                      else if (ExpectedType->isPointerTy()) {
-                          // Try to find if there's a byval type or similar.
-                          // For now, if we can't find it by name, we might be in trouble
-                          // if the expectedType is just i8*.
-                      }
                   }
 
                   if (PreciseType) {
@@ -425,7 +371,7 @@ namespace clangRuntimeSpecializer {
               }
           };
 
-          DumpContext Ctx{this, Builder, ExpectedType};
+          DumpContext Ctx{this, M, ExpectedType};
           auto Callback = [](void* Context, const char* Fmt, ...) -> int {
               auto* C = static_cast<DumpContext*>(Context);
               va_list Args;
@@ -466,10 +412,10 @@ namespace clangRuntimeSpecializer {
                               void* Ptr = va_arg(Args, void*);
                               if (ETy->isPointerTy()) {
                                   uintptr_t Val = reinterpret_cast<uintptr_t>(Ptr);
-                                  C->addConstant(llvm::ConstantExpr::getIntToPtr(llvm::ConstantInt::get(llvm::Type::getInt64Ty(C->Builder.getContext()), Val), ETy));
+                                  C->addConstant(llvm::ConstantExpr::getIntToPtr(llvm::ConstantInt::get(llvm::Type::getInt64Ty(C->Module.getContext()), Val), ETy));
                               } else if (ETy->isArrayTy()) {
                                   // Nested array - use fallback
-                                  C->addConstant(llvm::cast<llvm::Constant>(C->Self->serializeValueToIR(C->Builder, ETy, Ptr)));
+                                  C->addConstant(C->Self->serializeValueToIR(C->Module, ETy, Ptr));
                               }
                           }
                       }
@@ -482,7 +428,7 @@ namespace clangRuntimeSpecializer {
           };
 
           if constexpr (std::is_pointer_v<Decayed>) {
-              if (!Value) return serializeValueToIR(Builder, ExpectedType, &Value);
+              if (!Value) return serializeValueToIR(M, ExpectedType, &Value);
               __builtin_dump_struct(Value, Callback, &Ctx);
           } else {
               __builtin_dump_struct(&Value, Callback, &Ctx);
@@ -496,9 +442,9 @@ namespace clangRuntimeSpecializer {
                   bool IsByVal = IrArg && IrArg->hasByValAttr();
                   bool ShouldWriteBack = !IsByVal;
 
-                  auto *CurrentModule = Builder.GetInsertBlock()->getModule();
-                  auto *GV = new llvm::GlobalVariable(*CurrentModule, Ctx.Result->getType(), !ShouldWriteBack,
+                  auto *GV = new llvm::GlobalVariable(M, Ctx.Result->getType(), !ShouldWriteBack,
                                                       llvm::GlobalValue::InternalLinkage, Ctx.Result, "specialized_instance");
+                  
                   if (ShouldWriteBack) {
                       void* Ptr = nullptr;
                       if constexpr (std::is_pointer_v<Decayed>) {
@@ -507,16 +453,16 @@ namespace clangRuntimeSpecializer {
                           Ptr = const_cast<void*>(static_cast<const void*>(&Value));
                       }
                       if (Ptr) {
-                          WriteBacks.push_back({GV, Ptr, CurrentModule->getDataLayout().getTypeStoreSize(Ctx.Result->getType())});
+                          WriteBacks.push_back({GV, Ptr, M.getDataLayout().getTypeStoreSize(Ctx.Result->getType())});
                       }
                   }
-                  return Builder.CreateBitCast(GV, ExpectedType);
+                  return llvm::ConstantExpr::getBitCast(GV, ExpectedType);
               }
               return Ctx.Result;
           }
       }
 
-      return serializeValueToIR(Builder, ExpectedType, &Value);
+      return serializeValueToIR(M, ExpectedType, &Value);
     }
   };
 
@@ -717,11 +663,11 @@ namespace clangRuntimeSpecializer {
     RS->resetCounters();
     if constexpr (std::is_void_v<R>) {
         std::apply([&](auto&&... CallArgs) {
-            RS->callInstrumented<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            RS->call_instrumented_baseline<funcName, void>(std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
         }, ArgsOrig);
     } else {
         std::apply([&](auto&&... CallArgs) {
-            RS->callInstrumented<funcName, R>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            RS->call_instrumented_baseline<funcName, R>(std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
         }, ArgsOrig);
     }
     Before = RS->getCurrentCounters();
@@ -730,11 +676,11 @@ namespace clangRuntimeSpecializer {
     RS->resetCounters();
     if constexpr (std::is_void_v<R>) {
         std::apply([&](auto&&... CallArgs) {
-            RS->callSpecialized<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            RS->call_instrumented<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
         }, ArgsSpec);
     } else {
         std::apply([&](auto&&... CallArgs) {
-            RS->callSpecialized<funcName, R>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            RS->call_instrumented<funcName, R>(std::forward<decltype(CallArgs)>(CallArgs)...);
         }, ArgsSpec);
     }
     After = RS->getCurrentCounters();
