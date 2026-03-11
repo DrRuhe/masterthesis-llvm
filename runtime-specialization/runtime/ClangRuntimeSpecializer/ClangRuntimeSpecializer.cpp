@@ -261,10 +261,13 @@ namespace clangRuntimeSpecializer {
                 // Ensure that internal functions can be inlined by making them linkonce_odr
                 // or similar if they were just internal. Actually, for JIT it should be fine,
                 // but let's make sure the target functions are not marked as "noinline".
+                // For runtime specialization, mark ALL functions as alwaysinline to force
+                // maximum inlining - we don't care about code size, only optimization.
                 for (auto &F : M) {
                   if (!F.isDeclaration()) {
                     F.removeFnAttr(llvm::Attribute::NoInline);
                     F.removeFnAttr(llvm::Attribute::OptimizeNone);
+                    F.addFnAttr(llvm::Attribute::AlwaysInline);
                   }
                 }
 
@@ -293,9 +296,33 @@ namespace clangRuntimeSpecializer {
 
               // After aggressive inlining, run the regular O3 pipeline to clean up
               // and perform further optimizations on the now inlined code.
+              // This includes devirtualization and further inlining opportunities.
               {
                 llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
                 MPM.run(M, MAM);
+              }
+
+              // Run another round of aggressive inlining after O3 to catch any
+              // opportunities unlocked by devirtualization and other optimizations.
+              {
+                llvm::ModulePassManager FinalInliningMPM;
+
+                // Configure even more aggressive inline parameters for the final pass.
+                llvm::InlineParams IP = llvm::getInlineParams();
+                IP.DefaultThreshold = 500000;
+                IP.HintThreshold = 500000;
+                IP.ColdThreshold = 500000;
+                IP.OptSizeThreshold = 500000;
+                IP.OptMinSizeThreshold = 500000;
+                IP.HotCallSiteThreshold = 500000;
+                IP.LocallyHotCallSiteThreshold = 500000;
+                IP.ColdCallSiteThreshold = 500000;
+                IP.ComputeFullInlineCost = true;
+                IP.EnableDeferral = false;
+                IP.AllowRecursiveCall = true;
+
+                FinalInliningMPM.addPass(llvm::ModuleInlinerPass(IP));
+                FinalInliningMPM.run(M, MAM);
               }
             }
 
