@@ -106,6 +106,7 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-
 // EXE-NOT: ERROR: [specializeFunctionOrFallback] Specialization failed:
+// EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+// EXE-NOT: call noundef i32 @"Filter::next"
 // EXE: Operators returned 5
