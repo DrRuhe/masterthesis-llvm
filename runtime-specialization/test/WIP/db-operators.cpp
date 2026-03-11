@@ -1,6 +1,7 @@
 // RUN: %clangxx -g -O0 -emit-llvm -c %s -o %t.bc
 // RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
+// RUN: %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
 
 #include <iostream>
 #include <string>
@@ -95,8 +96,7 @@ namespace SqlParser {
     }
 }
 
-// RUN: %t.exe '>=95' '<100'
-// | FileCheck %s --check-prefix=EXE --dump-input=always
+
 int main(int argc, char* argv[]) {
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
@@ -106,4 +106,6 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-// EXE: Operators returned 95
+
+// EXE-NOT: ERROR: [specializeFunctionOrFallback] Specialization failed:
+// EXE: Operators returned 5

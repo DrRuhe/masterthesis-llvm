@@ -5,7 +5,7 @@
 // Test that there is a RuntimeSpecializableIR_ptr now:
 // RUN: opt -S %t.opt.bc -o - | FileCheck %s --check-prefix=POST-DUMP
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
-// RUN: %t.exe 2 | FileCheck %s --check-prefix=EXE
+// RUN: %t.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
 
 
 
