@@ -440,13 +440,30 @@ namespace clangRuntimeSpecializer {
     // if it's not inlined.
     // If we are in baseline mode (no optimize), we want to make sure the target functions
     // are compiled and instrumented, so we use internal linkage.
+    // Exception: Functions that are unlikely to be available externally (e.g., with custom
+    // asm names, constructors/destructors, or member functions) should use internal linkage.
     for (auto &F : M) {
       if (F.getName() == WrapperName) {
          F.setLinkage(llvm::GlobalValue::ExternalLinkage);
          continue;
       }
       if (!F.isDeclaration()) {
-         if (!Optimize) {
+         // Check if this function should be kept internal for the JIT
+         bool KeepInternal = !Optimize;
+
+         if (Optimize) {
+             // Keep constructors, destructors, and functions with custom asm names internal
+             // as they may not be exported from the host executable
+             llvm::StringRef FName = F.getName();
+             if (FName.contains("C1E") || FName.contains("C2E") ||  // Constructors
+                 FName.contains("D1E") || FName.contains("D2E") ||  // Destructors
+                 FName.contains("D0E") ||                           // Deleting destructor
+                 !FName.starts_with("_Z")) {                         // Non-mangled (custom asm name)
+                 KeepInternal = true;
+             }
+         }
+
+         if (KeepInternal) {
              F.setLinkage(llvm::GlobalValue::InternalLinkage);
          } else {
              F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
