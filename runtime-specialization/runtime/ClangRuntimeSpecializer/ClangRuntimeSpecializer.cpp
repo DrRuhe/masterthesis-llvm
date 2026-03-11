@@ -17,6 +17,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/ModuleInliner.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/Analysis/InlineCost.h"
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
@@ -250,6 +251,15 @@ namespace clangRuntimeSpecializer {
                     Optimize = false;
                     break;
                 }
+            }
+
+            // Strip debug info by default to reduce JIT overhead and code size.
+            // Only keep debug info if explicitly requested via setKeepDebugInfo(true).
+            if (!Instance->shouldKeepDebugInfo()) {
+              bool DebugInfoStripped = llvm::StripDebugInfo(M);
+              if (DebugInfoStripped) {
+                log(LogLevel::Debug, "IRTransform", "Debug info stripped from JIT module");
+              }
             }
 
             if (Optimize) {

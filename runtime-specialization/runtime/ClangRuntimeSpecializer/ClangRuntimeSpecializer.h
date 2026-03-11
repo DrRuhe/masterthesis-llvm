@@ -116,6 +116,7 @@ namespace clangRuntimeSpecializer {
 
     struct Options {
       bool EnableInstructionInstrumentation = false;
+      bool KeepDebugInfo = false;
     };
 
     static ClangRuntimeSpecializer* init();
@@ -126,6 +127,15 @@ namespace clangRuntimeSpecializer {
 
     bool isInstructionInstrumentationEnabled() const {
       return CurrentOptions.EnableInstructionInstrumentation;
+    }
+
+    ClangRuntimeSpecializer* setKeepDebugInfo(bool Keep) {
+      CurrentOptions.KeepDebugInfo = Keep;
+      return this;
+    }
+
+    bool shouldKeepDebugInfo() const {
+      return CurrentOptions.KeepDebugInfo;
     }
 
     Options& getOptions() { return CurrentOptions; }
