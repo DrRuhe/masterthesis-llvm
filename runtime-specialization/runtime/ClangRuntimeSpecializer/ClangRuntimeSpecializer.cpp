@@ -381,7 +381,14 @@ namespace clangRuntimeSpecializer {
                 // GVN - propagate constants through inlined code (KEY for devirtualization!)
                 PostInlineFPM.addPass(llvm::GVNPass());
 
-                // InstCombine immediately after GVN - fold loads of constant vtable pointers
+                // CUSTOM: VTable constant folding - replace vtable loads with constants
+                // This is our custom pass that specifically handles the pattern:
+                //   %obj = alloca; store @vtable, %obj; load %obj
+                // It replaces the loads with the known constant vtable pointer.
+                PostInlineFPM.addPass(llvm::VTableConstantFoldingPass());
+
+                // InstCombine immediately after - fold loads of constant vtable pointers
+                // and devirtualize the now-direct function pointer calls
                 PostInlineFPM.addPass(llvm::InstCombinePass());
 
                 // SROA again - eliminate redundant alloca/store/load patterns

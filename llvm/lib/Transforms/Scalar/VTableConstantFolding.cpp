@@ -1,0 +1,279 @@
+//===- VTableConstantFolding.cpp - Fold constant vtable pointers ----------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+//
+// This pass identifies vtable pointers stored as constants to allocas and
+// replaces loads of those pointers with the known constants. This enables
+// devirtualization of virtual calls in JIT-compiled code.
+//
+// Pattern matched:
+//   %obj = alloca %class.Type
+//   store ptr @_ZTV_Type+offset, ptr %obj    ; constant vtable store
+//   ...
+//   %vtable = load ptr, ptr %obj              ; load vtable pointer
+//   %funcptr = load ptr, ptr %vtable+N        ; load function pointer
+//   call %funcptr(...)                        ; indirect virtual call
+//
+// Transformation:
+//   Replace the vtable load with the known constant, enabling subsequent
+//   passes (InstCombine, Inliner) to devirtualize the call.
+//
+// Safety: Only optimizes when we can prove the vtable pointer never changes:
+//   1. Single vtable store to the alloca (one constructor)
+//   2. Store dominates all loads
+//   3. No subsequent stores to the vtable pointer location
+//   4. No placement-new patterns
+//
+//===----------------------------------------------------------------------===//
+
+#include "llvm/Transforms/Scalar/VTableConstantFolding.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/ValueTracking.h"
+#include "llvm/IR/Dominators.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/PatternMatch.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/Local.h"
+
+using namespace llvm;
+using namespace llvm::PatternMatch;
+
+#define DEBUG_TYPE "vtable-constant-folding"
+
+STATISTIC(NumVTableLoadsReplaced, "Number of vtable loads replaced with constants");
+
+namespace {
+
+struct VTableInfo {
+  AllocaInst *Alloca;
+  StoreInst *VTableStore;
+  Value *VTableConstant;
+  SmallVector<LoadInst *, 4> VTableLoads;
+};
+
+} // end anonymous namespace
+
+/// Find the store that initializes the vtable pointer (offset 0) of an alloca.
+/// Returns nullptr if no such store exists or if there are multiple stores.
+static StoreInst *findSingleVTableStore(AllocaInst *AI, DominatorTree &DT) {
+  StoreInst *VTableStore = nullptr;
+
+  for (User *U : AI->users()) {
+    if (auto *SI = dyn_cast<StoreInst>(U)) {
+      // Check if this store is to the vtable pointer location (offset 0)
+      if (SI->getPointerOperand() == AI) {
+        // Found a store directly to the alloca (offset 0 - the vtable pointer)
+        if (VTableStore != nullptr) {
+          // Multiple stores to vtable pointer - not safe
+          LLVM_DEBUG(dbgs() << "  Multiple vtable stores found, skipping\n");
+          return nullptr;
+        }
+        VTableStore = SI;
+      }
+    }
+  }
+
+  return VTableStore;
+}
+
+/// Check if the stored value is a constant vtable pointer.
+/// Vtable pointers are typically getelementptr constants pointing into vtables.
+static Value *getConstantVTablePointer(StoreInst *SI) {
+  Value *StoredValue = SI->getValueOperand();
+
+  // Check if it's a constant expression (getelementptr to a vtable)
+  if (auto *CE = dyn_cast<ConstantExpr>(StoredValue)) {
+    if (CE->getOpcode() == Instruction::GetElementPtr) {
+      // This is a GEP constant expression, likely pointing to a vtable
+      return CE;
+    }
+  }
+
+  // Check if it's a constant pointer
+  if (isa<Constant>(StoredValue) && StoredValue->getType()->isPointerTy()) {
+    return StoredValue;
+  }
+
+  return nullptr;
+}
+
+/// Check if there are any stores to the vtable pointer location after the
+/// initial constructor store. This would indicate the vtable pointer changes.
+static bool hasSubsequentVTableStores(AllocaInst *AI, StoreInst *InitialStore) {
+  for (User *U : AI->users()) {
+    if (auto *SI = dyn_cast<StoreInst>(U)) {
+      if (SI != InitialStore && SI->getPointerOperand() == AI) {
+        LLVM_DEBUG(dbgs() << "  Found subsequent vtable store, skipping\n");
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/// Check for placement-new pattern: llvm.lifetime.end followed by another store.
+static bool hasPlacementNewPattern(AllocaInst *AI, StoreInst *InitialStore) {
+  bool SeenLifetimeEnd = false;
+
+  for (User *U : AI->users()) {
+    if (auto *II = dyn_cast<IntrinsicInst>(U)) {
+      if (II->getIntrinsicID() == Intrinsic::lifetime_end) {
+        SeenLifetimeEnd = true;
+      }
+    } else if (auto *SI = dyn_cast<StoreInst>(U)) {
+      if (SI != InitialStore && SeenLifetimeEnd && SI->getPointerOperand() == AI) {
+        LLVM_DEBUG(dbgs() << "  Found placement-new pattern, skipping\n");
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/// Find all loads of the vtable pointer (loads directly from the alloca).
+static void findVTableLoads(AllocaInst *AI, SmallVectorImpl<LoadInst *> &Loads) {
+  for (User *U : AI->users()) {
+    if (auto *LI = dyn_cast<LoadInst>(U)) {
+      if (LI->getPointerOperand() == AI) {
+        Loads.push_back(LI);
+      }
+    }
+  }
+}
+
+/// Check if the vtable store dominates all loads.
+static bool storeDominatesAllLoads(StoreInst *Store,
+                                    ArrayRef<LoadInst *> Loads,
+                                    DominatorTree &DT) {
+  for (LoadInst *Load : Loads) {
+    if (!DT.dominates(Store, Load)) {
+      LLVM_DEBUG(dbgs() << "  Store does not dominate all loads, skipping\n");
+      return false;
+    }
+  }
+  return true;
+}
+
+/// Main analysis: determine if an alloca is safe to optimize.
+static bool analyzeAlloca(AllocaInst *AI, DominatorTree &DT, VTableInfo &Info) {
+  LLVM_DEBUG(dbgs() << "Analyzing alloca: " << *AI << "\n");
+
+  // Must be a struct type (has vtable pointer)
+  if (!AI->getAllocatedType()->isStructTy()) {
+    return false;
+  }
+
+  // Find the single vtable store
+  StoreInst *VTableStore = findSingleVTableStore(AI, DT);
+  if (!VTableStore) {
+    return false;
+  }
+
+  // Check if the stored value is a constant vtable pointer
+  Value *VTableConst = getConstantVTablePointer(VTableStore);
+  if (!VTableConst) {
+    LLVM_DEBUG(dbgs() << "  Vtable store is not a constant, skipping\n");
+    return false;
+  }
+
+  // Check for subsequent stores to the vtable pointer
+  if (hasSubsequentVTableStores(AI, VTableStore)) {
+    return false;
+  }
+
+  // Check for placement-new pattern
+  if (hasPlacementNewPattern(AI, VTableStore)) {
+    return false;
+  }
+
+  // Find all vtable loads
+  SmallVector<LoadInst *, 4> VTableLoads;
+  findVTableLoads(AI, VTableLoads);
+
+  if (VTableLoads.empty()) {
+    // No loads to optimize
+    return false;
+  }
+
+  // Check that the store dominates all loads
+  if (!storeDominatesAllLoads(VTableStore, VTableLoads, DT)) {
+    return false;
+  }
+
+  // Safe to optimize!
+  Info.Alloca = AI;
+  Info.VTableStore = VTableStore;
+  Info.VTableConstant = VTableConst;
+  Info.VTableLoads = std::move(VTableLoads);
+
+  LLVM_DEBUG(dbgs() << "  Found optimizable vtable pattern with "
+                    << Info.VTableLoads.size() << " loads\n");
+  return true;
+}
+
+/// Perform the transformation: replace vtable loads with the constant.
+static bool transformVTableLoads(VTableInfo &Info) {
+  bool Changed = false;
+
+  for (LoadInst *Load : Info.VTableLoads) {
+    LLVM_DEBUG(dbgs() << "  Replacing load: " << *Load
+                      << "\n    with constant: " << *Info.VTableConstant << "\n");
+
+    Load->replaceAllUsesWith(Info.VTableConstant);
+    Load->eraseFromParent();
+    ++NumVTableLoadsReplaced;
+    Changed = true;
+  }
+
+  return Changed;
+}
+
+PreservedAnalyses VTableConstantFoldingPass::run(Function &F,
+                                                   FunctionAnalysisManager &AM) {
+  LLVM_DEBUG(dbgs() << "Running VTableConstantFolding on function: "
+                    << F.getName() << "\n");
+
+  auto &DT = AM.getResult<DominatorTreeAnalysis>(F);
+
+  SmallVector<VTableInfo, 4> Candidates;
+
+  // Scan all allocas in the entry block
+  BasicBlock &Entry = F.getEntryBlock();
+  for (Instruction &I : Entry) {
+    if (auto *AI = dyn_cast<AllocaInst>(&I)) {
+      VTableInfo Info;
+      if (analyzeAlloca(AI, DT, Info)) {
+        Candidates.push_back(std::move(Info));
+      }
+    }
+  }
+
+  if (Candidates.empty()) {
+    return PreservedAnalyses::all();
+  }
+
+  // Transform all candidates
+  bool Changed = false;
+  for (VTableInfo &Info : Candidates) {
+    Changed |= transformVTableLoads(Info);
+  }
+
+  if (!Changed) {
+    return PreservedAnalyses::all();
+  }
+
+  // We modified the IR, invalidate affected analyses
+  PreservedAnalyses PA;
+  PA.preserveSet<CFGAnalyses>();
+  return PA;
+}
