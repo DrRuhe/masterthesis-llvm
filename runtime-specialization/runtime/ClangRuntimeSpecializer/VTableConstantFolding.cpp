@@ -1,8 +1,5 @@
 //===- VTableConstantFolding.cpp - Fold constant vtable pointers ----------===//
 //
-// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -28,9 +25,11 @@
 //   3. No subsequent stores to the vtable pointer location
 //   4. No placement-new patterns
 //
+// This is a custom pass for the ClangRuntimeSpecializer JIT system.
+//
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Scalar/VTableConstantFolding.h"
+#include "VTableConstantFolding.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/ValueTracking.h"

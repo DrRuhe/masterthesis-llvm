@@ -10,10 +10,12 @@
 // replaces loads of those pointers with the known constants. This enables
 // devirtualization of virtual calls in JIT-compiled code.
 //
+// This is a custom pass for the ClangRuntimeSpecializer JIT system.
+//
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TRANSFORMS_SCALAR_VTABLECONSTANTFOLDING_H
-#define LLVM_TRANSFORMS_SCALAR_VTABLECONSTANTFOLDING_H
+#ifndef CLANG_RUNTIME_SPECIALIZER_VTABLECONSTANTFOLDING_H
+#define CLANG_RUNTIME_SPECIALIZER_VTABLECONSTANTFOLDING_H
 
 #include "llvm/IR/PassManager.h"
 
@@ -26,4 +28,4 @@ public:
 
 } // end namespace llvm
 
-#endif // LLVM_TRANSFORMS_SCALAR_VTABLECONSTANTFOLDING_H
+#endif // CLANG_RUNTIME_SPECIALIZER_VTABLECONSTANTFOLDING_H

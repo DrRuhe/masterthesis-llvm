@@ -31,7 +31,7 @@
 #include "llvm/Transforms/Scalar/JumpThreading.h"
 #include "llvm/Transforms/Scalar/CorrelatedValuePropagation.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
-#include "llvm/Transforms/Scalar/VTableConstantFolding.h"
+#include "VTableConstantFolding.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Verifier.h"
