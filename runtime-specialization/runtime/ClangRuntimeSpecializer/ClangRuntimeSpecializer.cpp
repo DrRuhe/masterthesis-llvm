@@ -794,6 +794,66 @@ namespace clangRuntimeSpecializer {
     throw ClangRuntimeSpecializerDumpedIRError("Could not find callsite for UID: " + std::string(UID));
   }
 
+  // Helper function to identify concrete type from vtable pointer
+  llvm::StructType* ClangRuntimeSpecializer::identifyPolymorphicType(llvm::Module& M, const void* ObjectPtr) {
+    // Read the vtable pointer from the object (first pointer in memory layout)
+    const void* const* VTablePtrLoc = static_cast<const void* const*>(ObjectPtr);
+    const void* VTablePtr = *VTablePtrLoc;
+
+    log(LogLevel::Debug, "identifyPolymorphicType", [&] {
+        return llvm::formatv("Identifying type for vtable pointer: {0}", VTablePtr).str();
+    });
+
+    // Iterate through all global variables to find matching vtables
+    for (llvm::GlobalVariable& GV : M.globals()) {
+      if (!GV.hasName()) continue;
+
+      llvm::StringRef Name = GV.getName();
+
+      // Look for vtable symbols (mangled names starting with _ZTV)
+      if (Name.starts_with("_ZTV")) {
+        // Get the runtime address of this vtable
+        void* GVAddr = dlsym(RTLD_DEFAULT, Name.str().c_str());
+        if (!GVAddr) continue;
+
+        // Vtables have offset +16 bytes (past type_info pointer)
+        const void* VTableStart = static_cast<const char*>(GVAddr) + 16;
+
+        if (VTableStart == VTablePtr) {
+          // Found matching vtable! Extract the class name from mangled name
+          // _ZTV<len><name> -> extract the class name
+          std::string MangledName = Name.str().substr(4); // Skip "_ZTV"
+
+          log(LogLevel::Debug, "identifyPolymorphicType", [&] {
+              return llvm::formatv("Found matching vtable: {0}", Name).str();
+          });
+
+          // Try to find corresponding struct type in module
+          // Try different naming conventions: class.<name>, struct.<name>, <name>
+          for (llvm::StructType* STy : M.getIdentifiedStructTypes()) {
+            llvm::StringRef StructName = STy->getName();
+
+            // Match if the struct name contains the class name from vtable
+            if (StructName.contains(MangledName) ||
+                (StructName.starts_with("class.") && Name.contains(StructName.substr(6))) ||
+                (StructName.starts_with("struct.") && Name.contains(StructName.substr(7)))) {
+              log(LogLevel::Debug, "identifyPolymorphicType", [&] {
+                  return llvm::formatv("Identified concrete type: {0}", printLLVM(STy)).str();
+              });
+              return STy;
+            }
+          }
+        }
+      }
+    }
+
+    log(LogLevel::Debug, "identifyPolymorphicType", [&] {
+        return "Could not identify concrete type from vtable pointer";
+    });
+
+    return nullptr;
+  }
+
   llvm::Constant* ClangRuntimeSpecializer::serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr) {
     log(LogLevel::Debug, "serializeValueToIR", [&] {
         return llvm::formatv("Serializing value of type {0}", printLLVM(Type)).str();

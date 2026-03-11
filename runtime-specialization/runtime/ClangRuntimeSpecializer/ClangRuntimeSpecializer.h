@@ -261,6 +261,9 @@ namespace clangRuntimeSpecializer {
 
     llvm::CallBase* findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const;
 
+    // Helper to identify concrete type of a polymorphic object from its vtable pointer
+    llvm::StructType* identifyPolymorphicType(llvm::Module& M, const void* ObjectPtr);
+
     // Recursively serialize a value of a given LLVM type from a memory location.
     llvm::Constant* serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr);
 
@@ -277,7 +280,60 @@ namespace clangRuntimeSpecializer {
       });
 
       using ElementType = std::conditional_t<std::is_pointer_v<Decayed>, std::remove_pointer_t<Decayed>, Decayed>;
-      
+
+      // Handle polymorphic types by reconstructing them with their concrete type
+      if constexpr (std::is_polymorphic_v<ElementType>) {
+          const void* ObjectPtr = nullptr;
+          if constexpr (std::is_pointer_v<Decayed>) {
+              ObjectPtr = Value;
+          } else {
+              ObjectPtr = &Value;
+          }
+
+          if (!ObjectPtr) {
+              // Null pointer - serialize as null
+              return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ExpectedType));
+          }
+
+          CRS_LOG(Debug,[&] {
+              return "Serializing polymorphic type - identifying concrete type";
+          });
+
+          // Identify the concrete type from the vtable pointer
+          llvm::StructType* ConcreteType = identifyPolymorphicType(M, ObjectPtr);
+
+          if (!ConcreteType) {
+              CRS_LOG(Debug,[&] {
+                  return "Could not identify concrete type - falling back to opaque pointer";
+              });
+              // Fall back to pointer serialization
+              return serializeValueToIR(M, ExpectedType, &Value);
+          }
+
+          CRS_LOG(Debug,[&] {
+              return (llvm::Twine("Serializing polymorphic object with concrete type: ") + printLLVM(ConcreteType)).str();
+          });
+
+          // Serialize the object with its concrete type (recursively handles polymorphic members)
+          llvm::Constant* SerializedObject = serializeValueToIR(M, ConcreteType, ObjectPtr);
+
+          if (!SerializedObject) {
+              throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize polymorphic object");
+          }
+
+          // Create a global variable with the serialized object
+          auto *GV = new llvm::GlobalVariable(M, ConcreteType, true,
+                                              llvm::GlobalValue::InternalLinkage,
+                                              SerializedObject, "polymorphic_object");
+
+          // Return a pointer to the global, bitcast if necessary
+          if (ExpectedType->isPointerTy()) {
+              return llvm::ConstantExpr::getBitCast(GV, ExpectedType);
+          } else {
+              return GV;
+          }
+      }
+
       if constexpr ((std::is_class_v<ElementType> || std::is_union_v<ElementType>) && !std::is_polymorphic_v<ElementType>) {
           struct DumpContext {
               ClangRuntimeSpecializer* Self;
