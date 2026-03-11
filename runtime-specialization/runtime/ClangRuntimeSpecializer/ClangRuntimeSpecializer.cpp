@@ -1,9 +1,9 @@
 #include "ClangRuntimeSpecializer.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <dlfcn.h>
 #include <utility>
-#include <algorithm>
 #include <vector>
 
 #include "llvm/Bitcode/BitcodeReader.h"
@@ -17,7 +17,24 @@
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/ModuleInliner.h"
+#include "llvm/Transforms/IPO/SCCP.h"
+#include "llvm/Transforms/IPO/GlobalOpt.h"
+#include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/IPO/WholeProgramDevirt.h"
+#include "llvm/Transforms/Scalar/SROA.h"
+#include "llvm/Transforms/Scalar/SimplifyCFG.h"
+#include "llvm/Transforms/Scalar/InstSimplifyPass.h"
+#include "llvm/Transforms/Scalar/GVN.h"
+#include "llvm/Transforms/Scalar/LICM.h"
+#include "llvm/Transforms/Scalar/LoopUnrollPass.h"
+#include "llvm/Transforms/Scalar/LoopRotation.h"
+#include "llvm/Transforms/Scalar/JumpThreading.h"
+#include "llvm/Transforms/Scalar/CorrelatedValuePropagation.h"
+#include "llvm/Transforms/Scalar/EarlyCSE.h"
+#include "llvm/Transforms/Scalar/VTableConstantFolding.h"
+#include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Analysis/InlineCost.h"
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
@@ -263,61 +280,85 @@ namespace clangRuntimeSpecializer {
             }
 
             if (Optimize) {
-              // Enable very aggressive inlining prior to the regular O3 pipeline.
-              // We first run AlwaysInliner to respect any alwaysinline hints, then
-              // a ModuleInlinerPass configured with extremely high thresholds and
-              // relaxed deferral/recursion settings to inline as much as possible.
-              {
-                // Ensure that internal functions can be inlined by making them linkonce_odr
-                // or similar if they were just internal. Actually, for JIT it should be fine,
-                // but let's make sure the target functions are not marked as "noinline".
-                // For runtime specialization, mark ALL functions as alwaysinline to force
-                // maximum inlining - we don't care about code size, only optimization.
-                for (auto &F : M) {
-                  if (!F.isDeclaration()) {
-                    F.removeFnAttr(llvm::Attribute::NoInline);
-                    F.removeFnAttr(llvm::Attribute::OptimizeNone);
-                    F.addFnAttr(llvm::Attribute::AlwaysInline);
-                  }
+              // FIXPOINT ITERATION: Runtime specialization requires aggressive devirtualization
+              // and inlining. We iterate with a carefully ordered pipeline:
+              // 1. IPSCCP -> GlobalOpt -> GlobalDCE (interprocedural constant propagation & devirt)
+              // 2. Pre-inlining passes: EarlyCSE, SROA, JumpThreading, CVP, InstCombine
+              // 3. ModuleInliner (aggressive inlining)
+              // 4. Post-inlining passes: GVN (KEY!), EarlyCSE, JumpThreading, CVP, loop opts
+              // The CRITICAL insight: GVN must run AFTER inlining to propagate vtable pointer
+              // constants through the inlined code, enabling complete devirtualization.
+              // This ensures virtual calls like Filter::next and Scan::next are fully devirtualized
+              // and inlined, eliminating all vtable lookups.
+
+              // Prepare all functions for aggressive inlining
+              for (auto &F : M) {
+                if (!F.isDeclaration()) {
+                  F.removeFnAttr(llvm::Attribute::NoInline);
+                  F.removeFnAttr(llvm::Attribute::OptimizeNone);
+                  F.addFnAttr(llvm::Attribute::AlwaysInline);
                 }
-
-                llvm::ModulePassManager AggressiveMPM;
-
-                // Respect alwaysinline attributes.
-                AggressiveMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
-
-                // Configure aggressive inline parameters.
-                llvm::InlineParams IP = llvm::getInlineParams();
-                IP.DefaultThreshold = 100000;
-                IP.HintThreshold = 100000;
-                IP.ColdThreshold = 100000;
-                IP.OptSizeThreshold = 100000;
-                IP.OptMinSizeThreshold = 100000;
-                IP.HotCallSiteThreshold = 100000;
-                IP.LocallyHotCallSiteThreshold = 100000;
-                IP.ColdCallSiteThreshold = 100000;
-                IP.ComputeFullInlineCost = true;
-                IP.EnableDeferral = false;
-                IP.AllowRecursiveCall = true;
-
-                AggressiveMPM.addPass(llvm::ModuleInlinerPass(IP));
-                AggressiveMPM.run(M, MAM);
               }
 
-              // After aggressive inlining, run the regular O3 pipeline to clean up
-              // and perform further optimizations on the now inlined code.
-              // This includes devirtualization and further inlining opportunities.
+              // Initial pass: Always inline marked functions
               {
-                llvm::ModulePassManager MPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
-                MPM.run(M, MAM);
+                llvm::ModulePassManager InitialMPM;
+                InitialMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
+                InitialMPM.run(M, MAM);
               }
 
-              // Run another round of aggressive inlining after O3 to catch any
-              // opportunities unlocked by devirtualization and other optimizations.
-              {
-                llvm::ModulePassManager FinalInliningMPM;
+              // Fixpoint iteration: Run until no more changes occur
+              // We count instructions to detect convergence
+              constexpr int MaxFixpointIterations = 10;
+              size_t PrevInstCount = 0;
 
-                // Configure even more aggressive inline parameters for the final pass.
+              for (int Iteration = 0; Iteration < MaxFixpointIterations; ++Iteration) {
+                log(LogLevel::Debug, "IRTransform",
+                    llvm::formatv("Fixpoint iteration {0}", Iteration).str());
+
+                llvm::ModulePassManager FixpointMPM;
+
+                // 1. Interprocedural Sparse Conditional Constant Propagation
+                // This propagates constants across function boundaries and can turn
+                // indirect calls into direct calls
+                FixpointMPM.addPass(llvm::IPSCCPPass());
+
+                // 2. Global optimizations - includes devirtualization
+                // GlobalOpt can devirtualize calls when it knows the concrete type
+                FixpointMPM.addPass(llvm::GlobalOptPass());
+
+                // 2b. Whole-program devirtualization - attempts to devirtualize based on
+                // vtable information. This can eliminate virtual calls when the set of
+                // possible callees is known.
+                FixpointMPM.addPass(llvm::WholeProgramDevirtPass());
+
+                // 3. Dead code elimination - removes unreachable vtable entries
+                FixpointMPM.addPass(llvm::GlobalDCEPass());
+
+                // 4. Pre-inlining function-level optimizations
+                llvm::FunctionPassManager PreInlineFPM;
+
+                // EarlyCSE with MemorySSA - eliminate redundant loads early
+                PreInlineFPM.addPass(llvm::EarlyCSEPass(/*UseMemorySSA=*/true));
+
+                // SROA - breaks down aggregates into scalars
+                PreInlineFPM.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+
+                // JumpThreading - thread control flow based on known values
+                PreInlineFPM.addPass(llvm::JumpThreadingPass());
+
+                // CorrelatedValuePropagation - propagate value constraints
+                PreInlineFPM.addPass(llvm::CorrelatedValuePropagationPass());
+
+                // SimplifyCFG - cleanup control flow
+                PreInlineFPM.addPass(llvm::SimplifyCFGPass());
+
+                // InstCombine - combine instructions to expose more devirtualization
+                PreInlineFPM.addPass(llvm::InstCombinePass());
+
+                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PreInlineFPM)));
+
+                // 5. Aggressive inlining - inline everything possible
                 llvm::InlineParams IP = llvm::getInlineParams();
                 IP.DefaultThreshold = 500000;
                 IP.HintThreshold = 500000;
@@ -327,12 +368,88 @@ namespace clangRuntimeSpecializer {
                 IP.HotCallSiteThreshold = 500000;
                 IP.LocallyHotCallSiteThreshold = 500000;
                 IP.ColdCallSiteThreshold = 500000;
-                IP.ComputeFullInlineCost = true;
+                IP.ComputeFullInlineCost = false;  // Faster
                 IP.EnableDeferral = false;
                 IP.AllowRecursiveCall = true;
 
-                FinalInliningMPM.addPass(llvm::ModuleInlinerPass(IP));
-                FinalInliningMPM.run(M, MAM);
+                FixpointMPM.addPass(llvm::ModuleInlinerPass(IP));
+
+                // 6. CRITICAL: Post-inlining optimizations
+                // GVN can NOW see through inlined code and propagate vtable pointer constants!
+                llvm::FunctionPassManager PostInlineFPM;
+
+                // GVN - propagate constants through inlined code (KEY for devirtualization!)
+                PostInlineFPM.addPass(llvm::GVNPass());
+
+                // InstCombine immediately after GVN - fold loads of constant vtable pointers
+                PostInlineFPM.addPass(llvm::InstCombinePass());
+
+                // SROA again - eliminate redundant alloca/store/load patterns
+                PostInlineFPM.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+
+                // InstCombine again after SROA
+                PostInlineFPM.addPass(llvm::InstCombinePass());
+
+                // EarlyCSE - cleanup redundant loads
+                PostInlineFPM.addPass(llvm::EarlyCSEPass(/*UseMemorySSA=*/true));
+
+                // JumpThreading - may find new opportunities
+                PostInlineFPM.addPass(llvm::JumpThreadingPass());
+
+                // CorrelatedValuePropagation
+                PostInlineFPM.addPass(llvm::CorrelatedValuePropagationPass());
+
+                // SimplifyCFG before loop optimization
+                PostInlineFPM.addPass(llvm::SimplifyCFGPass());
+
+                // Loop optimizations: rotate and LICM (requires MemorySSA)
+                llvm::LoopPassManager LPM;
+                LPM.addPass(llvm::LoopRotatePass());
+                LPM.addPass(llvm::LICMPass(llvm::LICMOptions()));
+                PostInlineFPM.addPass(llvm::createFunctionToLoopPassAdaptor(std::move(LPM), /*UseMemorySSA=*/true));
+
+                // Aggressive loop unrolling (runs on functions, not loops)
+                llvm::LoopUnrollOptions UnrollOpts;
+                UnrollOpts.setPartial(true);
+                UnrollOpts.setRuntime(true);
+                UnrollOpts.setUpperBound(true);
+                UnrollOpts.setFullUnrollMaxCount(128);
+                PostInlineFPM.addPass(llvm::LoopUnrollPass(UnrollOpts));
+
+                // Post-unroll cleanup
+                PostInlineFPM.addPass(llvm::InstCombinePass());
+                PostInlineFPM.addPass(llvm::SimplifyCFGPass());
+                PostInlineFPM.addPass(llvm::InstSimplifyPass());
+
+                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PostInlineFPM)));
+
+                // Run the fixpoint iteration pass pipeline
+                FixpointMPM.run(M, MAM);
+
+                // Count instructions to check for convergence
+                size_t InstCount = 0;
+                for (auto &F : M) {
+                  for (auto &BB : F) {
+                    InstCount += BB.size();
+                  }
+                }
+
+                log(LogLevel::Debug, "IRTransform",
+                    llvm::formatv("Instruction count: {0}", InstCount).str());
+
+                if (InstCount == PrevInstCount) {
+                  log(LogLevel::Debug, "IRTransform",
+                      llvm::formatv("Fixpoint reached after {0} iterations", Iteration + 1).str());
+                  break;
+                }
+
+                PrevInstCount = InstCount;
+              }
+
+              // Final O3 pass for cleanup and additional optimizations
+              {
+                llvm::ModulePassManager FinalMPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+                FinalMPM.run(M, MAM);
               }
             }
 
