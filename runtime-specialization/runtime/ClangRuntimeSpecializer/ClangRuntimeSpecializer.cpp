@@ -307,13 +307,25 @@ namespace clangRuntimeSpecializer {
                 InitialMPM.run(M, MAM);
               }
 
+
+              if (Instance->printsFixpointIterations())
+              {
+                for (auto &F : M) {
+                  if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
+                    log(LogLevel::Debug, "IRTransform", [&] {
+                        return llvm::formatv("Initial specialized function IR:\n{0}", printLLVM(&F)).str();
+                    });
+                  }
+                }
+              }
+
               // Fixpoint iteration: Run until no more changes occur
               // We count instructions to detect convergence
               constexpr int MaxFixpointIterations = 10;
               size_t PrevInstCount = 0;
 
               for (int Iteration = 0; Iteration < MaxFixpointIterations; ++Iteration) {
-                log(LogLevel::Debug, "IRTransform",
+                if (Instance->printsFixpointIterations()) log(LogLevel::Debug, "IRTransform",
                     llvm::formatv("Fixpoint iteration {0}", Iteration).str());
 
                 llvm::ModulePassManager FixpointMPM;
@@ -433,6 +445,18 @@ namespace clangRuntimeSpecializer {
                 // Run the fixpoint iteration pass pipeline
                 FixpointMPM.run(M, MAM);
 
+                if (Instance->printsFixpointIterations())
+                {
+                  for (auto &F : M) {
+                    if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
+                      log(LogLevel::Debug, "IRTransform", [&] {
+                          return llvm::formatv("Specialized function IR after iteration {0}:\n{1}", Iteration, printLLVM(&F)).str();
+                      });
+                    }
+                  }
+                }
+
+
                 // Count instructions to check for convergence
                 size_t InstCount = 0;
                 for (auto &F : M) {
@@ -441,11 +465,11 @@ namespace clangRuntimeSpecializer {
                   }
                 }
 
-                log(LogLevel::Debug, "IRTransform",
+                if (Instance->printsFixpointIterations()) log(LogLevel::Debug, "IRTransform",
                     llvm::formatv("Instruction count: {0}", InstCount).str());
 
                 if (InstCount == PrevInstCount) {
-                  log(LogLevel::Debug, "IRTransform",
+                  if (Instance->printsFixpointIterations()) log(LogLevel::Debug, "IRTransform",
                       llvm::formatv("Fixpoint reached after {0} iterations", Iteration + 1).str());
                   break;
                 }
@@ -879,11 +903,94 @@ namespace clangRuntimeSpecializer {
       std::memcpy(&Val, ValuePtr, sizeof(double));
       Result = llvm::ConstantFP::get(Context, llvm::APFloat(Val));
     } else if (Type->isPointerTy()) {
+
+
+      // Read the pointer value
       uintptr_t Val;
       std::memcpy(&Val, ValuePtr, sizeof(uintptr_t));
-      llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
-      llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
-      Result = llvm::ConstantExpr::getIntToPtr(IntVal, Type);
+      const void* PointedToPtr = reinterpret_cast<const void*>(Val);
+
+      // Check if this is a null pointer
+      if (Val == 0) {
+        Result = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(Type));
+      } else {
+        // Check if this pointer points to a known vtable
+        for (llvm::GlobalVariable& GV : M.globals()) {
+          if (GV.getName().starts_with("_ZTV")) {
+            void* GVAddr = dlsym(RTLD_DEFAULT, GV.getName().str().c_str());
+            if (GVAddr) {
+              const void* VTableStart = static_cast<const char*>(GVAddr) + 16;
+              if (VTableStart == PointedToPtr) {
+                log(LogLevel::Debug, "serializeValueToIR", [&] {
+                  return llvm::formatv("Identified vtable pointer for {0}", GV.getName()).str();
+                });
+                // Robustly create a GEP to the vtable entry (offset 16 bytes)
+                // We use a byte-wise GEP because vtable types can vary (struct vs array)
+                llvm::Type* I8 = llvm::Type::getInt8Ty(Context);
+                llvm::Type* I64 = llvm::Type::getInt64Ty(Context);
+                llvm::Constant* Offset = llvm::ConstantInt::get(I64, 16);
+                llvm::Constant* GEP = llvm::ConstantExpr::getGetElementPtr(
+                    I8, &GV, Offset);
+                Result = llvm::ConstantExpr::getBitCast(GEP, Type);
+                break;
+              }
+            }
+          }
+        }
+
+        if (!Result) {
+          // Try to identify if this pointer points to a polymorphic object
+          // by attempting to read a vtable pointer from it
+          llvm::StructType* ConcreteType = nullptr;
+          bool IsPolymorphic = false;
+
+        // Attempt to read the first 8 bytes to see if it looks like a valid vtable pointer
+        // This is a heuristic - we check if the value looks like a code/data pointer
+        try {
+          const void* PotentialVTable = *static_cast<const void* const*>(PointedToPtr);
+
+          // Check if this address is plausible (not null, not obviously invalid)
+          uintptr_t VTableAddr = reinterpret_cast<uintptr_t>(PotentialVTable);
+          if (VTableAddr > 0x1000 && VTableAddr < 0x7fffffffffff) {
+            // Try to identify the concrete type from the vtable
+            ConcreteType = identifyPolymorphicType(M, PointedToPtr);
+            if (ConcreteType) {
+              IsPolymorphic = true;
+
+              log(LogLevel::Debug, "serializeValueToIR", [&] {
+                  return llvm::formatv("Pointer field points to polymorphic object of type: {0}",
+                                       printLLVM(ConcreteType)).str();
+              });
+            }
+          }
+        } catch (...) {
+          // If we fail to read memory, it's not a valid polymorphic object
+          IsPolymorphic = false;
+        }
+
+        if (IsPolymorphic && ConcreteType) {
+          // Recursively serialize the pointed-to polymorphic object
+          llvm::Constant* SerializedObject = serializeValueToIR(M, ConcreteType, PointedToPtr);
+
+          if (!SerializedObject) {
+            throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize nested polymorphic object");
+          }
+
+          // Create a global variable for the nested object
+          auto *GV = new llvm::GlobalVariable(M, ConcreteType, false,
+                                              llvm::GlobalValue::InternalLinkage,
+                                              SerializedObject, "nested_polymorphic_object");
+
+          // Return a pointer to the global, bitcast if necessary
+          Result = llvm::ConstantExpr::getBitCast(GV, Type);
+        } else {
+          // Fall back to opaque pointer serialization
+          llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
+          llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
+          Result = llvm::ConstantExpr::getIntToPtr(IntVal, Type);
+        }
+      }
+      }
     } else if (Type->isStructTy()) {
       llvm::StructType* STy = llvm::cast<llvm::StructType>(Type);
       const llvm::DataLayout& DL = M.getDataLayout();

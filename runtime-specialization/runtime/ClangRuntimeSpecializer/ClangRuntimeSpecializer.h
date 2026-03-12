@@ -117,6 +117,7 @@ namespace clangRuntimeSpecializer {
     struct Options {
       bool EnableInstructionInstrumentation = false;
       bool KeepDebugInfo = false;
+      bool PrintFixpointIterations = false;
     };
 
     static ClangRuntimeSpecializer* init();
@@ -124,6 +125,9 @@ namespace clangRuntimeSpecializer {
       CurrentOptions.EnableInstructionInstrumentation = true;
       return this;
     }
+
+
+
 
     bool isInstructionInstrumentationEnabled() const {
       return CurrentOptions.EnableInstructionInstrumentation;
@@ -135,7 +139,16 @@ namespace clangRuntimeSpecializer {
     }
 
     bool shouldKeepDebugInfo() const {
-      return CurrentOptions.KeepDebugInfo;
+        return CurrentOptions.KeepDebugInfo;
+    }
+
+    ClangRuntimeSpecializer* printFixpointIterations() {
+        CurrentOptions.PrintFixpointIterations = true;
+        return this;
+    }
+
+      bool printsFixpointIterations() const {
+        return CurrentOptions.PrintFixpointIterations;
     }
 
     Options& getOptions() { return CurrentOptions; }
@@ -322,7 +335,7 @@ namespace clangRuntimeSpecializer {
           }
 
           // Create a global variable with the serialized object
-          auto *GV = new llvm::GlobalVariable(M, ConcreteType, true,
+          auto *GV = new llvm::GlobalVariable(M, ConcreteType, false,
                                               llvm::GlobalValue::InternalLinkage,
                                               SerializedObject, "polymorphic_object");
 

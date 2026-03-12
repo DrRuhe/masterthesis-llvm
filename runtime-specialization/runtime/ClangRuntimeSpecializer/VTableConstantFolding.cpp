@@ -38,6 +38,8 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/InstIterator.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -58,6 +60,90 @@ struct VTableInfo {
   Value *VTableConstant;
   SmallVector<LoadInst *, 4> VTableLoads;
 };
+
+/// Main analysis: determine if a global is safe to optimize for its vtable loads.
+static bool analyzeGlobal(GlobalVariable *GV, Function &F, VTableInfo &Info) {
+  // Global must be internal to ensure we see all its uses in this module
+  if (!GV->hasInternalLinkage()) {
+    return false;
+  }
+
+  // Must have a constant initializer
+  if (!GV->hasInitializer()) {
+    return false;
+  }
+
+  ConstantStruct *CS = dyn_cast<ConstantStruct>(GV->getInitializer());
+  if (!CS || CS->getNumOperands() == 0) {
+    return false;
+  }
+
+  // The first field should be the vtable pointer (offset 0)
+  // It might be nested in base class structs.
+  Value *VTableConst = CS->getOperand(0);
+  while (auto *InnerCS = dyn_cast<ConstantStruct>(VTableConst)) {
+    if (InnerCS->getNumOperands() == 0) break;
+    VTableConst = InnerCS->getOperand(0);
+  }
+
+  if (!VTableConst->getType()->isPointerTy() || !isa<Constant>(VTableConst)) {
+    return false;
+  }
+
+  const DataLayout &DL = F.getParent()->getDataLayout();
+
+  // Check all users of the global for any potential stores to offset 0.
+  // In our JIT specialization, we trust that vtable pointers (at offset 0)
+  // are not modified, even if other fields are.
+  for (User *U : GV->users()) {
+    // Check if this user is a store or can lead to a store to offset 0
+    if (auto *SI = dyn_cast<StoreInst>(U)) {
+      APInt Offset(64, 0);
+      if (SI->getPointerOperand()->stripAndAccumulateConstantOffsets(DL, Offset, true) == GV && Offset == 0) {
+        return false;
+      }
+    }
+    // Also check GEPs/Bitcasts that could be used for stores
+    if (auto *GEP = dyn_cast<GEPOperator>(U)) {
+      APInt Offset(64, 0);
+      if (GEP->stripAndAccumulateConstantOffsets(DL, Offset, true) == GV && Offset == 0) {
+        for (User *GU : GEP->users()) {
+          if (auto *SI = dyn_cast<StoreInst>(GU)) {
+            if (SI->getPointerOperand()->stripPointerCasts() == GEP) {
+               return false;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Find all loads of the vtable pointer from this global in the current function.
+  SmallVector<LoadInst *, 4> VTableLoads;
+  for (Instruction &I : instructions(F)) {
+    if (auto *LI = dyn_cast<LoadInst>(&I)) {
+      APInt Offset(64, 0);
+      if (LI->getPointerOperand()->stripAndAccumulateConstantOffsets(DL, Offset, true) == GV && Offset == 0) {
+        VTableLoads.push_back(LI);
+      }
+    }
+  }
+
+  if (VTableLoads.empty()) {
+    return false;
+  }
+
+  // Safe to optimize!
+  Info.Alloca = nullptr;
+  Info.VTableStore = nullptr;
+  Info.VTableConstant = VTableConst;
+  Info.VTableLoads = std::move(VTableLoads);
+
+  LLVM_DEBUG(dbgs() << "  Found optimizable global vtable pattern for "
+                    << GV->getName() << " with "
+                    << Info.VTableLoads.size() << " loads\n");
+  return true;
+}
 
 } // end anonymous namespace
 
@@ -252,6 +338,17 @@ PreservedAnalyses VTableConstantFoldingPass::run(Function &F,
     if (auto *AI = dyn_cast<AllocaInst>(&I)) {
       VTableInfo Info;
       if (analyzeAlloca(AI, DT, Info)) {
+        Candidates.push_back(std::move(Info));
+      }
+    }
+  }
+
+  // Scan all internal globals in the module
+  Module *M = F.getParent();
+  for (GlobalVariable &GV : M->globals()) {
+    if (GV.hasInternalLinkage()) {
+      VTableInfo Info;
+      if (analyzeGlobal(&GV, F, Info)) {
         Candidates.push_back(std::move(Info));
       }
     }
