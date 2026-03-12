@@ -1,8 +1,7 @@
 // RUN: %clangxx -g -O0 -flto -fwhole-program-vtables -emit-llvm -c %s -o %t.bc
 // RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
 // RUN: %clangxx -g %t.opt.bc -o %t.exe
-// RUN: %t.exe '>=95' '<100'
-// | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
 
 #include <iostream>
 #include <string>
@@ -105,3 +104,6 @@ int main(int argc, char* argv[]) {
     std::fprintf(stdout, "Operators returned %d \n",result);
     return 0;
 }
+
+// EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+// EXE-NOT: load ptr, ptr %vtable
