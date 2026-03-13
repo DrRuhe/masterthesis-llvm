@@ -58,7 +58,7 @@ namespace clangRuntimeSpecializer {
   class ClangRuntimeSpecializer {
   public:
     struct WriteBack {
-        llvm::GlobalVariable* GV;
+        llvm::Value* Source; // Changed from GlobalVariable* GV
         void* OriginalPtr;
         uint64_t Size;
     };
@@ -232,8 +232,10 @@ namespace clangRuntimeSpecializer {
           auto &JD = JIT->getMainJITDylib();
           llvm::orc::SymbolMap Symbols;
           for (const auto& WB : WriteBacks) {
-              if (WB.GV->hasExternalLinkage()) {
-                  Symbols[JIT->mangleAndIntern(WB.GV->getName())] = { llvm::orc::ExecutorAddr::fromPtr(WB.OriginalPtr), llvm::JITSymbolFlags::Exported };
+              if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(WB.Source)) {
+                  if (GV->hasExternalLinkage()) {
+                      Symbols[JIT->mangleAndIntern(GV->getName())] = { llvm::orc::ExecutorAddr::fromPtr(WB.OriginalPtr), llvm::JITSymbolFlags::Exported };
+                  }
               }
           }
           if (!Symbols.empty()) {
@@ -335,9 +337,9 @@ namespace clangRuntimeSpecializer {
           }
 
           // Create a global variable with the serialized object
-          auto *GV = new llvm::GlobalVariable(M, ConcreteType, false,
+          auto *GV = new llvm::GlobalVariable(M, ConcreteType, true, // isConstant = true
                                               llvm::GlobalValue::InternalLinkage,
-                                              SerializedObject, "polymorphic_object");
+                                              SerializedObject, "__specialization_global_polymorphic_object");
 
           // Return a pointer to the global, bitcast if necessary
           if (ExpectedType->isPointerTy()) {
@@ -521,8 +523,8 @@ namespace clangRuntimeSpecializer {
                   bool IsByVal = IrArg && IrArg->hasByValAttr();
                   bool ShouldWriteBack = !IsByVal;
 
-                  auto *GV = new llvm::GlobalVariable(M, Ctx.Result->getType(), !ShouldWriteBack,
-                                                      llvm::GlobalValue::InternalLinkage, Ctx.Result, "specialized_instance");
+                  auto *GV = new llvm::GlobalVariable(M, Ctx.Result->getType(), true, // isConstant = true
+                                                      llvm::GlobalValue::InternalLinkage, Ctx.Result, "__specialization_global_specialized_instance");
                   
                   if (ShouldWriteBack) {
                       void* Ptr = nullptr;

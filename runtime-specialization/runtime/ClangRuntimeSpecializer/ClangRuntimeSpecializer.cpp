@@ -693,6 +693,57 @@ namespace clangRuntimeSpecializer {
     F->addFnAttr(llvm::Attribute::AlwaysInline);
   }
 
+  static void fixupPointersInAlloca(llvm::Value* AllocaPtr, llvm::Constant* Initializer,
+                                   const std::map<llvm::GlobalVariable*, llvm::AllocaInst*>& GVToAlloca,
+                                   llvm::IRBuilder<>& Builder) {
+    auto* Ty = Initializer->getType();
+    if (auto* STy = llvm::dyn_cast<llvm::StructType>(Ty)) {
+        for (unsigned i = 0; i < STy->getNumElements(); ++i) {
+            llvm::Constant* Elem = Initializer->getAggregateElement(i);
+            if (!Elem) continue;
+            if (Elem->getType()->isPointerTy()) {
+                auto* Stripped = Elem->stripPointerCasts();
+                if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(Stripped)) {
+                    auto It = GVToAlloca.find(GV);
+                    if (It != GVToAlloca.end()) {
+                        llvm::Value* ElemPtr = Builder.CreateStructGEP(STy, AllocaPtr, i);
+                        llvm::Value* NewAddr = It->second;
+                        if (NewAddr->getType() != Elem->getType()) {
+                            NewAddr = Builder.CreateBitCast(NewAddr, Elem->getType());
+                        }
+                        Builder.CreateStore(NewAddr, ElemPtr);
+                    }
+                }
+            } else if (Elem->getType()->isAggregateType()) {
+                llvm::Value* NestedAllocaPtr = Builder.CreateStructGEP(STy, AllocaPtr, i);
+                fixupPointersInAlloca(NestedAllocaPtr, Elem, GVToAlloca, Builder);
+            }
+        }
+    } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Ty)) {
+        for (unsigned i = 0; i < ATy->getNumElements(); ++i) {
+             llvm::Constant* Elem = Initializer->getAggregateElement(i);
+             if (!Elem) continue;
+             if (Elem->getType()->isPointerTy()) {
+                 auto* Stripped = Elem->stripPointerCasts();
+                 if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(Stripped)) {
+                     auto It = GVToAlloca.find(GV);
+                     if (It != GVToAlloca.end()) {
+                         llvm::Value* ElemPtr = Builder.CreateConstGEP2_32(ATy, AllocaPtr, 0, i);
+                         llvm::Value* NewAddr = It->second;
+                         if (NewAddr->getType() != Elem->getType()) {
+                             NewAddr = Builder.CreateBitCast(NewAddr, Elem->getType());
+                         }
+                         Builder.CreateStore(NewAddr, ElemPtr);
+                     }
+                 }
+             } else if (Elem->getType()->isAggregateType()) {
+                 llvm::Value* NestedAllocaPtr = Builder.CreateConstGEP2_32(ATy, AllocaPtr, 0, i);
+                 fixupPointersInAlloca(NestedAllocaPtr, Elem, GVToAlloca, Builder);
+             }
+        }
+    }
+  }
+
   llvm::Function* ClangRuntimeSpecializer::buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
                                                          llvm::ArrayRef<llvm::Constant*> SpecializedArgs, llvm::ArrayRef<WriteBack> WriteBacks,
                                                          const bool ForceInstrument, const bool Optimize) {
@@ -711,8 +762,46 @@ namespace clangRuntimeSpecializer {
     llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Ctx, "entry", NewFunc);
     llvm::IRBuilder<> Builder(Entry);
 
+    std::map<llvm::GlobalVariable*, llvm::AllocaInst*> GVToAlloca;
+    std::vector<llvm::GlobalVariable*> Templates;
+    for (auto &GV : M.globals()) {
+        if (GV.getName().starts_with("__specialization_global_")) {
+            auto* Alloca = Builder.CreateAlloca(GV.getValueType(), nullptr, GV.getName().str() + ".stack");
+            GVToAlloca[&GV] = Alloca;
+            Templates.push_back(&GV);
+        }
+    }
+
+    // Initialize allocas and fixup internal pointers
+    for (auto const& [GV, Alloca] : GVToAlloca) {
+        Builder.CreateStore(GV->getInitializer(), Alloca);
+    }
+    for (auto const& [GV, Alloca] : GVToAlloca) {
+        fixupPointersInAlloca(Alloca, GV->getInitializer(), GVToAlloca, Builder);
+    }
+
     std::vector<llvm::Value*> CallArgs;
-    for (auto* C : SpecializedArgs) CallArgs.push_back(C);
+    for (auto* C : SpecializedArgs) {
+        if (auto* BitCast = llvm::dyn_cast<llvm::ConstantExpr>(C)) {
+            if (BitCast->getOpcode() == llvm::Instruction::BitCast) {
+                if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(BitCast->getOperand(0))) {
+                    auto It = GVToAlloca.find(GV);
+                    if (It != GVToAlloca.end()) {
+                        CallArgs.push_back(Builder.CreateBitCast(It->second, BitCast->getType()));
+                        continue;
+                    }
+                }
+            }
+        }
+        if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(C)) {
+            auto It = GVToAlloca.find(GV);
+            if (It != GVToAlloca.end()) {
+                CallArgs.push_back(It->second);
+                continue;
+            }
+        }
+        CallArgs.push_back(C);
+    }
 
     auto *CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, CallArgs);
     CallInst->setAttributes(TargetFunc->getAttributes());
@@ -722,7 +811,15 @@ namespace clangRuntimeSpecializer {
         llvm::Type* Ty = llvm::Type::getInt64Ty(Ctx);
         llvm::Constant* OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
         llvm::Value* OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
-        Builder.CreateMemCpy(OriginalPtr, llvm::MaybeAlign(), WB.GV, llvm::MaybeAlign(), WB.Size);
+        
+        llvm::Value* Source = WB.Source;
+        if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(Source)) {
+            auto It = GVToAlloca.find(GV);
+            if (It != GVToAlloca.end()) {
+                Source = It->second;
+            }
+        }
+        Builder.CreateMemCpy(OriginalPtr, llvm::MaybeAlign(), Source, llvm::MaybeAlign(), WB.Size);
     }
 
     if (TargetFunc->getReturnType()->isVoidTy()) {
@@ -731,8 +828,14 @@ namespace clangRuntimeSpecializer {
         Builder.CreateRet(CallInst);
     }
 
+    // Clean up template globals
+    for (auto* GV : Templates) {
+        GV->replaceAllUsesWith(llvm::UndefValue::get(GV->getType()));
+        GV->eraseFromParent();
+    }
+
     return NewFunc;
-  }
+}
 
   llvm::CallBase* ClangRuntimeSpecializer::findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const {
     auto readCStringFromGlobal = [&](llvm::GlobalVariable *GV) -> std::string {
@@ -977,9 +1080,9 @@ namespace clangRuntimeSpecializer {
           }
 
           // Create a global variable for the nested object
-          auto *GV = new llvm::GlobalVariable(M, ConcreteType, false,
+          auto *GV = new llvm::GlobalVariable(M, ConcreteType, true, // isConstant = true
                                               llvm::GlobalValue::InternalLinkage,
-                                              SerializedObject, "nested_polymorphic_object");
+                                              SerializedObject, "__specialization_global_nested_polymorphic_object");
 
           // Return a pointer to the global, bitcast if necessary
           Result = llvm::ConstantExpr::getBitCast(GV, Type);

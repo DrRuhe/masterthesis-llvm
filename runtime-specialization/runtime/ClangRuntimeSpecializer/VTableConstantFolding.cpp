@@ -32,6 +32,7 @@
 #include "VTableConstantFolding.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
@@ -59,6 +60,11 @@ struct VTableInfo {
   StoreInst *VTableStore;
   Value *VTableConstant;
   SmallVector<LoadInst *, 4> VTableLoads;
+};
+
+struct GlobalLoadInfo {
+  GlobalVariable *GV;
+  SmallVector<LoadInst *, 4> Loads;
 };
 
 /// Main analysis: determine if a global is safe to optimize for its vtable loads.
@@ -142,6 +148,60 @@ static bool analyzeGlobal(GlobalVariable *GV, Function &F, VTableInfo &Info) {
   LLVM_DEBUG(dbgs() << "  Found optimizable global vtable pattern for "
                     << GV->getName() << " with "
                     << Info.VTableLoads.size() << " loads\n");
+  return true;
+}
+
+static bool analyzeGlobalInitialLoads(GlobalVariable *GV, Function &F, GlobalLoadInfo &Info) {
+  if (!GV->hasInternalLinkage() || !GV->hasInitializer())
+    return false;
+
+  const DataLayout &DL = F.getParent()->getDataLayout();
+  SmallVector<LoadInst *, 4> Loads;
+
+  for (Instruction &I : instructions(F)) {
+    if (auto *LI = dyn_cast<LoadInst>(&I)) {
+      APInt Offset(64, 0);
+      if (LI->getPointerOperand()->stripAndAccumulateConstantOffsets(DL, Offset, true) == GV) {
+        // This is a load from the global. Check if it's "initial".
+        // For simplicity, we only optimize if there are NO stores to this global in the whole module.
+        // This is true for our specialized objects (except for the fields they modify, but
+        // we want to propagate the fields that are NOT modified).
+        
+        // Check if any store exists to this specific offset in the module
+        bool HasStore = false;
+        for (User *U : GV->users()) {
+            APInt SOffset(64, 0);
+            if (auto *SI = dyn_cast<StoreInst>(U)) {
+                if (SI->getPointerOperand()->stripAndAccumulateConstantOffsets(DL, SOffset, true) == GV && SOffset == Offset) {
+                    HasStore = true;
+                    break;
+                }
+            }
+            if (auto *GEP = dyn_cast<GEPOperator>(U)) {
+                if (GEP->stripAndAccumulateConstantOffsets(DL, SOffset, true) == GV && SOffset == Offset) {
+                    for (User *GU : GEP->users()) {
+                        if (isa<StoreInst>(GU)) {
+                            HasStore = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (HasStore) break;
+        }
+
+        if (!HasStore) {
+            Loads.push_back(LI);
+        }
+      }
+    }
+  }
+
+  if (Loads.empty())
+    return false;
+
+  Info.GV = GV;
+  Info.Loads = std::move(Loads);
   return true;
 }
 
@@ -345,16 +405,22 @@ PreservedAnalyses VTableConstantFoldingPass::run(Function &F,
 
   // Scan all internal globals in the module
   Module *M = F.getParent();
+  SmallVector<GlobalLoadInfo, 4> GlobalLoads;
   for (GlobalVariable &GV : M->globals()) {
     if (GV.hasInternalLinkage()) {
       VTableInfo Info;
       if (analyzeGlobal(&GV, F, Info)) {
         Candidates.push_back(std::move(Info));
       }
+      
+      GlobalLoadInfo GInfo;
+      if (analyzeGlobalInitialLoads(&GV, F, GInfo)) {
+          GlobalLoads.push_back(std::move(GInfo));
+      }
     }
   }
 
-  if (Candidates.empty()) {
+  if (Candidates.empty() && GlobalLoads.empty()) {
     return PreservedAnalyses::all();
   }
 
@@ -362,6 +428,19 @@ PreservedAnalyses VTableConstantFoldingPass::run(Function &F,
   bool Changed = false;
   for (VTableInfo &Info : Candidates) {
     Changed |= transformVTableLoads(Info);
+  }
+
+  for (auto &GInfo : GlobalLoads) {
+      for (LoadInst *LI : GInfo.Loads) {
+          if (LI->getParent() == nullptr) continue; // Skip if already erased
+          APInt Offset(64, 0);
+          LI->getPointerOperand()->stripAndAccumulateConstantOffsets(M->getDataLayout(), Offset, true);
+          if (Constant *C = ConstantFoldLoadFromConstPtr(GInfo.GV->getInitializer(), LI->getType(), Offset, M->getDataLayout())) {
+              LI->replaceAllUsesWith(C);
+              LI->eraseFromParent();
+              Changed = true;
+          }
+      }
   }
 
   if (!Changed) {

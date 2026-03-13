@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
   A instance(argc);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::getMod2
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @__specialization_global_specialized_instance
   // EXE-SAME: %class.A { i32 2 }
 
   // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
@@ -48,7 +48,7 @@ int main(int argc, char** argv) {
   int r1 = clangRuntimeSpecializer::specializeMethodOrFallback<Fn_A_getMod2>(&A::getMod2, instance);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::add
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @specialized_instance
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @__specialization_global_specialized_instance
   // EXE-SAME: %class.A { i32 2 }
 
   // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
