@@ -47,8 +47,8 @@ namespace {
   };
 
   RuntimeSpecializableData read_runtime_specializable_data() {
-    void* ptrSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_ptr");
-    void* lenSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_len");
+    const void* ptrSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_ptr");
+    const void* lenSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_len");
 
     if (!ptrSym || !lenSym) {
       return {nullptr, 0};
@@ -62,14 +62,14 @@ namespace {
 
   std::unique_ptr<llvm::Module> parse_module_from_runtime_data(const RuntimeSpecializableData& data,
                                                                llvm::LLVMContext& ctx) {
-    llvm::StringRef Bytes(reinterpret_cast<const char*>(data.Ptr), data.Len);
-    llvm::MemoryBufferRef Buffer(Bytes, "RuntimeSpecializeableIR");
+    const llvm::StringRef Bytes(reinterpret_cast<const char*>(data.Ptr), data.Len);
+    const llvm::MemoryBufferRef Buffer(Bytes, "RuntimeSpecializeableIR");
 
     llvm::Expected<std::unique_ptr<llvm::Module>> M =
         llvm::parseBitcodeFile(Buffer, ctx);
 
     if (!M) {
-      std::string Err = llvm::toString(M.takeError());
+      const std::string Err = llvm::toString(M.takeError());
       throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError("Failed to parse bitcode: " + Err);
     }
 
@@ -94,7 +94,7 @@ namespace clangRuntimeSpecializer {
 
   static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Debug;
 
-  void ClangRuntimeSpecializer::setLogLevel(LogLevel Level) {
+  void ClangRuntimeSpecializer::setLogLevel(const LogLevel Level) {
       CurrentLogLevel = Level;
   }
 
@@ -103,7 +103,7 @@ namespace clangRuntimeSpecializer {
   }
 
   __attribute__((always_inline))
-  void ClangRuntimeSpecializer::log(LogLevel Level, const char* FuncName, const llvm::Twine Message)
+  void ClangRuntimeSpecializer::log(const LogLevel Level, const char* const FuncName, const llvm::Twine Message)
   {
     if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
         log(Level, FuncName, Message.str().c_str());
@@ -111,7 +111,7 @@ namespace clangRuntimeSpecializer {
   }
 
   __attribute__((always_inline))
-  void ClangRuntimeSpecializer::log(LogLevel Level, const char* FuncName, const char* Message) {
+  void ClangRuntimeSpecializer::log(const LogLevel Level, const char* const FuncName, const char* const Message) {
       if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
         const char* LevelStr = "UNKNOWN";
         switch (Level) {
@@ -156,7 +156,7 @@ namespace clangRuntimeSpecializer {
     std::fprintf(stdout, "  Other: %lu\n", Counts.Other);
   }
 
-  void ClangRuntimeSpecializer::printComparisonTable(const char* funcName, const InstructionCounts& Before, const InstructionCounts& After) {
+  void ClangRuntimeSpecializer::printComparisonTable(const char* const funcName, const InstructionCounts& Before, const InstructionCounts& After) {
       std::fprintf(stdout, "Comparing instruction counts from specializing %s:\n", funcName);
       std::fprintf(stdout, "%10s %10s %-15s %s\n", "before", "after", "instruction", "change");
 
@@ -166,9 +166,9 @@ namespace clangRuntimeSpecializer {
           uint64_t A;
       };
 
-      auto printRow = [](const Row& r) {
-          int64_t Diff = static_cast<int64_t>(r.A) - static_cast<int64_t>(r.B);
-          double Percent = (r.B == 0) ? (r.A == 0 ? 0.0 : 100.0) : (static_cast<double>(std::abs(Diff)) / r.B) * 100.0;
+      const auto printRow = [](const Row& r) {
+          const int64_t Diff = static_cast<int64_t>(r.A) - static_cast<int64_t>(r.B);
+          const double Percent = (r.B == 0) ? (r.A == 0 ? 0.0 : 100.0) : (static_cast<double>(std::abs(Diff)) / r.B) * 100.0;
           if (Diff > 0) {
               std::fprintf(stdout, "%10lu %10lu %-15s +%ld, %.0f%%\n", r.B, r.A, r.Name, Diff, Percent);
           } else if (Diff < 0) {
@@ -210,7 +210,7 @@ namespace clangRuntimeSpecializer {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
 
-    RuntimeSpecializableData data = read_runtime_specializable_data();
+    const RuntimeSpecializableData data = read_runtime_specializable_data();
     if (!data.Ptr || data.Len == 0) {
       std::fprintf(stderr, "No dumped IR found in the executable.\n");
       std::abort();
@@ -220,7 +220,7 @@ namespace clangRuntimeSpecializer {
 
     auto JITExp = llvm::orc::LLJITBuilder().create();
     if (!JITExp) {
-      std::string ErrMsg = llvm::toString(JITExp.takeError());
+      const std::string ErrMsg = llvm::toString(JITExp.takeError());
       throw ClangRuntimeSpecializerError("Failed to create JIT: " + ErrMsg);
     }
     Instance->JIT = std::move(*JITExp);
@@ -568,7 +568,7 @@ namespace clangRuntimeSpecializer {
 
   ClangRuntimeSpecializer::ClangRuntimeSpecializer() {}
 
-  void ClangRuntimeSpecializer::checkInitialization(const char* funcName) const {
+  void ClangRuntimeSpecializer::checkInitialization(const char* const funcName) const {
     if (funcName == nullptr) {
       throw ClangRuntimeSpecializerError("funcName was null!");
     }
@@ -580,21 +580,21 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  llvm::Function* ClangRuntimeSpecializer::getTargetFunction(const char* funcName) const {
+  llvm::Function* ClangRuntimeSpecializer::getTargetFunction(const char* const funcName) const {
     std::string FuncNameStr(funcName);
     if (!FuncNameStr.empty() && FuncNameStr.front() == '&') {
       FuncNameStr.erase(0, 1);
     }
-    llvm::Function *TargetFunc = Module->getFunction(FuncNameStr);
+    llvm::Function * const TargetFunc = Module->getFunction(FuncNameStr);
     if (TargetFunc == nullptr) {
       throw ClangRuntimeSpecializerDumpedIRError((llvm::Twine("Could not find function: ") + funcName + " (It might be optimized out already by dead-code-elimination?)").str());
     }
     return TargetFunc;
   }
 
-  void ClangRuntimeSpecializer::validateArgs(llvm::Function* TargetFunc, llvm::CallBase* CallSite, size_t NumArgs) const {
-    unsigned CallArgCount = CallSite->arg_size();
-    unsigned SkipArgs = 1; // 'this'
+  void ClangRuntimeSpecializer::validateArgs(llvm::Function* const TargetFunc, llvm::CallBase* const CallSite, const size_t NumArgs) const {
+    const unsigned CallArgCount = CallSite->arg_size();
+    const unsigned SkipArgs = 1; // 'this'
     if (CallArgCount != SkipArgs + static_cast<unsigned>(NumArgs))
     {
       throw ClangRuntimeSpecializerError((llvm::Twine("Unexpected callsite arg count. callArgCount=") + llvm::Twine(CallArgCount) + ", numArgs=" + llvm::Twine(NumArgs) + " (expected " + llvm::Twine(static_cast<unsigned>(NumArgs) + 1) + ")").str());
@@ -606,11 +606,11 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  std::string ClangRuntimeSpecializer::createUniqueWrapperName() {
-    return "specialized_wrapper_" + std::to_string(++GlobalSpecializationCount) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+  std::string ClangRuntimeSpecializer::createUniqueWrapperName() const {
+    return "specialized_wrapper_" + std::to_string(const_cast<ClangRuntimeSpecializer*>(this)->GlobalSpecializationCount++) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
   }
 
-  void ClangRuntimeSpecializer::prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) {
+  void ClangRuntimeSpecializer::prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const {
     bool Optimize = true;
     for (auto &F : M) {
         if (F.hasFnAttribute("force-no-optimize")) {
@@ -674,39 +674,39 @@ namespace clangRuntimeSpecializer {
 
   uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName) {
     if (auto Err = JIT->addIRModule(std::move(TSM))) {
-      std::string ErrMsg = llvm::toString(std::move(Err));
+      const std::string ErrMsg = llvm::toString(std::move(Err));
       throw ClangRuntimeSpecializerError("Failed to add module to JIT: " + ErrMsg);
     }
 
     auto SpecializedFn = JIT->lookup(WrapperName);
     if (!SpecializedFn) {
-      std::string ErrMsg = llvm::toString(SpecializedFn.takeError());
+      const std::string ErrMsg = llvm::toString(SpecializedFn.takeError());
       throw ClangRuntimeSpecializerError("Failed to lookup wrapper: " + ErrMsg);
     }
     return SpecializedFn->getValue();
   }
 
-  void ClangRuntimeSpecializer::encourageInlining(llvm::Function* F) {
+  void ClangRuntimeSpecializer::encourageInlining(llvm::Function* const F) {
     if (!F) return;
     F->removeFnAttr(llvm::Attribute::NoInline);
     F->removeFnAttr(llvm::Attribute::OptimizeNone);
     F->addFnAttr(llvm::Attribute::AlwaysInline);
   }
 
-  static void fixupPointersInAlloca(llvm::Value* AllocaPtr, llvm::Constant* Initializer,
+  static void fixupPointersInAlloca(llvm::Value* const AllocaPtr, llvm::Constant* const Initializer,
                                    const std::map<llvm::GlobalVariable*, llvm::AllocaInst*>& GVToAlloca,
                                    llvm::IRBuilder<>& Builder) {
-    auto* Ty = Initializer->getType();
-    if (auto* STy = llvm::dyn_cast<llvm::StructType>(Ty)) {
+    auto* const Ty = Initializer->getType();
+    if (auto* const STy = llvm::dyn_cast<llvm::StructType>(Ty)) {
         for (unsigned i = 0; i < STy->getNumElements(); ++i) {
-            llvm::Constant* Elem = Initializer->getAggregateElement(i);
+            llvm::Constant* const Elem = Initializer->getAggregateElement(i);
             if (!Elem) continue;
             if (Elem->getType()->isPointerTy()) {
-                auto* Stripped = Elem->stripPointerCasts();
-                if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(Stripped)) {
-                    auto It = GVToAlloca.find(GV);
+                auto* const Stripped = Elem->stripPointerCasts();
+                if (auto* const GV = llvm::dyn_cast<llvm::GlobalVariable>(Stripped)) {
+                    const auto It = GVToAlloca.find(GV);
                     if (It != GVToAlloca.end()) {
-                        llvm::Value* ElemPtr = Builder.CreateStructGEP(STy, AllocaPtr, i);
+                        llvm::Value* const ElemPtr = Builder.CreateStructGEP(STy, AllocaPtr, i);
                         llvm::Value* NewAddr = It->second;
                         if (NewAddr->getType() != Elem->getType()) {
                             NewAddr = Builder.CreateBitCast(NewAddr, Elem->getType());
@@ -715,20 +715,20 @@ namespace clangRuntimeSpecializer {
                     }
                 }
             } else if (Elem->getType()->isAggregateType()) {
-                llvm::Value* NestedAllocaPtr = Builder.CreateStructGEP(STy, AllocaPtr, i);
+                llvm::Value* const NestedAllocaPtr = Builder.CreateStructGEP(STy, AllocaPtr, i);
                 fixupPointersInAlloca(NestedAllocaPtr, Elem, GVToAlloca, Builder);
             }
         }
-    } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Ty)) {
+    } else if (auto* const ATy = llvm::dyn_cast<llvm::ArrayType>(Ty)) {
         for (unsigned i = 0; i < ATy->getNumElements(); ++i) {
-             llvm::Constant* Elem = Initializer->getAggregateElement(i);
+             llvm::Constant* const Elem = Initializer->getAggregateElement(i);
              if (!Elem) continue;
              if (Elem->getType()->isPointerTy()) {
-                 auto* Stripped = Elem->stripPointerCasts();
-                 if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(Stripped)) {
-                     auto It = GVToAlloca.find(GV);
+                 auto* const Stripped = Elem->stripPointerCasts();
+                 if (auto* const GV = llvm::dyn_cast<llvm::GlobalVariable>(Stripped)) {
+                     const auto It = GVToAlloca.find(GV);
                      if (It != GVToAlloca.end()) {
-                         llvm::Value* ElemPtr = Builder.CreateConstGEP2_32(ATy, AllocaPtr, 0, i);
+                         llvm::Value* const ElemPtr = Builder.CreateConstGEP2_32(ATy, AllocaPtr, 0, i);
                          llvm::Value* NewAddr = It->second;
                          if (NewAddr->getType() != Elem->getType()) {
                              NewAddr = Builder.CreateBitCast(NewAddr, Elem->getType());
@@ -737,21 +737,21 @@ namespace clangRuntimeSpecializer {
                      }
                  }
              } else if (Elem->getType()->isAggregateType()) {
-                 llvm::Value* NestedAllocaPtr = Builder.CreateConstGEP2_32(ATy, AllocaPtr, 0, i);
+                 llvm::Value* const NestedAllocaPtr = Builder.CreateConstGEP2_32(ATy, AllocaPtr, 0, i);
                  fixupPointersInAlloca(NestedAllocaPtr, Elem, GVToAlloca, Builder);
              }
         }
     }
   }
 
-  llvm::Function* ClangRuntimeSpecializer::buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
-                                                         llvm::ArrayRef<llvm::Constant*> SpecializedArgs, llvm::ArrayRef<WriteBack> WriteBacks,
-                                                         const bool ForceInstrument, const bool Optimize) {
+  llvm::Function* ClangRuntimeSpecializer::buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* const TargetFunc,
+                                                         const llvm::ArrayRef<llvm::Constant*> SpecializedArgs, const llvm::ArrayRef<WriteBack> WriteBacks,
+                                                         const bool ForceInstrument, const bool Optimize) const {
     llvm::LLVMContext& Ctx = M.getContext();
-    llvm::FunctionType* FTy= llvm::FunctionType::get(TargetFunc->getReturnType(), false);
+    llvm::FunctionType* const FTy= llvm::FunctionType::get(TargetFunc->getReturnType(), false);
 
 
-    llvm::Function* NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, WrapperName, M);
+    llvm::Function* const NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, WrapperName, M);
     if (ForceInstrument) {
         NewFunc->addFnAttr("force-instrument");
     }
@@ -759,14 +759,14 @@ namespace clangRuntimeSpecializer {
         NewFunc->addFnAttr("force-no-optimize");
     }
 
-    llvm::BasicBlock* Entry = llvm::BasicBlock::Create(Ctx, "entry", NewFunc);
+    llvm::BasicBlock* const Entry = llvm::BasicBlock::Create(Ctx, "entry", NewFunc);
     llvm::IRBuilder<> Builder(Entry);
 
     std::map<llvm::GlobalVariable*, llvm::AllocaInst*> GVToAlloca;
     std::vector<llvm::GlobalVariable*> Templates;
     for (auto &GV : M.globals()) {
         if (GV.getName().starts_with("__specialization_global_")) {
-            auto* Alloca = Builder.CreateAlloca(GV.getValueType(), nullptr, GV.getName().str() + ".stack");
+            auto* const Alloca = Builder.CreateAlloca(GV.getValueType(), nullptr, GV.getName().str() + ".stack");
             GVToAlloca[&GV] = Alloca;
             Templates.push_back(&GV);
         }
@@ -781,11 +781,11 @@ namespace clangRuntimeSpecializer {
     }
 
     std::vector<llvm::Value*> CallArgs;
-    for (auto* C : SpecializedArgs) {
-        if (auto* BitCast = llvm::dyn_cast<llvm::ConstantExpr>(C)) {
+    for (auto* const C : SpecializedArgs) {
+        if (const auto* const BitCast = llvm::dyn_cast<llvm::ConstantExpr>(C)) {
             if (BitCast->getOpcode() == llvm::Instruction::BitCast) {
-                if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(BitCast->getOperand(0))) {
-                    auto It = GVToAlloca.find(GV);
+                if (const auto* const GV = llvm::dyn_cast<llvm::GlobalVariable>(BitCast->getOperand(0))) {
+                    const auto It = GVToAlloca.find(const_cast<llvm::GlobalVariable*>(GV));
                     if (It != GVToAlloca.end()) {
                         CallArgs.push_back(Builder.CreateBitCast(It->second, BitCast->getType()));
                         continue;
@@ -793,8 +793,8 @@ namespace clangRuntimeSpecializer {
                 }
             }
         }
-        if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(C)) {
-            auto It = GVToAlloca.find(GV);
+        if (const auto* const GV = llvm::dyn_cast<llvm::GlobalVariable>(C)) {
+            const auto It = GVToAlloca.find(const_cast<llvm::GlobalVariable*>(GV));
             if (It != GVToAlloca.end()) {
                 CallArgs.push_back(It->second);
                 continue;
@@ -803,18 +803,18 @@ namespace clangRuntimeSpecializer {
         CallArgs.push_back(C);
     }
 
-    auto *CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, CallArgs);
+    auto * const CallInst = Builder.CreateCall(TargetFunc->getFunctionType(), TargetFunc, CallArgs);
     CallInst->setAttributes(TargetFunc->getAttributes());
     CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
 
     for (const auto& WB : WriteBacks) {
-        llvm::Type* Ty = llvm::Type::getInt64Ty(Ctx);
-        llvm::Constant* OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
-        llvm::Value* OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
+        llvm::Type* const Ty = llvm::Type::getInt64Ty(Ctx);
+        llvm::Constant* const OriginalPtrVal = llvm::ConstantInt::get(Ty, reinterpret_cast<uintptr_t>(WB.OriginalPtr));
+        llvm::Value* const OriginalPtr = Builder.CreateIntToPtr(OriginalPtrVal, Builder.getPtrTy());
         
         llvm::Value* Source = WB.Source;
-        if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(Source)) {
-            auto It = GVToAlloca.find(GV);
+        if (const auto* const GV = llvm::dyn_cast<llvm::GlobalVariable>(Source)) {
+            const auto It = GVToAlloca.find(const_cast<llvm::GlobalVariable*>(GV));
             if (It != GVToAlloca.end()) {
                 Source = It->second;
             }
@@ -837,35 +837,35 @@ namespace clangRuntimeSpecializer {
     return NewFunc;
 }
 
-  llvm::CallBase* ClangRuntimeSpecializer::findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const {
-    auto readCStringFromGlobal = [&](llvm::GlobalVariable *GV) -> std::string {
+  llvm::CallBase* ClangRuntimeSpecializer::findCallSpecializedFunctionInModule(const char* const FunctionName, const char* const UID) const {
+    const auto readCStringFromGlobal = [&](const llvm::GlobalVariable * const GV) -> std::string {
       if (!GV) return {};
-      if (auto *CDA = llvm::dyn_cast<llvm::ConstantDataArray>(GV->getInitializer())) {
+      if (const auto * const CDA = llvm::dyn_cast<llvm::ConstantDataArray>(GV->getInitializer())) {
         if (CDA->isCString()) return CDA->getAsCString().str();
       }
       return {};
     };
 
-    auto getAnnotationValueForFunction = [&](const llvm::Function &F, llvm::StringRef Key) -> std::optional<std::string> {
-      llvm::GlobalVariable *AnnGV = Module->getGlobalVariable("llvm.global.annotations");
+    const auto getAnnotationValueForFunction = [&](const llvm::Function &F, const llvm::StringRef Key) -> std::optional<std::string> {
+      const llvm::GlobalVariable * const AnnGV = Module->getGlobalVariable("llvm.global.annotations");
       if (!AnnGV || !AnnGV->hasInitializer()) return std::nullopt;
-      auto *CA = llvm::dyn_cast<llvm::ConstantArray>(AnnGV->getInitializer());
+      const auto * const CA = llvm::dyn_cast<llvm::ConstantArray>(AnnGV->getInitializer());
       if (!CA) return std::nullopt;
       for (unsigned i = 0; i < CA->getNumOperands(); ++i) {
-        auto *Elt = llvm::dyn_cast<llvm::ConstantStruct>(CA->getOperand(i));
+        const auto * const Elt = llvm::dyn_cast<llvm::ConstantStruct>(CA->getOperand(i));
         if (!Elt || Elt->getNumOperands() < 4) continue;
         // 0: ptr to annotated global (function), 1: ptr to anno string, 4: extra args (optional)
-        llvm::Value *Op0 = Elt->getOperand(0);
-        llvm::Value *Op1 = Elt->getOperand(1);
-        llvm::Value *Op4 = (Elt->getNumOperands() >= 5) ? Elt->getOperand(4) : nullptr;
+        const llvm::Value * const Op0 = Elt->getOperand(0);
+        const llvm::Value * const Op1 = Elt->getOperand(1);
+        const llvm::Value * const Op4 = (Elt->getNumOperands() >= 5) ? Elt->getOperand(4) : nullptr;
 
-        if (auto *Op0C = llvm::dyn_cast<llvm::Constant>(Op0)) {
-          if (auto *Target = Op0C->stripPointerCasts()) {
+        if (const auto * const Op0C = llvm::dyn_cast<llvm::Constant>(Op0)) {
+          if (const auto * const Target = Op0C->stripPointerCasts()) {
             if (Target == &F) {
               // Extract key
               std::string KeyStr;
-              if (auto *Op1C = llvm::dyn_cast<llvm::Constant>(Op1)) {
-                if (auto *KeyGV = llvm::dyn_cast<llvm::GlobalVariable>(Op1C->stripPointerCasts())) {
+              if (const auto * const Op1C = llvm::dyn_cast<llvm::Constant>(Op1)) {
+                if (const auto * const KeyGV = llvm::dyn_cast<llvm::GlobalVariable>(Op1C->stripPointerCasts())) {
                   KeyStr = readCStringFromGlobal(KeyGV);
                 }
               }
@@ -873,13 +873,13 @@ namespace clangRuntimeSpecializer {
               if (KeyStr == Key) {
                 // Try to extract first argument string from args struct if present
                 if (Op4) {
-                  if (auto *Op4C = llvm::dyn_cast<llvm::Constant>(Op4)) {
-                    if (auto *ArgsGV = llvm::dyn_cast<llvm::GlobalVariable>(Op4C->stripPointerCasts())) {
-                      if (auto *ArgsInit = llvm::dyn_cast<llvm::ConstantStruct>(ArgsGV->getInitializer())) {
+                  if (const auto * const Op4C = llvm::dyn_cast<llvm::Constant>(Op4)) {
+                    if (const auto * const ArgsGV = llvm::dyn_cast<llvm::GlobalVariable>(Op4C->stripPointerCasts())) {
+                      if (const auto * const ArgsInit = llvm::dyn_cast<llvm::ConstantStruct>(ArgsGV->getInitializer())) {
                         if (ArgsInit->getNumOperands() >= 1) {
-                          if (auto *Arg0C = llvm::dyn_cast<llvm::Constant>(ArgsInit->getOperand(0))) {
-                            if (auto *StrGV = llvm::dyn_cast<llvm::GlobalVariable>(Arg0C->stripPointerCasts())) {
-                              std::string V = readCStringFromGlobal(StrGV);
+                          if (const auto * const Arg0C = llvm::dyn_cast<llvm::Constant>(ArgsInit->getOperand(0))) {
+                            if (const auto * const StrGV = llvm::dyn_cast<llvm::GlobalVariable>(Arg0C->stripPointerCasts())) {
+                              const std::string V = readCStringFromGlobal(StrGV);
                               if (!V.empty()) return V;
                             }
                           }
@@ -922,34 +922,34 @@ namespace clangRuntimeSpecializer {
   }
 
   // Helper function to identify concrete type from vtable pointer
-  llvm::StructType* ClangRuntimeSpecializer::identifyPolymorphicType(llvm::Module& M, const void* ObjectPtr) {
+  llvm::StructType* ClangRuntimeSpecializer::identifyPolymorphicType(llvm::Module& M, const void* const ObjectPtr) {
     // Read the vtable pointer from the object (first pointer in memory layout)
-    const void* const* VTablePtrLoc = static_cast<const void* const*>(ObjectPtr);
-    const void* VTablePtr = *VTablePtrLoc;
+    const void* const* const VTablePtrLoc = static_cast<const void* const*>(ObjectPtr);
+    const void* const VTablePtr = *VTablePtrLoc;
 
     log(LogLevel::Debug, "identifyPolymorphicType", [&] {
         return llvm::formatv("Identifying type for vtable pointer: {0}", VTablePtr).str();
     });
 
     // Iterate through all global variables to find matching vtables
-    for (llvm::GlobalVariable& GV : M.globals()) {
+    for (const llvm::GlobalVariable& GV : M.globals()) {
       if (!GV.hasName()) continue;
 
-      llvm::StringRef Name = GV.getName();
+      const llvm::StringRef Name = GV.getName();
 
       // Look for vtable symbols (mangled names starting with _ZTV)
       if (Name.starts_with("_ZTV")) {
         // Get the runtime address of this vtable
-        void* GVAddr = dlsym(RTLD_DEFAULT, Name.str().c_str());
+        const void* const GVAddr = dlsym(RTLD_DEFAULT, Name.str().c_str());
         if (!GVAddr) continue;
 
         // Vtables have offset +16 bytes (past type_info pointer)
-        const void* VTableStart = static_cast<const char*>(GVAddr) + 16;
+        const void* const VTableStart = static_cast<const char*>(GVAddr) + 16;
 
         if (VTableStart == VTablePtr) {
           // Found matching vtable! Extract the class name from mangled name
           // _ZTV<len><name> -> extract the class name
-          std::string MangledName = Name.str().substr(4); // Skip "_ZTV"
+          const std::string MangledName = Name.str().substr(4); // Skip "_ZTV"
 
           log(LogLevel::Debug, "identifyPolymorphicType", [&] {
               return llvm::formatv("Found matching vtable: {0}", Name).str();
@@ -957,8 +957,8 @@ namespace clangRuntimeSpecializer {
 
           // Try to find corresponding struct type in module
           // Try different naming conventions: class.<name>, struct.<name>, <name>
-          for (llvm::StructType* STy : M.getIdentifiedStructTypes()) {
-            llvm::StringRef StructName = STy->getName();
+          for (llvm::StructType* const STy : M.getIdentifiedStructTypes()) {
+            const llvm::StringRef StructName = STy->getName();
 
             // Match if the struct name contains the class name from vtable
             if (StructName.contains(MangledName) ||
@@ -981,7 +981,7 @@ namespace clangRuntimeSpecializer {
     return nullptr;
   }
 
-  llvm::Constant* ClangRuntimeSpecializer::serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr) {
+  llvm::Constant* ClangRuntimeSpecializer::serializeValueToIR(llvm::Module& M, llvm::Type* const Type, const void* const ValuePtr) {
     log(LogLevel::Debug, "serializeValueToIR", [&] {
         return llvm::formatv("Serializing value of type {0}", printLLVM(Type)).str();
     });
@@ -989,7 +989,7 @@ namespace clangRuntimeSpecializer {
     llvm::Constant* Result = nullptr;
     llvm::LLVMContext& Context = M.getContext();
     if (Type->isIntegerTy()) {
-      unsigned BitWidth = Type->getIntegerBitWidth();
+      const unsigned BitWidth = Type->getIntegerBitWidth();
       if (BitWidth <= 64) {
         uint64_t Val = 0;
         std::memcpy(&Val, ValuePtr, (BitWidth + 7) / 8);
@@ -1011,29 +1011,29 @@ namespace clangRuntimeSpecializer {
       // Read the pointer value
       uintptr_t Val;
       std::memcpy(&Val, ValuePtr, sizeof(uintptr_t));
-      const void* PointedToPtr = reinterpret_cast<const void*>(Val);
+      const void* const PointedToPtr = reinterpret_cast<const void*>(Val);
 
       // Check if this is a null pointer
       if (Val == 0) {
         Result = llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(Type));
       } else {
         // Check if this pointer points to a known vtable
-        for (llvm::GlobalVariable& GV : M.globals()) {
+        for (const llvm::GlobalVariable& GV : M.globals()) {
           if (GV.getName().starts_with("_ZTV")) {
-            void* GVAddr = dlsym(RTLD_DEFAULT, GV.getName().str().c_str());
+            const void* const GVAddr = dlsym(RTLD_DEFAULT, GV.getName().str().c_str());
             if (GVAddr) {
-              const void* VTableStart = static_cast<const char*>(GVAddr) + 16;
+              const void* const VTableStart = static_cast<const char*>(GVAddr) + 16;
               if (VTableStart == PointedToPtr) {
                 log(LogLevel::Debug, "serializeValueToIR", [&] {
                   return llvm::formatv("Identified vtable pointer for {0}", GV.getName()).str();
                 });
                 // Robustly create a GEP to the vtable entry (offset 16 bytes)
                 // We use a byte-wise GEP because vtable types can vary (struct vs array)
-                llvm::Type* I8 = llvm::Type::getInt8Ty(Context);
-                llvm::Type* I64 = llvm::Type::getInt64Ty(Context);
-                llvm::Constant* Offset = llvm::ConstantInt::get(I64, 16);
-                llvm::Constant* GEP = llvm::ConstantExpr::getGetElementPtr(
-                    I8, &GV, Offset);
+                llvm::Type* const I8 = llvm::Type::getInt8Ty(Context);
+                llvm::Type* const I64 = llvm::Type::getInt64Ty(Context);
+                llvm::Constant* const Offset = llvm::ConstantInt::get(I64, 16);
+                llvm::Constant* const GEP = llvm::ConstantExpr::getGetElementPtr(
+                    I8, const_cast<llvm::GlobalVariable*>(&GV), Offset);
                 Result = llvm::ConstantExpr::getBitCast(GEP, Type);
                 break;
               }
@@ -1050,10 +1050,10 @@ namespace clangRuntimeSpecializer {
         // Attempt to read the first 8 bytes to see if it looks like a valid vtable pointer
         // This is a heuristic - we check if the value looks like a code/data pointer
         try {
-          const void* PotentialVTable = *static_cast<const void* const*>(PointedToPtr);
+          const void* const PotentialVTable = *static_cast<const void* const*>(PointedToPtr);
 
           // Check if this address is plausible (not null, not obviously invalid)
-          uintptr_t VTableAddr = reinterpret_cast<uintptr_t>(PotentialVTable);
+          const uintptr_t VTableAddr = reinterpret_cast<uintptr_t>(PotentialVTable);
           if (VTableAddr > 0x1000 && VTableAddr < 0x7fffffffffff) {
             // Try to identify the concrete type from the vtable
             ConcreteType = identifyPolymorphicType(M, PointedToPtr);
@@ -1073,14 +1073,14 @@ namespace clangRuntimeSpecializer {
 
         if (IsPolymorphic && ConcreteType) {
           // Recursively serialize the pointed-to polymorphic object
-          llvm::Constant* SerializedObject = serializeValueToIR(M, ConcreteType, PointedToPtr);
+          llvm::Constant* const SerializedObject = serializeValueToIR(M, ConcreteType, PointedToPtr);
 
           if (!SerializedObject) {
             throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize nested polymorphic object");
           }
 
           // Create a global variable for the nested object
-          auto *GV = new llvm::GlobalVariable(M, ConcreteType, true, // isConstant = true
+          auto * const GV = new llvm::GlobalVariable(M, ConcreteType, true, // isConstant = true
                                               llvm::GlobalValue::InternalLinkage,
                                               SerializedObject, "__specialization_global_nested_polymorphic_object");
 
@@ -1088,24 +1088,24 @@ namespace clangRuntimeSpecializer {
           Result = llvm::ConstantExpr::getBitCast(GV, Type);
         } else {
           // Fall back to opaque pointer serialization
-          llvm::Type* Ty = llvm::Type::getInt64Ty(Context);
-          llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
+          llvm::Type* const Ty = llvm::Type::getInt64Ty(Context);
+          llvm::Constant* const IntVal = llvm::ConstantInt::get(Ty, static_cast<uint64_t>(Val));
           Result = llvm::ConstantExpr::getIntToPtr(IntVal, Type);
         }
       }
       }
     } else if (Type->isStructTy()) {
-      llvm::StructType* STy = llvm::cast<llvm::StructType>(Type);
+      llvm::StructType* const STy = llvm::cast<llvm::StructType>(Type);
       const llvm::DataLayout& DL = M.getDataLayout();
-      const llvm::StructLayout* SL = DL.getStructLayout(STy);
+      const llvm::StructLayout* const SL = DL.getStructLayout(STy);
 
       std::vector<llvm::Constant*> Elements;
       for (unsigned i = 0; i < STy->getNumElements(); ++i) {
-        llvm::Type* ElemTy = STy->getElementType(i);
-        uint64_t Offset = SL->getElementOffset(i);
-        const void* ElemPtr = static_cast<const char*>(ValuePtr) + Offset;
+        llvm::Type* const ElemTy = STy->getElementType(i);
+        const uint64_t Offset = SL->getElementOffset(i);
+        const void* const ElemPtr = static_cast<const char*>(ValuePtr) + Offset;
 
-        llvm::Constant* ElemVal = serializeValueToIR(M, ElemTy, ElemPtr);
+        llvm::Constant* const ElemVal = serializeValueToIR(M, ElemTy, ElemPtr);
         if (ElemVal) {
           Elements.push_back(ElemVal);
         } else {
@@ -1114,15 +1114,15 @@ namespace clangRuntimeSpecializer {
       }
       Result = llvm::ConstantStruct::get(STy, Elements);
     } else if (Type->isArrayTy()) {
-      llvm::ArrayType* ATy = llvm::cast<llvm::ArrayType>(Type);
-      llvm::Type* ElemTy = ATy->getElementType();
+      llvm::ArrayType* const ATy = llvm::cast<llvm::ArrayType>(Type);
+      llvm::Type* const ElemTy = ATy->getElementType();
       const llvm::DataLayout& DL = M.getDataLayout();
-      uint64_t ElemSize = DL.getTypeAllocSize(ElemTy);
+      const uint64_t ElemSize = DL.getTypeAllocSize(ElemTy);
 
       std::vector<llvm::Constant*> Elements;
       for (uint64_t i = 0; i < ATy->getNumElements(); ++i) {
-        const void* ElemPtr = static_cast<const char*>(ValuePtr) + (i * ElemSize);
-        llvm::Constant* ElemVal = serializeValueToIR(M, ElemTy, ElemPtr);
+        const void* const ElemPtr = static_cast<const char*>(ValuePtr) + (i * ElemSize);
+        llvm::Constant* const ElemVal = serializeValueToIR(M, ElemTy, ElemPtr);
         if (ElemVal) {
           Elements.push_back(ElemVal);
         } else {

@@ -23,7 +23,7 @@ static std::pair<GlobalVariable*, GlobalVariable*> getOrCreateIRDumpGlobals(Modu
   // ptr global: constant ptr null
   GlobalVariable *PtrGV = M.getNamedGlobal(kPtrName);
   if (!PtrGV) {
-    Type *PtrTy = PointerType::getUnqual(Ctx); // opaque 'ptr'
+    Type * const PtrTy = PointerType::getUnqual(Ctx); // opaque 'ptr'
     PtrGV = new GlobalVariable(
         M,
         PtrTy,
@@ -37,7 +37,7 @@ static std::pair<GlobalVariable*, GlobalVariable*> getOrCreateIRDumpGlobals(Modu
   // len global: constant i64 0
   GlobalVariable *LenGV = M.getNamedGlobal(kLenName);
   if (!LenGV) {
-    Type *LenTy = Type::getInt64Ty(Ctx);
+    Type * const LenTy = Type::getInt64Ty(Ctx);
     LenGV = new GlobalVariable(
         M,
         LenTy,
@@ -52,8 +52,6 @@ static std::pair<GlobalVariable*, GlobalVariable*> getOrCreateIRDumpGlobals(Modu
 }
 
 PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
-  bool Changed = false;
-
   static constexpr const char *kDataName = "RuntimeSpecializeableIR_data";
 
   // If we already finalized once, don't do it again (keeps things predictable).
@@ -61,7 +59,7 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
     return PreservedAnalyses::all();
   }
 
-  auto [PtrGV, LenGV] = getOrCreateIRDumpGlobals(M);
+  const auto [PtrGV, LenGV] = getOrCreateIRDumpGlobals(M);
 
   // 1) Serialize the entire module to LLVM bitcode in-memory.
   SmallVector<char, 0> BitcodeBuffer;
@@ -69,14 +67,14 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
   WriteBitcodeToFile(M, OS);
 
   LLVMContext &Ctx = M.getContext();
-  ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(BitcodeBuffer.data()),
+  const ArrayRef<uint8_t> Bytes(reinterpret_cast<const uint8_t *>(BitcodeBuffer.data()),
                           BitcodeBuffer.size());
 
   // 2) Create @RuntimeSpecializeableIR_data = constant [N x i8] ...
-  ArrayType *DataTy = ArrayType::get(Type::getInt8Ty(Ctx), Bytes.size());
-  Constant *DataInit = ConstantDataArray::get(Ctx, Bytes);
+  ArrayType * const DataTy = ArrayType::get(Type::getInt8Ty(Ctx), Bytes.size());
+  Constant * const DataInit = ConstantDataArray::get(Ctx, Bytes);
 
-  auto *DataGV = new GlobalVariable(
+  auto * const DataGV = new GlobalVariable(
       M,
       DataTy,
       /*isConstant=*/true,
@@ -86,14 +84,13 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
   DataGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
 
   // 3) Point ptr to the first byte, and set len.
-  Constant *Zero32 = ConstantInt::get(Type::getInt32Ty(Ctx), 0);
-  SmallVector<Constant *, 2> GEPIdx = {Zero32, Zero32};
-  Constant *DataPtr = ConstantExpr::getInBoundsGetElementPtr(DataTy, DataGV, GEPIdx);
+  Constant * const Zero32 = ConstantInt::get(Type::getInt32Ty(Ctx), 0);
+  const SmallVector<Constant *, 2> GEPIdx = {Zero32, Zero32};
+  Constant * DataPtr = ConstantExpr::getInBoundsGetElementPtr(DataTy, DataGV, GEPIdx);
   DataPtr = ConstantExpr::getBitCast(DataPtr, PointerType::getUnqual(Ctx));
 
   PtrGV->setInitializer(DataPtr);
   LenGV->setInitializer(ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size()));
 
-  Changed = true;
-  return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
+  return PreservedAnalyses::none();
 }

@@ -147,7 +147,7 @@ namespace clangRuntimeSpecializer {
         return this;
     }
 
-      bool printsFixpointIterations() const {
+    bool printsFixpointIterations() const {
         return CurrentOptions.PrintFixpointIterations;
     }
 
@@ -264,23 +264,23 @@ namespace clangRuntimeSpecializer {
     void checkInitialization(const char* funcName) const;
     llvm::Function* getTargetFunction(const char* funcName) const;
     void validateArgs(llvm::Function* TargetFunc, llvm::CallBase* CallSite, size_t NumArgs) const;
-    std::string createUniqueWrapperName();
-    void prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName);
+    std::string createUniqueWrapperName() const;
+    void prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const;
     uintptr_t addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName);
-    void encourageInlining(llvm::Function* F);
+    static void encourageInlining(llvm::Function* F);
     llvm::Function* buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
                                    llvm::ArrayRef<llvm::Constant*> SpecializedArgs, llvm::ArrayRef<WriteBack> WriteBacks,
-                                   bool ForceInstrument, bool Optimize = true);
+                                   bool ForceInstrument, bool Optimize = true) const;
 
     explicit ClangRuntimeSpecializer();
 
     llvm::CallBase* findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const;
 
     // Helper to identify concrete type of a polymorphic object from its vtable pointer
-    llvm::StructType* identifyPolymorphicType(llvm::Module& M, const void* ObjectPtr);
+    static llvm::StructType* identifyPolymorphicType(llvm::Module& M, const void* ObjectPtr);
 
     // Recursively serialize a value of a given LLVM type from a memory location.
-    llvm::Constant* serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr);
+    static llvm::Constant* serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr);
 
     template <class T>
     llvm::Constant* serializeArgumentToIR(llvm::Module& M, llvm::Argument* IrArg, T&& Value, std::vector<WriteBack>& WriteBacks) {

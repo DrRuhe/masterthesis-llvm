@@ -38,7 +38,7 @@ int main(int argc, char** argv)
   // EXE: DEBUG: [serializeValueToIR] Serializing value of type i32
   // EXE: DEBUG: [callSpecialized] Arg Serialized to: i32 2
   // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
-  // EXE: define void @specialized_wrapper_1_
+  // EXE: define void @specialized_wrapper
   // EXE: entry:
   // EXE:   store i32 9, ptr inttoptr
   // EXE:   ret void
