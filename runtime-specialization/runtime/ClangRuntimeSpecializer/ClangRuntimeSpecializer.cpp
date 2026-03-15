@@ -273,7 +273,42 @@ namespace clangRuntimeSpecializer {
             // Strip debug info by default to reduce JIT overhead and code size.
             // Only keep debug info if explicitly requested via setKeepDebugInfo(true).
             if (!Instance->shouldKeepDebugInfo()) {
+              // llvm::StripDebugInfo removes most debug info, but sometimes leaves
+              // some behind in modules that already have it.
               bool DebugInfoStripped = llvm::StripDebugInfo(M);
+              
+              // More aggressive stripping:
+              // 1. Remove all debug-related named metadata
+              const char *DebugMetadataNames[] = {
+                  "llvm.dbg.cu", "llvm.module.flags", "llvm.ident"};
+              for (const char *Name : DebugMetadataNames) {
+                if (llvm::NamedMDNode *NMD = M.getNamedMetadata(Name)) {
+                  M.eraseNamedMetadata(NMD);
+                }
+              }
+              
+              // 2. Remove all debug intrinsics from all functions
+              for (auto &F : M) {
+                  std::vector<llvm::Instruction*> ToErase;
+                  for (auto &BB : F) {
+                      for (auto &I : BB) {
+                          if (llvm::isa<llvm::DbgInfoIntrinsic>(&I) || llvm::isa<llvm::DbgLabelInst>(&I)) {
+                              ToErase.push_back(&I);
+                          } else {
+                              // Also clear any debug location attached to instructions
+                              I.setDebugLoc(llvm::DebugLoc());
+                          }
+                      }
+                  }
+                  for (auto *I : ToErase) {
+                      I->eraseFromParent();
+                  }
+                  // Clear any debug metadata attached to the function itself
+                  F.setSubprogram(nullptr);
+                  // Remove other debug-related metadata attachments
+                  F.setMetadata(llvm::LLVMContext::MD_dbg, nullptr);
+              }
+              
               if (DebugInfoStripped) {
                 log(LogLevel::Debug, "IRTransform", "Debug info stripped from JIT module");
               }
