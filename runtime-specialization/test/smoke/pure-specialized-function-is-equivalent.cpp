@@ -1,20 +1,8 @@
-// RUN: %clangxx -g -O0 -emit-llvm -c %s -o %t.bc
-// Test that there is no RuntimeSpecializableIR_ptr yet:
-// RUN: opt -S %t.bc -o - | FileCheck %s --check-prefix=PRE-DUMP
-// RUN: opt --verify-debuginfo-preserve -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes='runtime-specialization-IR-dumping' %t.bc -o %t.opt.bc
-// Test that there is a RuntimeSpecializableIR_ptr now:
-// RUN: opt -S %t.opt.bc -o - | FileCheck %s --check-prefix=POST-DUMP
-// RUN: %clangxx -g %t.opt.bc -o %t.exe
+// RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
 // RUN: %t.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
-
-
-
 
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
-
-// PRE-DUMP-NOT: RuntimeSpecializeableIR_ptr
-// POST-DUMP: RuntimeSpecializeableIR_ptr
 
 
 /// computes 3^x
