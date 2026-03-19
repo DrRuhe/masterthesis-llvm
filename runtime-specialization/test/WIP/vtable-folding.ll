@@ -1,4 +1,4 @@
-; RUN: opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes=vtable-constant-folding -S %s | FileCheck %s --dump-input=always
+; RUN: opt -load-pass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext -passes=vtable-constant-folding -print-changed=cdiff -S %s | FileCheck %s
 
 %class.Derived = type { %class.Base }
 %class.Base = type { ptr }
@@ -44,3 +44,4 @@ entry:
   %call = call i32 %0(ptr @internal_obj)
   ret i32 %call
 }
+
