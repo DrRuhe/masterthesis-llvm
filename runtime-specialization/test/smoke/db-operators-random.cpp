@@ -103,7 +103,7 @@ namespace SqlParser {
 
 
 int main(int argc, char* argv[]) {
-    clangRuntimeSpecializer::ClangRuntimeSpecializer::init()->printFixpointIterations();
+    //clangRuntimeSpecializer::ClangRuntimeSpecializer::init()->printFixpointIterations();
 
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
