@@ -32,6 +32,7 @@
 #include "llvm/Transforms/Scalar/CorrelatedValuePropagation.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "VTableConstantFolding.h"
+#include "StaticMutabilityAnalysis.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Verifier.h"
@@ -381,6 +382,9 @@ namespace clangRuntimeSpecializer {
 
                 // 3. Dead code elimination - removes unreachable vtable entries
                 FixpointMPM.addPass(llvm::GlobalDCEPass());
+
+                // 3b. Static Mutability Analysis to infer read-only fields
+                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
 
                 // 4. Pre-inlining function-level optimizations
                 llvm::FunctionPassManager PreInlineFPM;

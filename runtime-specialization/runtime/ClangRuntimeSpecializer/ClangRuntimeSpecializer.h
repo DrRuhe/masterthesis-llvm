@@ -665,6 +665,9 @@ namespace clangRuntimeSpecializer {
   }
 
 
+  // TODO this does NOT work with deep objects.
+  //
+
   template <const char* funcName, class MemFn, class OBJ, class... ARGS>
   __attribute__((always_inline))
   void assertSpecializedMethodIsEquivalent(MemFn Mf, OBJ Obj, ARGS... Args) {

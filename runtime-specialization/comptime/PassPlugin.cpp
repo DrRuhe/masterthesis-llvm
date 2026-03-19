@@ -1,5 +1,6 @@
 #include "RuntimeSpecializerPass.h"
 #include "../runtime/ClangRuntimeSpecializer/VTableConstantFolding.h"
+#include "../runtime/ClangRuntimeSpecializer/StaticMutabilityAnalysis.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -24,6 +25,10 @@ llvmGetPassPluginInfo() {
                       }
                       if (Name == "vtable-constant-folding") {
                         MPM.addPass(createModuleToFunctionPassAdaptor(VTableConstantFoldingPass()));
+                        return true;
+                      }
+                      if (Name == "static-mutability-analysis") {
+                        MPM.addPass(createModuleToFunctionPassAdaptor(clangRuntimeSpecializer::StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
                         return true;
                       }
                       return false;
