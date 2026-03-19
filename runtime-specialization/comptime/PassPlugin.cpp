@@ -1,4 +1,5 @@
 #include "RuntimeSpecializerPass.h"
+#include "../runtime/ClangRuntimeSpecializer/VTableConstantFolding.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
@@ -19,6 +20,10 @@ llvmGetPassPluginInfo() {
 
                       if (Name == "runtime-specialization-IR-dumping") {
                         MPM.addPass(IRDumpingPass());
+                        return true;
+                      }
+                      if (Name == "vtable-constant-folding") {
+                        MPM.addPass(createModuleToFunctionPassAdaptor(VTableConstantFoldingPass()));
                         return true;
                       }
                       return false;
