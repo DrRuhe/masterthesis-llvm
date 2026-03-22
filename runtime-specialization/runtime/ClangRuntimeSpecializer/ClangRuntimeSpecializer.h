@@ -184,8 +184,8 @@ namespace clangRuntimeSpecializer {
     R callImpl(const char* CallerName, ARGS&&... Args) {
       checkInitialization(funcName);
       llvm::Function *TargetFunc = getTargetFunction(funcName);
-      llvm::CallBase* CallSite = findCallSpecializedFunctionInModule(CallerName, funcName);
-      validateArgs(TargetFunc, CallSite, sizeof...(ARGS));
+
+      validateArgs(TargetFunc, sizeof...(ARGS));
 
       if constexpr (Instrument)
       {
@@ -202,59 +202,52 @@ namespace clangRuntimeSpecializer {
       auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
       encourageInlining(TargetFuncInNewModule);
 
-      std::vector<llvm::Constant*> ArgConstants;
-      std::vector<WriteBack> WriteBacks;
+      llvm::LLVMContext& Ctx = NewModule->getContext();
 
-      auto SerializeArgs = [&](auto&&... ArgsInner) {
-          unsigned I = 0;
-          ([&] {
-              llvm::Argument* IrArg = TargetFunc->getArg(I);
-              ArgConstants.push_back(serializeArgumentToIR(*NewModule, IrArg, std::forward<decltype(ArgsInner)>(ArgsInner), WriteBacks));
-              I++;
-          }(), ...);
-      };
-      SerializeArgs(std::forward<ARGS>(Args)...);
 
-      for (llvm::Value* Arg : ArgConstants)
-      {
-          log(LogLevel::Debug, CallerName, (llvm::Twine("Arg Serialized to: ") + printLLVM(Arg)).str());
-      }
+    llvm::FunctionType* const FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
 
-      buildWrapperIR(*NewModule, UniqueWrapperName, TargetFuncInNewModule, ArgConstants, WriteBacks, Instrument,  Optimize);
+
+    llvm::Function* const NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
+    if (Instrument) {
+        NewFunc->addFnAttr("force-instrument");
+    }
+    if (!Optimize) {
+        NewFunc->addFnAttr("force-no-optimize");
+    }
+
+    llvm::BasicBlock* const Entry = llvm::BasicBlock::Create(Ctx, "entry", NewFunc);
+    llvm::IRBuilder<> Builder(Entry);
+
+    // Serialize the runtime arguments to IR constants and create a call to the target function with them.
+    std::vector<llvm::Value*> ArgValues = serializeArgumentsToIR(Builder, CallerName, std::forward<ARGS>(Args)...);
+
+    auto * const CallInst = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(), TargetFuncInNewModule, ArgValues);
+    CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
+    CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
+
+    if (TargetFunc->getReturnType()->isVoidTy()) {
+        Builder.CreateRetVoid();
+    } else {
+        Builder.CreateRet(CallInst);
+    }
 
       prepareModuleForJIT(*NewModule, UniqueWrapperName);
 
-      auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule),
-                                             llvm::orc::ThreadSafeContext(std::make_unique<llvm::LLVMContext>()));
-
-      // Export serialized argument addresses to the JIT if they are external (for baseline runs).
-      {
-          auto &JD = JIT->getMainJITDylib();
-          llvm::orc::SymbolMap Symbols;
-          for (const auto& WB : WriteBacks) {
-              if (auto* GV = llvm::dyn_cast<llvm::GlobalVariable>(WB.Source)) {
-                  if (GV->hasExternalLinkage()) {
-                      Symbols[JIT->mangleAndIntern(GV->getName())] = { llvm::orc::ExecutorAddr::fromPtr(WB.OriginalPtr), llvm::JITSymbolFlags::Exported };
-                  }
-              }
-          }
-          if (!Symbols.empty()) {
-              cantFail(JD.define(llvm::orc::absoluteSymbols(Symbols)));
-          }
-      }
+      auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), TSCtx);
 
       uintptr_t Addr = addModuleAndLookup(std::move(TSM), UniqueWrapperName);
 
         auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
-        if constexpr (std::is_void_v<R>) {
+      if constexpr (std::is_void_v<R>) {
             SpecializedFnPtr();
-            return;
-        } else {
+          return;
+      } else {
             return SpecializedFnPtr();
-        }
+      }
     }
 
-    llvm::LLVMContext Context;
+    llvm::orc::ThreadSafeContext TSCtx;
     std::unique_ptr<llvm::Module> Module;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
@@ -263,288 +256,55 @@ namespace clangRuntimeSpecializer {
 
     void checkInitialization(const char* funcName) const;
     llvm::Function* getTargetFunction(const char* funcName) const;
-    void validateArgs(llvm::Function* TargetFunc, llvm::CallBase* CallSite, size_t NumArgs) const;
+    void validateArgs(llvm::Function* TargetFunc, size_t NumArgs) const;
     std::string createUniqueWrapperName() const;
     void prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const;
     uintptr_t addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName);
     static void encourageInlining(llvm::Function* F);
     llvm::Function* buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
-                                   llvm::ArrayRef<llvm::Constant*> SpecializedArgs, llvm::ArrayRef<WriteBack> WriteBacks,
-                                   bool ForceInstrument, bool Optimize = true) const;
+                                   llvm::ArrayRef<llvm::Value*> SpecializedArgs, bool ForceInstrument, bool Optimize = true) const;
 
     explicit ClangRuntimeSpecializer();
 
-    llvm::CallBase* findCallSpecializedFunctionInModule(const char* FunctionName, const char* UID) const;
-
-    // Helper to identify concrete type of a polymorphic object from its vtable pointer
-    static llvm::StructType* identifyPolymorphicType(llvm::Module& M, const void* ObjectPtr);
-
-    // Recursively serialize a value of a given LLVM type from a memory location.
-    static llvm::Constant* serializeValueToIR(llvm::Module& M, llvm::Type* Type, const void* ValuePtr);
-
-    template <class T>
-    llvm::Constant* serializeArgumentToIR(llvm::Module& M, llvm::Argument* IrArg, T&& Value, std::vector<WriteBack>& WriteBacks) {
-      using Decayed = std::decay_t<T>;
-      llvm::Type* ExpectedType = IrArg ? IrArg->getType() : nullptr;
-      if (!ExpectedType) {
-          throw ClangRuntimeSpecializerArgSerializationError("expectedType was null during serialization.");
-      }
-
-      CRS_LOG(Debug,[&] {
-          return (llvm::Twine("Inferred type for serialized argument: ") + printLLVM(ExpectedType)).str();
-      });
-
-      using ElementType = std::conditional_t<std::is_pointer_v<Decayed>, std::remove_pointer_t<Decayed>, Decayed>;
-
-      // Handle polymorphic types by reconstructing them with their concrete type
-      if constexpr (std::is_polymorphic_v<ElementType>) {
-          const void* ObjectPtr = nullptr;
-          if constexpr (std::is_pointer_v<Decayed>) {
-              ObjectPtr = Value;
+      template <class T>
+      llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, T&& value) {
+          using Decayed = std::decay_t<T>;
+          // TODO implement proper serialization logic for all sorts of types.
+          if constexpr (std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>) {
+              log(LogLevel::Debug, "serializeValueToIR", (llvm::Twine("Serializing value of type i") + llvm::Twine(sizeof(Decayed) * 8)).str());
+              llvm::Type* Ty = llvm::Type::getIntNTy(builder.getContext(),
+                                                    static_cast<unsigned>(sizeof(Decayed) * 8));
+              return llvm::ConstantInt::get(Ty, static_cast<std::uint64_t>(value));
+          } else if constexpr (std::is_floating_point_v<Decayed>) {
+              log(LogLevel::Debug, "serializeValueToIR", "Serializing value of floating point type");
+              if constexpr (std::is_same_v<Decayed, float>) {
+                  return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(value));
+              } else {
+                  return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(static_cast<double>(value)));
+              }
+          } else if constexpr (std::is_pointer_v<Decayed>) {
+              log(LogLevel::Debug, "serializeValueToIR", "Serializing value of type pointer");
+              llvm::Type* Ty = llvm::Type::getInt64Ty(builder.getContext());
+              llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, reinterpret_cast<std::uintptr_t>(value));
+              return llvm::ConstantExpr::getIntToPtr(IntVal, llvm::PointerType::getUnqual(builder.getContext()));
           } else {
-              ObjectPtr = &Value;
-          }
-
-          if (!ObjectPtr) {
-              // Null pointer - serialize as null
-              return llvm::ConstantPointerNull::get(llvm::cast<llvm::PointerType>(ExpectedType));
-          }
-
-          CRS_LOG(Debug,[&] {
-              return "Serializing polymorphic type - identifying concrete type";
-          });
-
-          // Identify the concrete type from the vtable pointer
-          llvm::StructType* ConcreteType = identifyPolymorphicType(M, ObjectPtr);
-
-          if (!ConcreteType) {
-              CRS_LOG(Debug,[&] {
-                  return "Could not identify concrete type - falling back to opaque pointer";
-              });
-              // Fall back to pointer serialization
-              return serializeValueToIR(M, ExpectedType, &Value);
-          }
-
-          CRS_LOG(Debug,[&] {
-              return (llvm::Twine("Serializing polymorphic object with concrete type: ") + printLLVM(ConcreteType)).str();
-          });
-
-          // Serialize the object with its concrete type (recursively handles polymorphic members)
-          llvm::Constant* SerializedObject = serializeValueToIR(M, ConcreteType, ObjectPtr);
-
-          if (!SerializedObject) {
-              throw ClangRuntimeSpecializerArgSerializationError("Failed to serialize polymorphic object");
-          }
-
-          // Create a global variable with the serialized object
-          auto *GV = new llvm::GlobalVariable(M, ConcreteType, true, // isConstant = true
-                                              llvm::GlobalValue::InternalLinkage,
-                                              SerializedObject, "__specialization_global_polymorphic_object");
-
-          // Return a pointer to the global, bitcast if necessary
-          if (ExpectedType->isPointerTy()) {
-              return llvm::ConstantExpr::getBitCast(GV, ExpectedType);
-          } else {
-              return GV;
+              throw ClangRuntimeSpecializerArgSerializationError("Cannot serialize argument to IR. ");
           }
       }
 
-      if constexpr ((std::is_class_v<ElementType> || std::is_union_v<ElementType>) && !std::is_polymorphic_v<ElementType>) {
-          struct DumpContext {
-              ClangRuntimeSpecializer* Self;
-              llvm::Module& Module;
-              llvm::Type* ExpectedType;
-              llvm::Type* PreciseType = nullptr;
-              
-              struct Frame {
-                  llvm::Type* Type;
-                  std::vector<llvm::Constant*> Elements;
-                  unsigned NextElemIdx = 0;
-              };
-              std::vector<Frame> Stack;
-              llvm::Constant* Result = nullptr;
-              bool LastWasFieldHeader = false;
-
-              DumpContext(ClangRuntimeSpecializer* ClangRuntimeSpecializer, llvm::Module& M, llvm::Type* Type)
-                  : Self(ClangRuntimeSpecializer), Module(M), ExpectedType(Type) {}
-
-              void handleTypeName(const char* Name) {
-                  if (PreciseType) return;
-                  std::string N = Name;
-                  // Strip "struct " or "class " prefix if present in the dump name
-                  if (N.compare(0, 7, "struct ") == 0) N = N.substr(7);
-                  else if (N.compare(0, 6, "class ") == 0) N = N.substr(6);
-
-                  auto& Ctx = Module.getContext();
-                  if (auto* StructTy = llvm::StructType::getTypeByName(Ctx, "struct." + N)) PreciseType = StructTy;
-                  else if (auto* ClassTy = llvm::StructType::getTypeByName(Ctx, "class." + N)) PreciseType = ClassTy;
-                  else if (auto* Ty = llvm::StructType::getTypeByName(Ctx, N)) PreciseType = Ty;
-                  
-                  if (!PreciseType) {
-                      if (ExpectedType->isStructTy()) PreciseType = ExpectedType;
-                  }
-
-                  if (PreciseType) {
-                      CRS_LOG(Debug,[&] {
-                          return (llvm::Twine("Discovered precise type: ") + printLLVM(PreciseType) + " for " + Name).str();
-                      });
-                      if (Stack.empty()) {
-                          Stack.push_back({PreciseType, {}, 0});
-                      }
-                  }
-              }
-
-              void pushFrame() {
-                  if (Stack.empty()) return;
-                  auto& Top = Stack.back();
-                  skipPadding(Top);
-                  llvm::Type* NextTy = nullptr;
-                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(Top.Type)) {
-                      if (Top.NextElemIdx < STy->getNumElements())
-                          NextTy = STy->getElementType(Top.NextElemIdx);
-                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Top.Type)) {
-                      NextTy = ATy->getElementType();
-                  }
-                  if (NextTy) Stack.push_back({NextTy, {}, 0});
-              }
-
-              void popFrame() {
-                  if (Stack.empty()) return;
-                  Frame F = std::move(Stack.back());
-                  Stack.pop_back();
-
-                  llvm::Constant* C = nullptr;
-                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(F.Type)) {
-                      while (F.Elements.size() < STy->getNumElements()) {
-                          F.Elements.push_back(llvm::UndefValue::get(STy->getElementType(F.Elements.size())));
-                      }
-                      C = llvm::ConstantStruct::get(STy, F.Elements);
-                  } else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(F.Type)) {
-                      C = llvm::ConstantArray::get(ATy, F.Elements);
-                  }
-
-                  if (Stack.empty()) Result = C;
-                  else {
-                      Stack.back().Elements.push_back(C);
-                      ++Stack.back().NextElemIdx;
-                  }
-              }
-
-              void skipPadding(Frame& F) {
-                  if (auto* STy = llvm::dyn_cast<llvm::StructType>(F.Type)) {
-                      while (F.NextElemIdx < STy->getNumElements()) {
-                          llvm::Type* ETy = STy->getElementType(F.NextElemIdx);
-                          // Heuristic: padding is often anonymous [N x i8]
-                          if (ETy->isArrayTy() && ETy->getArrayElementType()->isIntegerTy(8)) {
-                              F.Elements.push_back(llvm::UndefValue::get(ETy));
-                              ++F.NextElemIdx;
-                          } else break;
-                      }
-                  }
-              }
-
-              void addConstant(llvm::Constant* C) {
-                  if (Stack.empty()) { Result = C; return; }
-                  auto& Top = Stack.back();
-                  skipPadding(Top);
-                  Top.Elements.push_back(C);
-                  Top.NextElemIdx++;
-              }
+      template <class... Args>
+      std::vector<llvm::Value*> serializeArgumentsToIR(llvm::IRBuilder<>& builder, const char* CallerName, Args&&... args) {
+          std::vector<llvm::Value*> argValues;
+          auto serializeAndLog = [&](auto&& arg) {
+              auto* v = serializeArgumentToIR(builder, std::forward<decltype(arg)>(arg));
+              log(LogLevel::Debug, CallerName, (llvm::Twine("Arg Serialized to: ") + printLLVM(v)).str());
+              argValues.push_back(v);
           };
-
-          DumpContext Ctx{this, M, ExpectedType};
-          auto Callback = [](void* Context, const char* Fmt, ...) -> int {
-              auto* C = static_cast<DumpContext*>(Context);
-              va_list Args;
-              va_start(Args, Fmt);
-              if (std::strcmp(Fmt, "%s") == 0) {
-                  C->handleTypeName(va_arg(Args, char*));
-              } else if (std::strcmp(Fmt, " {\n") == 0) {
-                  if (C->LastWasFieldHeader) C->pushFrame();
-              } else if (std::strcmp(Fmt, "}\n") == 0 || std::strcmp(Fmt, "%s}\n") == 0) {
-                  C->popFrame();
-              } else if (std::strstr(Fmt, "=")) {
-                  va_arg(Args, char*); // indent
-                  va_arg(Args, char*); // type
-                  va_arg(Args, char*); // name
-                  int Specifiers = 0;
-                  for (const char* P = Fmt; *P; ++P) if (*P == '%') Specifiers++;
-                  
-                  if (Specifiers >= 4) {
-                      C->LastWasFieldHeader = false;
-                      // Primitive or pointer leaf
-                      if (C->Stack.empty()) { va_end(Args); return 0; }
-                      auto& Top = C->Stack.back();
-                      C->skipPadding(Top);
-                      if (Top.NextElemIdx >= (llvm::isa<llvm::StructType>(Top.Type) ? llvm::cast<llvm::StructType>(Top.Type)->getNumElements() : 0xFFFFFFFF)) {
-                          va_end(Args); return 0;
-                      }
-                      llvm::Type* ETy = nullptr;
-                      if (auto* STy = llvm::dyn_cast<llvm::StructType>(Top.Type)) ETy = STy->getElementType(Top.NextElemIdx);
-                      else if (auto* ATy = llvm::dyn_cast<llvm::ArrayType>(Top.Type)) ETy = ATy->getElementType();
-
-                      if (ETy) {
-                          if (std::strstr(Fmt, "%d") || std::strstr(Fmt, "%u") || std::strstr(Fmt, "%x")) {
-                              if (ETy->isIntegerTy(64)) C->addConstant(llvm::ConstantInt::get(ETy, va_arg(Args, long long)));
-                              else C->addConstant(llvm::ConstantInt::get(ETy, va_arg(Args, int)));
-                          } else if (std::strstr(Fmt, "%f")) {
-                              C->addConstant(llvm::ConstantFP::get(ETy, va_arg(Args, double)));
-                          } else if (std::strstr(Fmt, "%p") || std::strstr(Fmt, "%.32s")) {
-                              void* Ptr = va_arg(Args, void*);
-                              if (ETy->isPointerTy()) {
-                                  uintptr_t Val = reinterpret_cast<uintptr_t>(Ptr);
-                                  C->addConstant(llvm::ConstantExpr::getIntToPtr(llvm::ConstantInt::get(llvm::Type::getInt64Ty(C->Module.getContext()), Val), ETy));
-                              } else if (ETy->isArrayTy()) {
-                                  // Nested array - use fallback
-                                  C->addConstant(C->Self->serializeValueToIR(C->Module, ETy, Ptr));
-                              }
-                          }
-                      }
-                  } else {
-                      C->LastWasFieldHeader = true;
-                  }
-              }
-              va_end(Args);
-              return 0;
-          };
-
-          if constexpr (std::is_pointer_v<Decayed>) {
-              if (!Value) return serializeValueToIR(M, ExpectedType, &Value);
-              __builtin_dump_struct(Value, Callback, &Ctx);
-          } else {
-              __builtin_dump_struct(&Value, Callback, &Ctx);
-          }
-
-          if (Ctx.Result) {
-              if (ExpectedType->isPointerTy()) {
-                  // Determine if we need write-back.
-                  // If the original was a pointer/reference, we should write back modifications to it.
-                  // We only do this if it's not a byval argument.
-                  bool IsByVal = IrArg && IrArg->hasByValAttr();
-                  bool ShouldWriteBack = !IsByVal;
-
-                  auto *GV = new llvm::GlobalVariable(M, Ctx.Result->getType(), true, // isConstant = true
-                                                      llvm::GlobalValue::InternalLinkage, Ctx.Result, "__specialization_global_specialized_instance");
-                  
-                  if (ShouldWriteBack) {
-                      void* Ptr = nullptr;
-                      if constexpr (std::is_pointer_v<Decayed>) {
-                          Ptr = reinterpret_cast<void*>(Value);
-                      } else {
-                          Ptr = const_cast<void*>(static_cast<const void*>(&Value));
-                      }
-                      if (Ptr) {
-                          WriteBacks.push_back({GV, Ptr, M.getDataLayout().getTypeStoreSize(Ctx.Result->getType())});
-                      }
-                  }
-                  return llvm::ConstantExpr::getBitCast(GV, ExpectedType);
-              }
-              return Ctx.Result;
-          }
+          (serializeAndLog(std::forward<Args>(args)), ...);
+          return argValues;
       }
 
-      return serializeValueToIR(M, ExpectedType, &Value);
-    }
+
   };
 
   template <const char* funcName, class MemFn, class OBJ, class... ARGS>
@@ -553,7 +313,6 @@ namespace clangRuntimeSpecializer {
     auto Invoke = [&]() -> decltype(auto) {
       return (std::forward<OBJ>(Obj).*MF)(std::forward<ARGS>(Args)...);
     };
-
     try {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
         using R = decltype(Invoke());
