@@ -62,6 +62,7 @@ entry:
   %old = load i32, ptr %gep0, align 4
   
   %gep1 = getelementptr inbounds %struct.Data, ptr %d, i32 0, i32 1
+  ; This load IS invariant, as we know that
   ; CHECK: %val1 = load i32, ptr %gep1, align 4, !invariant.load !0
   %val1 = load i32, ptr %gep1, align 4
   
