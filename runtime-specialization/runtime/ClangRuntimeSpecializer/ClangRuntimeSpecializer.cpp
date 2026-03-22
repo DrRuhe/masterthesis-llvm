@@ -449,6 +449,9 @@ namespace clangRuntimeSpecializer {
                 // GVN - propagate constants through inlined code (KEY for devirtualization!)
                 PostInlineFPM.addPass(llvm::GVNPass());
 
+                // Static Mutability Analysis to infer read-only fields
+                PostInlineFPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
+
                 // Replace invariant loads with constants from host memory
                 PostInlineFPM.addPass(InvariantLoadToConstantPass());
 

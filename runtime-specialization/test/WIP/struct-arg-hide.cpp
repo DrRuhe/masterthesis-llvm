@@ -29,7 +29,7 @@ int main(int argc, char** argv) {
     MyStruct* hidden_s = hide(&s);
 
 
-    // EXE: define i32 @specialized_wrapper
+    // EXE: define noundef i32 @specialized_wrapper
     // EXE: entry:
     // EXE:   ret i32 102
     clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_process_struct>(process_struct, *hidden_s);

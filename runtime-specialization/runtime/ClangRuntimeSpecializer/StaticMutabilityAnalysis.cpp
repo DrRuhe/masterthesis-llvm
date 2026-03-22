@@ -23,6 +23,25 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
         }
     }
 
+    // 1b. Initialize worklist with constant pointers (inttoptr)
+    for (auto &BB : F) {
+        for (auto &I : BB) {
+            for (auto &Op : I.operands()) {
+                Value *V = Op.get();
+                if (auto *CE = dyn_cast<ConstantExpr>(V)) {
+                    if (CE->getOpcode() == Instruction::IntToPtr) {
+                        if (isa<ConstantInt>(CE->getOperand(0))) {
+                             if (PointerMap.find(CE) == PointerMap.end()) {
+                                 PointerMap[CE] = {CE, {}, false};
+                                 Queue.push(CE);
+                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     if (PointerMap.empty()) {
         return;
     }
