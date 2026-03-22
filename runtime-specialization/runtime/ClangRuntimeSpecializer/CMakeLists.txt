@@ -1,6 +1,7 @@
 add_library(ClangRuntimeSpecializer SHARED
         ClangRuntimeSpecializer.cpp
         VTableConstantFolding.cpp
+        VTableEscapeAnalysis.cpp
         StaticMutabilityAnalysis.cpp
         InvariantLoadToConstant.cpp
 )
