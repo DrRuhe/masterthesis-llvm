@@ -215,8 +215,7 @@ namespace clangRuntimeSpecializer {
 
     const RuntimeSpecializableData data = read_runtime_specializable_data();
     if (!data.Ptr || data.Len == 0) {
-      std::fprintf(stderr, "No dumped IR found in the executable.\n");
-      std::abort();
+      throw ClangRuntimeSpecializerError("No dumped IR found in the executable.\n");
     }
 
     Instance.reset(new ClangRuntimeSpecializer);

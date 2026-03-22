@@ -282,10 +282,16 @@ namespace clangRuntimeSpecializer {
               } else {
                   return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(static_cast<double>(value)));
               }
-          } else if constexpr (std::is_pointer_v<Decayed>) {
-              log(LogLevel::Debug, "serializeValueToIR", "Serializing value of type pointer");
+          } else if constexpr (std::is_pointer_v<Decayed> || std::is_class_v<Decayed>) {
+              log(LogLevel::Debug, "serializeValueToIR", "Serializing value of type pointer or class");
               llvm::Type* Ty = llvm::Type::getInt64Ty(builder.getContext());
-              llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, reinterpret_cast<std::uintptr_t>(value));
+              std::uintptr_t addr;
+              if constexpr (std::is_pointer_v<Decayed>) {
+                  addr = reinterpret_cast<std::uintptr_t>(value);
+              } else {
+                  addr = reinterpret_cast<std::uintptr_t>(&value);
+              }
+              llvm::Constant* IntVal = llvm::ConstantInt::get(Ty, addr);
               return llvm::ConstantExpr::getIntToPtr(IntVal, llvm::PointerType::getUnqual(builder.getContext()));
           } else {
               throw ClangRuntimeSpecializerArgSerializationError("Cannot serialize argument to IR. ");
