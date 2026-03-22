@@ -1,5 +1,5 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe 1 | FileCheck %s --check-prefix=EXE
+// RUN: %t.exe 1 | FileCheck %s --check-prefix=EXE --dump-input=always
 
 
 
@@ -36,8 +36,8 @@ int main(int argc, char** argv) {
   A instance(argc);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::getMod2
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @__specialization_global_specialized_instance
-  // EXE-SAME: %class.A { i32 2 }
+  // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
 
   // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
   // EXE: entry:
@@ -46,8 +46,12 @@ int main(int argc, char** argv) {
   int r1 = clangRuntimeSpecializer::specializeMethodOrFallback<Fn_A_getMod2>(&A::getMod2, instance);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::add
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: @__specialization_global_specialized_instance
-  // EXE-SAME: %class.A { i32 2 }
+  // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
+  // EXE: DEBUG: [serializeValueToIR] Serializing value of type i32
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: i32 7
+  // EXE: DEBUG: [serializeValueToIR] Serializing value of type i32
+  // EXE: DEBUG: [callSpecialized] Arg Serialized to: i32 11
 
   // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
   // EXE: entry:

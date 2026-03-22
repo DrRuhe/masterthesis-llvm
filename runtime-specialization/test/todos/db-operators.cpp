@@ -1,10 +1,7 @@
 // RUN: %clangxx -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
 // RUN: %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
 
-//TODO make sure this also works under -O3
-
 #include <iostream>
-#include <random>
 #include <string>
 #include <vector>
 #include <cstdio>
@@ -39,11 +36,7 @@ class Scan final : public Operator {
     int value = 0;
 public:
     int next() override __asm__("Scan::next") {
-        std::random_device rd;  // a seed source for the random number engine
-        std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
-        std::uniform_int_distribution<> distrib(1, 100);
-
-        return distrib(gen);
+        return (value > 100) ? -1 : value++;
     }
 };
 
@@ -59,7 +52,6 @@ extern "C" int execute_query(Operator* op) __asm__("execute_query");
 int execute_query(Operator* op) {
     return op->next();
 }
-
 
 
 inline constexpr char Fn_execute_query[] = "execute_query";
@@ -103,8 +95,6 @@ namespace SqlParser {
 
 
 int main(int argc, char* argv[]) {
-    //clangRuntimeSpecializer::ClangRuntimeSpecializer::init()->printFixpointIterations();
-
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
 
@@ -113,5 +103,8 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+// EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
+// EXE: DEBUG: [callSpecialized] Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
 // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+// TODO: Current static analysis is not powerful enough to remove vtable loads.
 // EXE-NOT: load ptr, ptr %vtable

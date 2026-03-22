@@ -1,5 +1,4 @@
-// RUN: %clangxx -S -O0 -emit-llvm -c %s -o -
-// RUN: false
+// RUN: %clangxx -S -O0 -emit-llvm -c %s -o - |FileCheck %s --dump-input-always
 
 // THIS IS A WIP TEST TO CHECK HOW AN ATTRIBUTE IS REPRESENTED IN IR, TO SEE:
 // is it possible to obtain the callsite by annotating it and then querying the IR for the annotation.
@@ -12,8 +11,7 @@
 
 #include <cstdio>
 
-// PRE-DUMP-NOT: RuntimeSpecializeableIR_ptr
-// POST-DUMP: RuntimeSpecializeableIR_ptr
+// CHECK: define dso_local i32 @mypow
 
 
 /// computes 3^x

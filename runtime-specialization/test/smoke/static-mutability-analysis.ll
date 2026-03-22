@@ -62,8 +62,8 @@ entry:
   %old = load i32, ptr %gep0, align 4
   
   %gep1 = getelementptr inbounds %struct.Data, ptr %d, i32 0, i32 1
-  ; This load IS invariant, as we know that
-  ; CHECK: %val1 = load i32, ptr %gep1, align 4, !invariant.load !0
+  ; This load is NOT invariant because %d escapes to @bar
+  ; CHECK: %val1 = load i32, ptr %gep1, align 4
   %val1 = load i32, ptr %gep1, align 4
   
   call void @bar(ptr %d, i32 %new_val)
