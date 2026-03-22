@@ -2,6 +2,7 @@ add_library(ClangRuntimeSpecializer SHARED
         ClangRuntimeSpecializer.cpp
         VTableConstantFolding.cpp
         StaticMutabilityAnalysis.cpp
+        InvariantLoadToConstant.cpp
 )
 
 target_include_directories(ClangRuntimeSpecializer

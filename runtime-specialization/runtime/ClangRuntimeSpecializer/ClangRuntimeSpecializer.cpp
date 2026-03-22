@@ -33,6 +33,7 @@
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "VTableConstantFolding.h"
 #include "StaticMutabilityAnalysis.h"
+#include "InvariantLoadToConstant.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/IR/DebugInfo.h"
@@ -354,6 +355,9 @@ namespace clangRuntimeSpecializer {
                 // 3c. Static Mutability Analysis to infer read-only fields
                 InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
                 
+                // 3d. Replace invariant loads with constants from host memory
+                InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
+
                 InitialMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
                 InitialMPM.run(M, MAM);
               }
@@ -445,6 +449,9 @@ namespace clangRuntimeSpecializer {
 
                 // GVN - propagate constants through inlined code (KEY for devirtualization!)
                 PostInlineFPM.addPass(llvm::GVNPass());
+
+                // Replace invariant loads with constants from host memory
+                PostInlineFPM.addPass(InvariantLoadToConstantPass());
 
                 // CUSTOM: VTable constant folding - replace vtable loads with constants
                 // This is our custom pass that specifically handles the pattern:
