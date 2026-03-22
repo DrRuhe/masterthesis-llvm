@@ -10,9 +10,9 @@ namespace clangRuntimeSpecializer {
 
 using namespace llvm;
 
-void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, MemorySSA* MSSA) {
-    if (F.isDeclaration()) return;
+std::map<Value*, StaticMutabilityAnalysis::PointerInfo> StaticMutabilityAnalysis::runCaptureAnalysis(Function& F) {
     std::map<Value*, PointerInfo> PointerMap;
+    if (F.isDeclaration()) return PointerMap;
     std::queue<Value*> Queue;
     
     // 1. Initialize worklist with pointer arguments
@@ -43,7 +43,7 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
     }
 
     if (PointerMap.empty()) {
-        return;
+        return PointerMap;
     }
 
     std::set<Value*> Visited;
@@ -87,6 +87,9 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
                 if (SI->getValueOperand() == V) {
                     PointerMap[V].Escaped = true;
                 }
+                if (SI->getPointerOperand() == V) {
+                    PointerMap[V].Mutated = true;
+                }
             } else if (auto* RI = dyn_cast<ReturnInst>(U)) {
                 PointerMap[V].Escaped = true;
             } else if (auto* CB = dyn_cast<CallBase>(U)) {
@@ -95,10 +98,23 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
                         if (!CB->doesNotCapture(i)) {
                             PointerMap[V].Escaped = true;
                         }
+                        if (!CB->onlyReadsMemory(i)) {
+                            PointerMap[V].Mutated = true;
+                        }
                     }
                 }
             }
         }
+    }
+    return PointerMap;
+}
+
+void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, MemorySSA* MSSA) {
+    if (F.isDeclaration()) return;
+    std::map<Value*, PointerInfo> PointerMap = runCaptureAnalysis(F);
+    
+    if (PointerMap.empty()) {
+        return;
     }
 
     // Phase B: Mutation Tracking
@@ -121,37 +137,69 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
                 if (PointerMap.count(Ptr)) {
                     PointerInfo& LInfo = PointerMap[Ptr];
                     
-                    bool Escaped = false;
+                    bool FieldEscaped = false;
+                    bool FieldMutated = false;
                     for (auto const& [V, Info] : PointerMap) {
-                        if (Info.Escaped && LInfo.OriginArg == Info.OriginArg) {
-                            if (Info.Path.Indices.size() <= LInfo.Path.Indices.size()) {
-                                bool IsPrefix = true;
-                                for (size_t i = 0; i < Info.Path.Indices.size(); ++i) {
-                                    if (Info.Path.Indices[i] != LInfo.Path.Indices[i]) {
-                                        IsPrefix = false;
-                                        break;
-                                    }
-                                }
-                                if (IsPrefix) {
-                                    Escaped = true;
+                        if (Info.OriginArg != LInfo.OriginArg) continue;
+
+                        // Check if Info.Path is a prefix of LInfo.Path (Info is parent/self)
+                        bool IsPrefix = true;
+                        if (Info.Path.Indices.size() <= LInfo.Path.Indices.size()) {
+                            for (size_t i = 0; i < Info.Path.Indices.size(); ++i) {
+                                if (Info.Path.Indices[i] != LInfo.Path.Indices[i]) {
+                                    IsPrefix = false;
                                     break;
                                 }
+                            }
+                        } else {
+                            IsPrefix = false;
+                        }
+
+                        if (IsPrefix && Info.Escaped) FieldEscaped = true;
+
+                        // Check if paths overlap (prefix in either direction) for mutation
+                        bool Overlaps = true;
+                        size_t MinLen = std::min(Info.Path.Indices.size(), LInfo.Path.Indices.size());
+                        for (size_t i = 0; i < MinLen; ++i) {
+                            if (Info.Path.Indices[i] != LInfo.Path.Indices[i]) {
+                                Overlaps = false;
+                                break;
+                            }
+                        }
+                        if (Overlaps && Info.Mutated) FieldMutated = true;
+                    }
+
+                    if (FieldEscaped) continue;
+
+                    bool ActuallyMutated = FieldMutated;
+                    if (!ActuallyMutated) {
+                        for (Instruction* Write : PotentialWrites) {
+                            // If our field hasn't escaped, we can ignore writes to pointers
+                            // that are not derived from the same origin, because they
+                            // cannot alias with our private memory.
+                            if (auto* SI = dyn_cast<StoreInst>(Write)) {
+                                if (PointerMap.count(SI->getPointerOperand())) {
+                                    if (PointerMap[SI->getPointerOperand()].OriginArg != LInfo.OriginArg)
+                                        continue;
+                                } else {
+                                    // Store to unknown pointer. 
+                                    // Since our field hasn't escaped, it cannot be targeted.
+                                    continue;
+                                }
+                            } else if (auto* CB = dyn_cast<CallBase>(Write)) {
+                                // Calls can only mutate if the pointer escaped.
+                                continue;
+                            }
+
+                            auto ModRef = AA.getModRefInfo(Write, MemoryLocation::get(LI));
+                            if (isModSet(ModRef)) {
+                                ActuallyMutated = true;
+                                break;
                             }
                         }
                     }
 
-                    if (Escaped) continue;
-
-                    bool Mutated = false;
-                    for (Instruction* Write : PotentialWrites) {
-                        auto ModRef = AA.getModRefInfo(Write, MemoryLocation::get(LI));
-                        if (isModSet(ModRef)) {
-                            Mutated = true;
-                            break;
-                        }
-                    }
-
-                    if (!Mutated) {
+                    if (!ActuallyMutated) {
                         LI->setMetadata(LLVMContext::MD_invariant_load, MDNode::get(F.getContext(), {}));
                     }
                 }

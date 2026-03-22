@@ -1,5 +1,5 @@
 // RUN: %clangxx -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: %t.exe '>=95' '<97' | FileCheck %s --check-prefix=EXE --dump-input=always
 
 #include <iostream>
 #include <string>
@@ -35,6 +35,12 @@ public:
 class Scan final : public Operator {
     int value = 0;
 public:
+    Scan()
+    {
+        // print the pointer value of &value in decimal
+        printf("Scan::value pointer: %zu\n", (size_t)&value);
+    }
+
     int next() override __asm__("Scan::next") {
         return (value > 100) ? -1 : value++;
     }
@@ -106,5 +112,5 @@ int main(int argc, char* argv[]) {
 // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
 // EXE: DEBUG: [callSpecialized] Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
 // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
-// TODO: Current static analysis is not powerful enough to remove vtable loads.
-// EXE-NOT: load ptr, ptr %vtable
+// EXE-NOT: load ptr, ptr
+// EXE: ret i32

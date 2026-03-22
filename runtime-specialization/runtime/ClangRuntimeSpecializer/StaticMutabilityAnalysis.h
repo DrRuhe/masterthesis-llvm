@@ -22,12 +22,16 @@ class StaticMutabilityAnalysis {
 public:
     static void inferReadOnlyFields(llvm::Function& F, llvm::AAResults& AA, llvm::MemorySSA* MSSA);
 
-private:
     struct PointerInfo {
         llvm::Value* OriginArg;
         FieldPath Path;
         bool Escaped = false;
+        bool Mutated = false;
     };
+
+    static std::map<llvm::Value*, PointerInfo> runCaptureAnalysis(llvm::Function& F);
+
+private:
 
     // Tracks which fields of which arguments are written to.
     std::map<llvm::Argument*, std::set<FieldPath>> MutableFields;

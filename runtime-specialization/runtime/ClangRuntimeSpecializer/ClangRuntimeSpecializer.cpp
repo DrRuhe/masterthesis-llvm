@@ -32,6 +32,7 @@
 #include "llvm/Transforms/Scalar/CorrelatedValuePropagation.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "VTableConstantFolding.h"
+#include "VTableEscapeAnalysis.h"
 #include "StaticMutabilityAnalysis.h"
 #include "InvariantLoadToConstant.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
@@ -389,6 +390,21 @@ namespace clangRuntimeSpecializer {
                 // indirect calls into direct calls
                 FixpointMPM.addPass(llvm::IPSCCPPass());
 
+                // 1b. Resolve virtual calls optimistically and perform capture analysis
+                FixpointMPM.addPass(VTableEscapeAnalysis());
+
+                // 1b2. Infer attributes again after optimistic resolution
+                FixpointMPM.addPass(llvm::ReversePostOrderFunctionAttrsPass());
+
+                // 1c. Static Mutability Analysis to infer read-only fields
+                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
+
+                // 1d. Replace invariant loads with constants from host memory
+                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
+
+                // 1e. Inline devirtualized calls
+                FixpointMPM.addPass(llvm::AlwaysInlinerPass());
+
                 // 2. Global optimizations - includes devirtualization
                 // GlobalOpt can devirtualize calls when it knows the concrete type
                 FixpointMPM.addPass(llvm::GlobalOptPass());
@@ -706,7 +722,7 @@ namespace clangRuntimeSpecializer {
          }
 
          if (KeepInternal) {
-             F.setLinkage(llvm::GlobalValue::InternalLinkage);
+             F.setLinkage(llvm::GlobalValue::WeakODRLinkage); 
          } else {
              F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
          }
