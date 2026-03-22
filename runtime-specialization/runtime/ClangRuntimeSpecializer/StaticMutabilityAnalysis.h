@@ -3,6 +3,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/MemorySSA.h"
 #include <set>
 #include <vector>
 #include <map>
@@ -19,12 +20,13 @@ struct FieldPath {
 
 class StaticMutabilityAnalysis {
 public:
-    static std::set<FieldPath> inferReadOnlyFields(llvm::Function& F, llvm::AAResults& AA);
+    static void inferReadOnlyFields(llvm::Function& F, llvm::AAResults& AA, llvm::MemorySSA* MSSA);
 
 private:
     struct PointerInfo {
         llvm::Value* OriginArg;
         FieldPath Path;
+        bool Escaped = false;
     };
 
     // Tracks which fields of which arguments are written to.

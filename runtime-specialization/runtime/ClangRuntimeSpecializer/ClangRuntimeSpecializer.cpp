@@ -34,6 +34,7 @@
 #include "VTableConstantFolding.h"
 #include "StaticMutabilityAnalysis.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
+#include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Analysis/InlineCost.h"
@@ -339,6 +340,20 @@ namespace clangRuntimeSpecializer {
               // Initial pass: Always inline marked functions
               {
                 llvm::ModulePassManager InitialMPM;
+
+                // 3a. Cleanup alloca/store/load before analysis
+                llvm::FunctionPassManager FPM;
+                FPM.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+                FPM.addPass(llvm::EarlyCSEPass());
+                FPM.addPass(llvm::InstCombinePass());
+                InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(FPM)));
+
+                // 3b. Attribute inference - deduces readonly, readnone, etc.
+                InitialMPM.addPass(llvm::ReversePostOrderFunctionAttrsPass());
+
+                // 3c. Static Mutability Analysis to infer read-only fields
+                InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
+                
                 InitialMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
                 InitialMPM.run(M, MAM);
               }
@@ -384,9 +399,6 @@ namespace clangRuntimeSpecializer {
                 //TODO removing vtable entries is not safe?
                 // Then it'll change the vtables and thus the pointers from the actual arguments will not find the right functions anymore.
                 FixpointMPM.addPass(llvm::GlobalDCEPass());
-
-                // 3b. Static Mutability Analysis to infer read-only fields
-                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
 
                 // 4. Pre-inlining function-level optimizations
                 llvm::FunctionPassManager PreInlineFPM;

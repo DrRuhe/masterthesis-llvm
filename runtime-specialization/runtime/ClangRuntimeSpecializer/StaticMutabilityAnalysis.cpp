@@ -2,32 +2,34 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Analysis/ValueTracking.h"
+#include "llvm/Analysis/MemorySSA.h"
 #include <queue>
+#include <algorithm>
 
 namespace clangRuntimeSpecializer {
 
 using namespace llvm;
 
-std::set<FieldPath> StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA) {
-    std::map<Value*, PointerInfo> Worklist;
-    std::set<Value*> Visited;
+void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, MemorySSA* MSSA) {
+    if (F.isDeclaration()) return;
+    std::map<Value*, PointerInfo> PointerMap;
+    std::queue<Value*> Queue;
     
     // 1. Initialize worklist with pointer arguments
     for (Argument& Arg : F.args()) {
         if (Arg.getType()->isPointerTy()) {
-            Worklist[&Arg] = {&Arg, {}};
+            PointerMap[&Arg] = {&Arg, {}, false};
+            Queue.push(&Arg);
         }
     }
 
-    std::set<Value*> MutablePointers;
-    std::queue<Value*> Queue;
-    for (auto const& [V, Info] : Worklist) {
-        Queue.push(V);
+    if (PointerMap.empty()) {
+        return;
     }
 
-    // Map each tracked pointer to its origin and field path
-    std::map<Value*, PointerInfo> PointerMap = Worklist;
+    std::set<Value*> Visited;
 
+    // Phase A: Pointer Worklist and Escape Analysis
     while (!Queue.empty()) {
         Value* V = Queue.front();
         Queue.pop();
@@ -40,11 +42,9 @@ std::set<FieldPath> StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, A
             if (auto* GEP = dyn_cast<GetElementPtrInst>(U)) {
                 if (GEP->getPointerOperand() == V) {
                     PointerInfo NewInfo = Info;
-                    // If GEP has constant indices, we can track the field.
-                    // Otherwise, we mark the whole path as mutable (conservative).
                     bool AllConstant = true;
-                    for (auto It = GEP->idx_begin() + 1; It != GEP->idx_end(); ++It) {
-                        if (auto* CI = dyn_cast<ConstantInt>(*It)) {
+                    for (auto& Idx : GEP->indices()) {
+                        if (auto* CI = dyn_cast<ConstantInt>(Idx)) {
                             NewInfo.Path.Indices.push_back(CI->getZExtValue());
                         } else {
                             AllConstant = false;
@@ -55,8 +55,7 @@ std::set<FieldPath> StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, A
                         PointerMap[GEP] = NewInfo;
                         Queue.push(GEP);
                     } else {
-                        // Opaque access - everything from here is mutable
-                        MutablePointers.insert(V);
+                        PointerMap[V].Escaped = true;
                     }
                 }
             } else if (auto* BC = dyn_cast<BitCastInst>(U)) {
@@ -66,93 +65,86 @@ std::set<FieldPath> StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, A
                 PointerMap[ASC] = Info;
                 Queue.push(ASC);
             } else if (auto* SI = dyn_cast<StoreInst>(U)) {
-                if (SI->getPointerOperand() == V) {
-                    MutablePointers.insert(V);
+                if (SI->getValueOperand() == V) {
+                    PointerMap[V].Escaped = true;
                 }
-            } else if (auto* RMW = dyn_cast<AtomicRMWInst>(U)) {
-                if (RMW->getPointerOperand() == V) {
-                    MutablePointers.insert(V);
-                }
-            } else if (auto* CX = dyn_cast<AtomicCmpXchgInst>(U)) {
-                if (CX->getPointerOperand() == V) {
-                    MutablePointers.insert(V);
-                }
+            } else if (auto* RI = dyn_cast<ReturnInst>(U)) {
+                PointerMap[V].Escaped = true;
             } else if (auto* CB = dyn_cast<CallBase>(U)) {
-                // If the pointer is passed to a function that might modify it
-                bool IsArg = false;
                 for (unsigned i = 0; i < CB->arg_size(); ++i) {
                     if (CB->getArgOperand(i) == V) {
-                        IsArg = true;
-                        break;
+                        if (!CB->doesNotCapture(i)) {
+                            PointerMap[V].Escaped = true;
+                        }
                     }
                 }
-                if (IsArg) {
-                   auto ModRef = AA.getModRefInfo(CB, V, LocationSize::beforeOrAfterPointer());
-                   if (isModSet(ModRef)) {
-                       MutablePointers.insert(V);
-                   }
-                }
             }
-            // Add more cases: captures, etc.
         }
     }
 
-    // Now we have a list of pointers that are mutated.
-    // For each load, we can check if its pointer is NOT in MutablePointers or any of its subpaths are.
-    // Actually, it's easier to just mark everything NOT in MutablePointers as potential invariant.
-    
-    // We need to return something that allows the caller to mark loads.
-    // Let's change the return or the logic: 
-    // The goal is to mark LOADs as !invariant.load.
-    
+    // Phase B: Mutation Tracking
+    // We can use MemorySSA to find all MemoryDefs efficiently.
+    std::vector<Instruction*> PotentialWrites;
+    for (auto &BB : F) {
+        for (auto &I : BB) {
+            auto *Access = MSSA->getMemoryAccess(&I);
+            if (Access && isa<MemoryDef>(Access)) {
+                PotentialWrites.push_back(&I);
+            }
+        }
+    }
+
+    // Phase C: Load Classification
     for (BasicBlock& BB : F) {
         for (Instruction& I : BB) {
             if (auto* LI = dyn_cast<LoadInst>(&I)) {
                 Value* Ptr = LI->getPointerOperand();
                 if (PointerMap.count(Ptr)) {
-                    bool IsMutable = false;
-                    // Check if this pointer or any "parent" or "child" is mutable.
-                    // This is complex because a write to a parent struct marks all children as potentially modified.
-                    // A write to a child marks part of the parent as modified.
+                    PointerInfo& LInfo = PointerMap[Ptr];
                     
-                    // Simplified: if this exact GEP path (or any prefix of it) was written to, it's mutable.
-                    // Also if any suffix was written to (e.g. write to struct field when we loaded the struct, 
-                    // though usually we load primitives).
-                    
-                    for (Value* MP : MutablePointers) {
-                        PointerInfo MInfo = PointerMap[MP];
-                        if (MInfo.OriginArg == PointerMap[Ptr].OriginArg) {
-                            // Check if MInfo.Path is a prefix of PointerMap[Ptr].Path or vice versa.
-                            const auto& P1 = MInfo.Path.Indices;
-                            const auto& P2 = PointerMap[Ptr].Path.Indices;
-                            bool Conflict = true;
-                            for (size_t i = 0; i < std::min(P1.size(), P2.size()); ++i) {
-                                if (P1[i] != P2[i]) {
-                                    Conflict = false;
+                    bool Escaped = false;
+                    for (auto const& [V, Info] : PointerMap) {
+                        if (Info.Escaped && LInfo.OriginArg == Info.OriginArg) {
+                            if (Info.Path.Indices.size() <= LInfo.Path.Indices.size()) {
+                                bool IsPrefix = true;
+                                for (size_t i = 0; i < Info.Path.Indices.size(); ++i) {
+                                    if (Info.Path.Indices[i] != LInfo.Path.Indices[i]) {
+                                        IsPrefix = false;
+                                        break;
+                                    }
+                                }
+                                if (IsPrefix) {
+                                    Escaped = true;
                                     break;
                                 }
                             }
-                            if (Conflict) {
-                                IsMutable = true;
-                                break;
-                            }
                         }
                     }
-                    
-                    if (!IsMutable) {
+
+                    if (Escaped) continue;
+
+                    bool Mutated = false;
+                    for (Instruction* Write : PotentialWrites) {
+                        auto ModRef = AA.getModRefInfo(Write, MemoryLocation::get(LI));
+                        if (isModSet(ModRef)) {
+                            Mutated = true;
+                            break;
+                        }
+                    }
+
+                    if (!Mutated) {
                         LI->setMetadata(LLVMContext::MD_invariant_load, MDNode::get(F.getContext(), {}));
                     }
                 }
             }
         }
     }
-
-    return {}; // Dummy return for now.
 }
 
 PreservedAnalyses StaticMutabilityAnalysis::StaticMutabilityAnalysisPass::run(Function &F, FunctionAnalysisManager &FAM) {
     auto &AA = FAM.getResult<AAManager>(F);
-    inferReadOnlyFields(F, AA);
+    auto &MSSA = FAM.getResult<MemorySSAAnalysis>(F).getMSSA();
+    inferReadOnlyFields(F, AA, &MSSA);
     return PreservedAnalyses::all();
 }
 
