@@ -35,7 +35,11 @@ inline constexpr char Fn_A_addAndSum[] = "A::addAndSum";
 int main(int argc, char** argv) {
 
   A instance(12);
-
-  clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_A_addAndSum>(&A::addAndSum, instance,argc);
+  A instance2(12);
+  int x1 = argc, x2 = argc;
+  auto comp = [&]() {
+    if (instance != instance2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
+  };
+  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_A_addAndSum>(&A::addAndSum, std::tie(instance, x1), std::tie(instance2, x2), comp);
   return 0;
 }

@@ -1,10 +1,8 @@
-// RUN: %clangxx -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
-
-//TODO make sure this also works under -O3
+// RUN: %clangxx -g -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
+// RUN: %t.exe '>=95' '<100'
+//| FileCheck %s --check-prefix=EXE --dump-input=always
 
 #include <iostream>
-#include <random>
 #include <string>
 #include <vector>
 #include <cstdio>
@@ -39,11 +37,9 @@ class Scan final : public Operator {
     int value = 0;
 public:
     int next() override __asm__("Scan::next") {
-        std::random_device rd;  // a seed source for the random number engine
-        std::mt19937 gen(rd()); // mersenne_twister_engine seeded with rd()
-        std::uniform_int_distribution<> distrib(1, 100);
-
-        return distrib(gen);
+        int res = (value > 100) ? -1 : value++;
+        std::printf("Scan::next() = %d, new value = %d\n", res, value);
+        return res;
     }
 };
 
@@ -59,7 +55,6 @@ extern "C" int execute_query(Operator* op) __asm__("execute_query");
 int execute_query(Operator* op) {
     return op->next();
 }
-
 
 
 inline constexpr char Fn_execute_query[] = "execute_query";
@@ -103,17 +98,15 @@ namespace SqlParser {
 
 
 int main(int argc, char* argv[]) {
-    //clangRuntimeSpecializer::ClangRuntimeSpecializer::init()->printFixpointIterations();
-
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
 
-    int result = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_execute_query>(&execute_query, query_plan);
-    std::fprintf(stdout, "Operators returned %d \n",result);
+
+    Operator* query_plan2 = SqlParser::parse(sql_query);
+    auto comp = [&]() {};
+    clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_execute_query>(execute_query, std::tie(query_plan), std::tie(query_plan2), comp);
+
     return 0;
 }
 
-// EXE: INFO: [callSpecialized] Specializing call to: execute_query
-// EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
-// EXE: DEBUG: [IRTransform] Optimized specialized function IR:
-// EXE-NOT: load ptr, ptr %vtable
+

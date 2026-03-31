@@ -25,14 +25,18 @@ __attribute__((noinline)) MyStruct* hide(MyStruct* s) {
 
 int main(int argc, char** argv) {
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
-    MyStruct s = { argc, 10, 20, 30, 40 };
-    MyStruct* hidden_s = hide(&s);
+    MyStruct a = { argc, 10, 20, 30, 40 };
+    MyStruct* hidden_a = hide(&a);
+
+    MyStruct b = { argc, 10, 20, 30, 40 };
+    MyStruct* hidden_b = hide(&b);
 
 
     // EXE: define noundef i32 @specialized_wrapper
     // EXE: entry:
     // EXE:   ret i32 102
-    clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_process_struct>(process_struct, *hidden_s);
+    auto comp = [&]() {}; // no comparison needed, as no changes done anyways.
+    clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_process_struct>(process_struct, std::tie(*hidden_a), std::tie(*hidden_b), comp);
     return 0;
 }
 

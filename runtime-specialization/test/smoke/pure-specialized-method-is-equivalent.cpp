@@ -11,9 +11,8 @@
 // POST-DUMP: RuntimeSpecializeableIR_ptr
 
 class A {
-  int value;
-
 public:
+  int value;
   A(int val) : value(val) {}
 
   bool operator==(const A& other) const {
@@ -41,7 +40,9 @@ inline constexpr char Fn_A_add[] = "A::add";
 int main(int argc, char** argv) {
 
   clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
-  A instance(argc);
+
+
+
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::getMod2
   // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
@@ -50,8 +51,13 @@ int main(int argc, char** argv) {
   // EXE: entry:
   // EXE:   ret i32 0
   // EXE: }
-  // EXE: INFO: [assertSpecializedMethodIsEquivalent] Successfully specialized A::getMod2! No differences could be observed.
-  clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_A_getMod2>(&A::getMod2, instance);
+  // EXE: INFO: [assertSpecializedFunctionIsEquivalent] Successfully specialized A::getMod2! No differences could be observed.
+  A instance(argc);
+  A instance2(argc);
+  auto comp = [&]() {
+    if (instance.value != instance2.value) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
+  };
+  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_A_getMod2>(&A::getMod2, std::tie(instance), std::tie(instance2), comp);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::add
   // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
@@ -64,8 +70,16 @@ int main(int argc, char** argv) {
   // EXE: entry:
   // EXE:   ret i32 20
   // EXE: }
-  // EXE: INFO: [assertSpecializedMethodIsEquivalent] Successfully specialized A::add! No differences could be observed.
-  clangRuntimeSpecializer::assertSpecializedMethodIsEquivalent<Fn_A_add>(&A::add, instance,7, 11);
+  // EXE: INFO: [assertSpecializedFunctionIsEquivalent] Successfully specialized A::add! No differences could be observed.
+
+  A instance3(argc);
+  A instance4(argc);
+  int a1 = 7, b1 = 11, a2 = 7, b2 = 11;
+  auto comp2 = [&]() {
+    if (instance3.value != instance4.value || a1 != a2 || b1 != b2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
+  };
+  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_A_add>(&A::add, std::tie(instance3, a1, b1), std::tie(instance4, a2, b2), comp2);
+
   return 0;
 }
 

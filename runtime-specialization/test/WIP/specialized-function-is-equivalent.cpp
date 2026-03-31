@@ -35,8 +35,16 @@ int main(int argc, char** argv)
   // EXE:   ret void
   // EXE: }
   // EXE: INFO: [assertSpecializedFunctionIsEquivalent] Successfully specialized mypow! No differences could be observed.
-  int result = 0;
-  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_mypow>(mypow, &result, argc);
+  int result1 = 0;
+  int result2 = 0;
+  int x1 = argc;
+  int x2 = argc;
+  auto comp = [&]() {
+      if (result1 != result2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
+  };
+  int* p1 = &result1;
+  int* p2 = &result2;
+  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_mypow>(mypow, std::tie(p1, x1), std::tie(p2, x2), comp);
 
   return 0;
 }
