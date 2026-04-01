@@ -41,13 +41,14 @@ void benchmarkJITOverhead(
     };
     using R = decltype(std::apply(InvokeNormal, normalArgs));
 
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
             return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
-
-    // Correctness check outside timing
+    // Correctness check outside timing (log level stays None; errors throw exceptions)
     if constexpr (std::is_void_v<R>) {
         std::apply(InvokeNormal, normalArgs);
         std::apply([&](auto&&... A) {
@@ -64,7 +65,7 @@ void benchmarkJITOverhead(
                     (llvm::Twine("Comparison failed: return values differ for ") + funcName).str());
         }
     }
-    CRS_LOG(Info, (llvm::Twine("Benchmark passed equivalence check for ") + funcName).str());
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
 }
 
 // Phase 3: Measure specialized execution only (setup: compile once before loop).
@@ -83,9 +84,12 @@ void benchmarkSpecializedExec(
     using R = decltype(std::apply(InvokeNormal, specArgs));
 
     // One-time setup: compile the specialized function before the timed loop.
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     uintptr_t Addr = std::apply([&](auto&&... A) {
         return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
     }, specArgs);
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
     auto SpecFnPtr = reinterpret_cast<R(*)()>(Addr);
 
     for (auto _ : state) {
@@ -135,13 +139,14 @@ void benchmarkJITOverheadMethod(
     };
     using R = decltype(std::apply(InvokeNormal, normalArgs));
 
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
             return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
-
-    // Correctness check outside timing
+    // Correctness check outside timing (log level stays None; errors throw exceptions)
     if constexpr (std::is_void_v<R>) {
         std::apply(InvokeNormal, normalArgs);
         std::apply([&](auto&&... A) {
@@ -158,7 +163,7 @@ void benchmarkJITOverheadMethod(
                     (llvm::Twine("Comparison failed: return values differ for ") + funcName).str());
         }
     }
-    CRS_LOG(Info, (llvm::Twine("Benchmark passed equivalence check for ") + funcName).str());
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
 }
 
 // Phase 3: Measure specialized method execution only (setup: compile once before loop).
@@ -177,9 +182,12 @@ void benchmarkSpecializedExecMethod(
     using R = decltype(std::apply(InvokeNormal, specArgs));
 
     // One-time setup: compile the specialized function before the timed loop.
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     uintptr_t Addr = std::apply([&](auto&&... A) {
         return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
     }, specArgs);
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
     auto SpecFnPtr = reinterpret_cast<R(*)()>(Addr);
 
     for (auto _ : state) {
