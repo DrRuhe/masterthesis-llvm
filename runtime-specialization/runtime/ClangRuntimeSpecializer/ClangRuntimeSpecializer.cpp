@@ -722,7 +722,13 @@ namespace clangRuntimeSpecializer {
          }
 
          if (KeepInternal) {
-             F.setLinkage(llvm::GlobalValue::WeakODRLinkage); 
+             // When optimizing, available_externally lets the optimizer inline/use
+             // the body, then GlobalDCE eliminates unused copies before compilation.
+             // This avoids link failures when hidden symbols (e.g. benchmark
+             // internals) are referenced by functions the JIT never actually calls.
+             // WeakODRLinkage is still used in the !Optimize path so the
+             // instrumentation pass can compile and instrument every function.
+             F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
          } else {
              F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
          }
@@ -743,6 +749,14 @@ namespace clangRuntimeSpecializer {
         G.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
       }
     }
+
+    // Remove global constructors/destructors. The host process already ran them
+    // at startup; the JIT only needs to compile the specialized wrapper, not
+    // re-initialize the entire translation unit.
+    if (auto *GCtors = M.getGlobalVariable("llvm.global_ctors"))
+      GCtors->eraseFromParent();
+    if (auto *GDtors = M.getGlobalVariable("llvm.global_dtors"))
+      GDtors->eraseFromParent();
   }
 
   uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName) {

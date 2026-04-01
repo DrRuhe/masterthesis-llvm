@@ -22,18 +22,21 @@ if(NOT LLVM_ENABLE_RTTI)
     target_compile_options(ClangRuntimeSpecializer PRIVATE -fno-rtti)
 endif()
 
-target_link_libraries(ClangRuntimeSpecializer
-        PUBLIC
-        LLVMCore
-        LLVMBitReader
-        LLVMSupport
-        LLVMOrcJIT
-        LLVMPasses
-        LLVMScalarOpts
-        LLVMInstCombine
-        LLVMAnalysis
-        LLVMTransformUtils
-        LLVMX86CodeGen
-        LLVMX86Desc
-        LLVMX86Info
+llvm_config(ClangRuntimeSpecializer USE_SHARED
+        core
+        bitreader
+        support
+        orcjit
+        passes
+        scalaropts
+        instcombine
+        analysis
+        transformutils
+        x86codegen
+        x86desc
+        x86info
 )
+
+# llvm_config links LLVM privately; consumers that use inline LLVM APIs from
+# ClangRuntimeSpecializer.h also need libLLVM.so transitively.
+target_link_libraries(ClangRuntimeSpecializer PUBLIC LLVM)

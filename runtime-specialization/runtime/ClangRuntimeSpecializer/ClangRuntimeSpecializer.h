@@ -176,12 +176,19 @@ namespace clangRuntimeSpecializer {
       return callImpl<funcName, R, true, false>(__FUNCTION__, std::forward<ARGS>(Args)...);
     }
 
+    template <const char* funcName, class R, class... ARGS>
+    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    __attribute__((noinline))
+    uintptr_t specializeOnly(ARGS&&... Args) {
+      return specializeOnlyImpl<funcName, R, false, true>(__FUNCTION__, std::forward<ARGS>(Args)...);
+    }
+
     ~ClangRuntimeSpecializer();
 
   private:
 
-    template <const char* funcName, class R, bool Instrument,  bool Optimize = true, class... ARGS>
-    R callImpl(const char* CallerName, ARGS&&... Args) {
+    template <const char* funcName, class R, bool Instrument, bool Optimize = true, class... ARGS>
+    uintptr_t specializeOnlyImpl(const char* CallerName, ARGS&&... Args) {
       checkInitialization(funcName);
       llvm::Function *TargetFunc = getTargetFunction(funcName);
 
@@ -204,46 +211,49 @@ namespace clangRuntimeSpecializer {
 
       llvm::LLVMContext& Ctx = NewModule->getContext();
 
+      llvm::FunctionType* const FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
 
-    llvm::FunctionType* const FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
+      llvm::Function* const NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
+      if (Instrument) {
+          NewFunc->addFnAttr("force-instrument");
+      }
+      if (!Optimize) {
+          NewFunc->addFnAttr("force-no-optimize");
+      }
 
+      llvm::BasicBlock* const Entry = llvm::BasicBlock::Create(Ctx, "entry", NewFunc);
+      llvm::IRBuilder<> Builder(Entry);
 
-    llvm::Function* const NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
-    if (Instrument) {
-        NewFunc->addFnAttr("force-instrument");
-    }
-    if (!Optimize) {
-        NewFunc->addFnAttr("force-no-optimize");
-    }
+      // Serialize the runtime arguments to IR constants and create a call to the target function with them.
+      std::vector<llvm::Value*> ArgValues = serializeArgumentsToIR(Builder, CallerName, std::forward<ARGS>(Args)...);
 
-    llvm::BasicBlock* const Entry = llvm::BasicBlock::Create(Ctx, "entry", NewFunc);
-    llvm::IRBuilder<> Builder(Entry);
+      auto * const CallInst = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(), TargetFuncInNewModule, ArgValues);
+      CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
+      CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
 
-    // Serialize the runtime arguments to IR constants and create a call to the target function with them.
-    std::vector<llvm::Value*> ArgValues = serializeArgumentsToIR(Builder, CallerName, std::forward<ARGS>(Args)...);
-
-    auto * const CallInst = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(), TargetFuncInNewModule, ArgValues);
-    CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
-    CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
-
-    if (TargetFunc->getReturnType()->isVoidTy()) {
-        Builder.CreateRetVoid();
-    } else {
-        Builder.CreateRet(CallInst);
-    }
+      if (TargetFunc->getReturnType()->isVoidTy()) {
+          Builder.CreateRetVoid();
+      } else {
+          Builder.CreateRet(CallInst);
+      }
 
       prepareModuleForJIT(*NewModule, UniqueWrapperName);
 
       auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), TSCtx);
 
-      uintptr_t Addr = addModuleAndLookup(std::move(TSM), UniqueWrapperName);
+      return addModuleAndLookup(std::move(TSM), UniqueWrapperName);
+    }
 
-        auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
+    template <const char* funcName, class R, bool Instrument, bool Optimize = true, class... ARGS>
+    R callImpl(const char* CallerName, ARGS&&... Args) {
+      uintptr_t Addr = specializeOnlyImpl<funcName, R, Instrument, Optimize>(
+          CallerName, std::forward<ARGS>(Args)...);
+      auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
       if constexpr (std::is_void_v<R>) {
-            SpecializedFnPtr();
+          SpecializedFnPtr();
           return;
       } else {
-            return SpecializedFnPtr();
+          return SpecializedFnPtr();
       }
     }
 

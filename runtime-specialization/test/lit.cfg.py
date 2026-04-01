@@ -32,6 +32,7 @@ llvm_config.use_clang(
         config.additional_clang_flags,
         "-Wl,--export-dynamic ",
         f"{llvm_shlib_dir}/libClangRuntimeSpecializer{config.llvm_plugin_ext} ",
+        f"{llvm_shlib_dir}/libLLVM{config.llvm_plugin_ext} ",
         f"-Wl,-rpath,{llvm_shlib_dir} "
         f"-I{config.llvm_src_include} ",
         f"-I{config.llvm_obj_include} ",

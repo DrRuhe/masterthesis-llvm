@@ -1,5 +1,6 @@
 add_subdirectory(comptime)
 add_subdirectory(runtime)
+add_subdirectory(benchmarks)
 
 # Test Konfiguration
 if (LLVM_INCLUDE_TESTS)
