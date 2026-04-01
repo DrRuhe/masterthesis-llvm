@@ -22,11 +22,27 @@ add_custom_command(
     COMMENT "Compiling SpecializerBenchmark with project clang and plugin"
 )
 
+# Generate a minimal stub source so CMake produces a compile group for this target.
+# Without it the target has no compile groups (only a pre-compiled .o and a
+# HEADER_FILE_ONLY .cpp), so target_include_directories has nothing to attach to
+# and CLion cannot resolve includes for SpecializerBenchmark.cpp.
+set(IDE_STUB "${CMAKE_CURRENT_BINARY_DIR}/benchmark_ide_stub.cpp")
+file(WRITE "${IDE_STUB}" "")
+
 set_source_files_properties(SpecializerBenchmark.cpp PROPERTIES HEADER_FILE_ONLY ON)
-add_benchmark(SpecializerBenchmark ${OBJ_FILE} SpecializerBenchmark.cpp)
+add_benchmark(SpecializerBenchmark ${OBJ_FILE} SpecializerBenchmark.cpp ${IDE_STUB})
+
+target_include_directories(SpecializerBenchmark PRIVATE
+    ${LLVM_THIRD_PARTY_DIR}/benchmark/include
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
+    ${LLVM_MAIN_INCLUDE_DIR}
+    ${LLVM_BINARY_DIR}/include
+)
 
 target_link_libraries(SpecializerBenchmark PRIVATE
     ClangRuntimeSpecializer
+    benchmark
 )
 
 # Ensure symbols are exported for the JIT

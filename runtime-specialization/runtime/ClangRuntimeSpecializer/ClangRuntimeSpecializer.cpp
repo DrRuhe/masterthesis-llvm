@@ -40,6 +40,9 @@
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Analysis/InlineCost.h"
+#include "llvm/Config/llvm-config.h"
+#include "llvm/ExecutionEngine/JITEventListener.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
 
@@ -227,6 +230,14 @@ namespace clangRuntimeSpecializer {
       throw ClangRuntimeSpecializerError("Failed to create JIT: " + ErrMsg);
     }
     Instance->JIT = std::move(*JITExp);
+
+#if LLVM_USE_PERF
+    if (auto *RTDyldLayer = llvm::dyn_cast<llvm::orc::RTDyldObjectLinkingLayer>(
+            &Instance->JIT->getObjLinkingLayer())) {
+      if (auto *Listener = llvm::JITEventListener::createPerfJITEventListener())
+        RTDyldLayer->registerJITEventListener(*Listener);
+    }
+#endif
 
     Instance->JIT->getMainJITDylib().addGenerator(
         llvm::cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
