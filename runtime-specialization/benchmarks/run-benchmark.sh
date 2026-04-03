@@ -35,6 +35,11 @@ fi
 
 ORIGINAL_GOV="$(cat "$GOV_DIR/scaling_governor")"
 
+if [[ "$ORIGINAL_GOV" == "performance" ]]; then
+    echo "CPU governor already set to: performance" >&2
+    exec "$BINARY" "$@"
+fi
+
 cleanup() {
     echo "Restoring CPU governor to: $ORIGINAL_GOV" >&2
     set_governor "$ORIGINAL_GOV" || true
@@ -44,4 +49,4 @@ trap cleanup EXIT
 echo "Setting CPU governor to: performance (was: $ORIGINAL_GOV)" >&2
 set_governor performance
 
-exec "$BINARY" "$@"
+"$BINARY" "$@"

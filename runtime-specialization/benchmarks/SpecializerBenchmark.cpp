@@ -33,7 +33,7 @@ extern "C" void BM_mypow_unspecialized(benchmark::State& state) {
         mypow_bench,
         std::make_tuple(x));
 }
-BENCHMARK(BM_mypow_unspecialized)->Arg(10);
+BENCHMARK(BM_mypow_unspecialized)->Range(1, 2<<6);
 
 extern "C" void BM_mypow_jit_overhead(benchmark::State& state) {
     int x = state.range(0);
@@ -43,7 +43,7 @@ extern "C" void BM_mypow_jit_overhead(benchmark::State& state) {
     std::make_tuple(x),
         std::make_tuple(x));
 }
-BENCHMARK(BM_mypow_jit_overhead)->Arg(10)->Repetitions(5)->MinTime(2.0);
+BENCHMARK(BM_mypow_jit_overhead)->Range(1, 2<<6);
 
 extern "C" void BM_mypow_specialized_exec(benchmark::State& state) {
     int x = state.range(0);
@@ -52,6 +52,6 @@ extern "C" void BM_mypow_specialized_exec(benchmark::State& state) {
         mypow_bench,
         std::make_tuple(x));
 }
-BENCHMARK(BM_mypow_specialized_exec)->Arg(10);
+BENCHMARK(BM_mypow_specialized_exec)->Range(1, 2<<6);
 
 BENCHMARK_MAIN();

@@ -18,6 +18,7 @@ void benchmarkUnspecialized(
     using R = decltype(std::apply(InvokeNormal, args));
 
     for (auto _ : state) {
+        benchmark::DoNotOptimize(args);
         if constexpr (std::is_void_v<R>)
             std::apply(InvokeNormal, args);
         else

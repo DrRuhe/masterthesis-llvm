@@ -8,7 +8,7 @@ separate_arguments(CXX_FLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 
 add_custom_command(
     OUTPUT ${OBJ_FILE}
-    COMMAND ${CLANG_EXE} -x c++ -O3 ${CXX_FLAGS_LIST}
+    COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
             -I${CMAKE_CURRENT_SOURCE_DIR}
             -I${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
             -I${LLVM_MAIN_INCLUDE_DIR}
