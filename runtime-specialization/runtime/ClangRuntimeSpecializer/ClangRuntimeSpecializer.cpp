@@ -715,46 +715,56 @@ namespace clangRuntimeSpecializer {
     // if it has a definition. This allows the JIT inliner to see the bodies but won't
     // produce a definition in the resulting object file, as we want to use the host's version
     // if it's not inlined.
-    // If we are in baseline mode (no optimize), we want to make sure the target functions
-    // are compiled and instrumented, so we use internal linkage.
-    // Exception: Functions that are unlikely to be available externally (e.g., with custom
-    // asm names, constructors/destructors, or member functions) should use internal linkage.
+    // Collect functions referenced from vtable constants.  These are virtual-method
+    // implementations that DevirtualizeConstantVtablePass may call in a future fixpoint
+    // iteration even when they currently have no direct callers, so they must not be
+    // deleted by the inliner's dead-function removal.
+    llvm::SmallPtrSet<llvm::Function *, 16> VTableFunctions;
+    if (Optimize) {
+      llvm::SmallVector<llvm::Constant *, 32> WorkList;
+      llvm::SmallPtrSet<llvm::Constant *, 32> Visited;
+      for (auto &G : M.globals()) {
+        if (G.isConstant() && G.hasInitializer()) {
+          auto *Init = G.getInitializer();
+          if (Visited.insert(Init).second)
+            WorkList.push_back(Init);
+        }
+      }
+      while (!WorkList.empty()) {
+        auto *C = WorkList.pop_back_val();
+        if (auto *F = llvm::dyn_cast<llvm::Function>(C)) {
+          VTableFunctions.insert(F);
+        } else {
+          for (unsigned I = 0, E = C->getNumOperands(); I != E; ++I) {
+            if (auto *Op = llvm::dyn_cast<llvm::Constant>(C->getOperand(I)))
+              if (Visited.insert(Op).second)
+                WorkList.push_back(Op);
+          }
+        }
+      }
+    }
+
     for (auto &F : M) {
       if (F.getName() == WrapperName) {
          F.setLinkage(llvm::GlobalValue::ExternalLinkage);
          continue;
       }
       if (!F.isDeclaration()) {
-         // Check if this function should be kept internal for the JIT
-         bool KeepInternal = !Optimize;
-
-         if (Optimize) {
-             // Keep constructors, destructors, and functions with custom asm names internal
-             // as they may not be exported from the host executable
-             llvm::StringRef FName = F.getName();
-             if (FName.contains("C1E") || FName.contains("C2E") ||  // Constructors
-                 FName.contains("D1E") || FName.contains("D2E") ||  // Destructors
-                 FName.contains("D0E") ||                           // Deleting destructor
-                 !FName.starts_with("_Z")) {                         // Non-mangled (custom asm name)
-                 KeepInternal = true;
-             }
-         }
-
-         if (KeepInternal) {
-             if (Optimize) {
-                 // WeakODR: body is available for inlining by the JIT optimizer, and the JIT
-                 // compiles its own copy.  Unlike AvailableExternally, WeakODR is not discarded
-                 // by GlobalOpt or the inliner's dead-function removal, so virtual-function bodies
-                 // survive across all fixpoint iterations (needed for multi-level devirtualization).
-                 F.setLinkage(llvm::GlobalValue::WeakODRLinkage);
-             } else {
-                 // In the baseline/instrumentation path the JIT must compile these functions
-                 // so the instrumented bodies are actually executed (not the host's versions).
-                 F.setLinkage(llvm::GlobalValue::InternalLinkage);
-             }
-         } else {
-             F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
-         }
+        if (!Optimize) {
+          // Baseline / instrumentation path: compile all functions so instrumented
+          // bodies run instead of the host's uninstrumented versions.
+          F.setLinkage(llvm::GlobalValue::InternalLinkage);
+        } else if (VTableFunctions.count(&F)) {
+          // Virtual-method implementations referenced from vtables need WeakODR so
+          // the ModuleInlinerPass does not delete their bodies between fixpoint
+          // iterations — DevirtualizeConstantVtablePass looks them up by name.
+          F.setLinkage(llvm::GlobalValue::WeakODRLinkage);
+        } else {
+          // All other functions: body available for inlining but canonical definition
+          // lives in the host process (--export-dynamic).  The JIT will not compile
+          // a new copy; if not inlined it resolves the symbol from the host.
+          F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
+        }
       }
     }
     
@@ -785,12 +795,29 @@ namespace clangRuntimeSpecializer {
   uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM,
                                                          const std::string& WrapperName,
                                                          const std::string& OrigFuncName) {
-    if (auto Err = JIT->addIRModule(std::move(TSM))) {
+    // Create a fresh JITDylib for this specialization.  Each specialization gets
+    // its own isolated symbol namespace so WeakODR symbols from different
+    // specialization calls (e.g. repeated benchmark iterations) never conflict.
+    // The new dylib inherits the LLJIT default link order (main dylib + host process
+    // symbols + instrumentation counters) automatically.
+    auto DylibOrErr = JIT->createJITDylib("spec_" + WrapperName);
+    if (!DylibOrErr) {
+      const std::string ErrMsg = llvm::toString(DylibOrErr.takeError());
+      throw ClangRuntimeSpecializerError("Failed to create JITDylib: " + ErrMsg);
+    }
+    auto &Dylib = *DylibOrErr;
+
+    // The DynamicLibrarySearchGenerator and instrumentation counter symbols were
+    // added to the main JITDylib (not to DefaultLinks), so the fresh dylib needs
+    // to fall through to it for host-process and instrumentation symbols.
+    Dylib.addToLinkOrder(JIT->getMainJITDylib());
+
+    if (auto Err = JIT->addIRModule(Dylib, std::move(TSM))) {
       const std::string ErrMsg = llvm::toString(std::move(Err));
       throw ClangRuntimeSpecializerError("Failed to add module to JIT: " + ErrMsg);
     }
 
-    auto SpecializedFn = JIT->lookup(WrapperName);
+    auto SpecializedFn = JIT->lookup(Dylib, WrapperName);
     if (!SpecializedFn) {
       const std::string ErrMsg = llvm::toString(SpecializedFn.takeError());
       throw ClangRuntimeSpecializerError("Failed to lookup wrapper: " + ErrMsg);
