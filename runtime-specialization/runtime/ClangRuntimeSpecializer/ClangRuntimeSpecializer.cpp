@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <dlfcn.h>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -43,6 +44,15 @@
 #include "llvm/Config/llvm-config.h"
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/MC/MCDisassembler/MCDisassembler.h"
+#include "llvm/MC/MCInstPrinter.h"
+#include "llvm/MC/MCInstrInfo.h"
+#include "llvm/MC/MCRegisterInfo.h"
+#include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/TargetParser/Host.h"
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
 
@@ -216,6 +226,7 @@ namespace clangRuntimeSpecializer {
     
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetDisassembler();
 
     const RuntimeSpecializableData data = read_runtime_specializable_data();
     if (!data.Ptr || data.Len == 0) {
@@ -770,7 +781,9 @@ namespace clangRuntimeSpecializer {
       GDtors->eraseFromParent();
   }
 
-  uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName) {
+  uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM,
+                                                         const std::string& WrapperName,
+                                                         const std::string& OrigFuncName) {
     if (auto Err = JIT->addIRModule(std::move(TSM))) {
       const std::string ErrMsg = llvm::toString(std::move(Err));
       throw ClangRuntimeSpecializerError("Failed to add module to JIT: " + ErrMsg);
@@ -781,7 +794,80 @@ namespace clangRuntimeSpecializer {
       const std::string ErrMsg = llvm::toString(SpecializedFn.takeError());
       throw ClangRuntimeSpecializerError("Failed to lookup wrapper: " + ErrMsg);
     }
-    return SpecializedFn->getValue();
+    uintptr_t Addr = SpecializedFn->getValue();
+
+    uint64_t FuncSize = dumpJITAssembly(OrigFuncName, Addr);
+
+#if LLVM_USE_PERF
+    // Write a perf.map entry so perf script can resolve this JIT symbol.
+    // Format: <start_hex> <size_hex> <name>  (no 0x prefix, space-separated)
+    {
+      char MapPath[64];
+      std::snprintf(MapPath, sizeof(MapPath), "/tmp/perf-%d.map", (int)getpid());
+      if (FILE *F = std::fopen(MapPath, "a")) {
+        std::fprintf(F, "%lx %lx %s\n",
+                     (unsigned long)Addr,
+                     (unsigned long)(FuncSize ? FuncSize : 0x1000),
+                     WrapperName.c_str());
+        std::fclose(F);
+      }
+    }
+#endif
+
+    return Addr;
+  }
+
+  uint64_t ClangRuntimeSpecializer::dumpJITAssembly(const std::string& OrigFuncName, uintptr_t Addr) {
+    const char* DumpDir = std::getenv("CRS_ASM_DUMP_DIR");
+    if (!DumpDir) return 0;
+
+    llvm::Triple T = JIT->getTargetTriple();
+    std::string TripleStr = T.getTriple();
+    std::string Err;
+    const llvm::Target* TheTarget = llvm::TargetRegistry::lookupTarget(TripleStr, Err);
+    if (!TheTarget) return 0;
+
+    std::unique_ptr<llvm::MCRegisterInfo>  MRI(TheTarget->createMCRegInfo(TripleStr));
+    llvm::MCTargetOptions MCOpts;
+    std::unique_ptr<llvm::MCAsmInfo>       MAI(TheTarget->createMCAsmInfo(*MRI, TripleStr, MCOpts));
+    std::unique_ptr<llvm::MCInstrInfo>     MII(TheTarget->createMCInstrInfo());
+    std::unique_ptr<llvm::MCSubtargetInfo> STI(TheTarget->createMCSubtargetInfo(
+        TripleStr, llvm::sys::getHostCPUName(), ""));
+    llvm::MCContext Ctx(T, MAI.get(), MRI.get(), STI.get());
+    std::unique_ptr<llvm::MCDisassembler> DisAsm(TheTarget->createMCDisassembler(*STI, Ctx));
+    std::unique_ptr<llvm::MCInstPrinter>  IP(TheTarget->createMCInstPrinter(
+        T, MAI->getAssemblerDialect(), *MAI, *MII, *MRI));
+    if (!DisAsm || !IP) return 0;
+
+    std::string AsmText;
+    llvm::raw_string_ostream OS(AsmText);
+    const uint8_t* Bytes = reinterpret_cast<const uint8_t*>(Addr);
+    uint64_t PC = 0;
+    for (int I = 0; I < 512; ++I) {
+      llvm::MCInst Inst;
+      uint64_t Size;
+      auto S = DisAsm->getInstruction(Inst, Size,
+          llvm::ArrayRef<uint8_t>(Bytes + PC, 64), Addr + PC, llvm::nulls());
+      if (S != llvm::MCDisassembler::Success) break;
+      IP->printInst(&Inst, Addr + PC, "", *STI, OS);
+      OS << "\n";
+      bool IsRet = (Bytes[PC] == 0xC3 || Bytes[PC] == 0xCB);
+      PC += Size;
+      if (IsRet) break;
+    }
+
+    // Strip leading '&' if present (function name annotation convention)
+    std::string CleanName = OrigFuncName;
+    if (!CleanName.empty() && CleanName.front() == '&')
+      CleanName.erase(0, 1);
+
+    std::string Path = std::string(DumpDir) + "/" + CleanName + "__specialized.asm";
+    if (FILE* F = std::fopen(Path.c_str(), "w")) {
+      std::fputs(AsmText.c_str(), F);
+      std::fclose(F);
+    }
+
+    return PC;
   }
 
   void ClangRuntimeSpecializer::encourageInlining(llvm::Function* const F) {

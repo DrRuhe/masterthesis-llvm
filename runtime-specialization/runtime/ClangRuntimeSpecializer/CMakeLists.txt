@@ -35,6 +35,8 @@ llvm_config(ClangRuntimeSpecializer USE_SHARED
         x86codegen
         x86desc
         x86info
+        mcdisassembler
+        x86disassembler
 )
 
 # llvm_config links LLVM privately; consumers that use inline LLVM APIs from

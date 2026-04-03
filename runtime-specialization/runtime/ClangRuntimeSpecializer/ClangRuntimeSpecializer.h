@@ -241,7 +241,7 @@ namespace clangRuntimeSpecializer {
 
       auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), TSCtx);
 
-      return addModuleAndLookup(std::move(TSM), UniqueWrapperName);
+      return addModuleAndLookup(std::move(TSM), UniqueWrapperName, std::string(funcName));
     }
 
     template <const char* funcName, class R, bool Instrument, bool Optimize = true, class... ARGS>
@@ -269,7 +269,9 @@ namespace clangRuntimeSpecializer {
     void validateArgs(llvm::Function* TargetFunc, size_t NumArgs) const;
     std::string createUniqueWrapperName() const;
     void prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const;
-    uintptr_t addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName);
+    uintptr_t addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName,
+                                  const std::string& OrigFuncName = {});
+    uint64_t dumpJITAssembly(const std::string& OrigFuncName, uintptr_t Addr);
     static void encourageInlining(llvm::Function* F);
     llvm::Function* buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
                                    llvm::ArrayRef<llvm::Value*> SpecializedArgs, bool ForceInstrument, bool Optimize = true) const;
