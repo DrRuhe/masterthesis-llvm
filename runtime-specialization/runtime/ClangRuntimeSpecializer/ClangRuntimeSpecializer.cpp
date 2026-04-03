@@ -32,8 +32,7 @@
 #include "llvm/Transforms/Scalar/JumpThreading.h"
 #include "llvm/Transforms/Scalar/CorrelatedValuePropagation.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
-#include "VTableConstantFolding.h"
-#include "VTableEscapeAnalysis.h"
+#include "DevirtualizeConstantVtableCalls.h"
 #include "StaticMutabilityAnalysis.h"
 #include "InvariantLoadToConstant.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
@@ -412,8 +411,8 @@ namespace clangRuntimeSpecializer {
                 // indirect calls into direct calls
                 FixpointMPM.addPass(llvm::IPSCCPPass());
 
-                // 1b. Resolve virtual calls optimistically and perform capture analysis
-                FixpointMPM.addPass(VTableEscapeAnalysis());
+                // 1b. Devirtualize indirect calls through constant vtable pointers
+                FixpointMPM.addPass(DevirtualizeConstantVtableCallsPass());
 
                 // 1b2. Infer attributes again after optimistic resolution
                 FixpointMPM.addPass(llvm::ReversePostOrderFunctionAttrsPass());
@@ -436,12 +435,7 @@ namespace clangRuntimeSpecializer {
                 // possible callees is known.
                 FixpointMPM.addPass(llvm::WholeProgramDevirtPass());
 
-                // 3. Dead code elimination - removes unreachable vtable entries
-                //TODO removing vtable entries is not safe?
-                // Then it'll change the vtables and thus the pointers from the actual arguments will not find the right functions anymore.
-                FixpointMPM.addPass(llvm::GlobalDCEPass());
-
-                // 4. Pre-inlining function-level optimizations
+                // 3. Pre-inlining function-level optimizations
                 llvm::FunctionPassManager PreInlineFPM;
 
                 // EarlyCSE with MemorySSA - eliminate redundant loads early
@@ -493,14 +487,7 @@ namespace clangRuntimeSpecializer {
                 // Replace invariant loads with constants from host memory
                 PostInlineFPM.addPass(InvariantLoadToConstantPass());
 
-                // CUSTOM: VTable constant folding - replace vtable loads with constants
-                // This is our custom pass that specifically handles the pattern:
-                //   %obj = alloca; store @vtable, %obj; load %obj
-                // It replaces the loads with the known constant vtable pointer.
-                PostInlineFPM.addPass(llvm::VTableConstantFoldingPass());
-
-                // InstCombine immediately after - fold loads of constant vtable pointers
-                // and devirtualize the now-direct function pointer calls
+                // InstCombine - fold loads of constant vtable pointers
                 PostInlineFPM.addPass(llvm::InstCombinePass());
 
                 // SROA again - eliminate redundant alloca/store/load patterns
@@ -575,6 +562,16 @@ namespace clangRuntimeSpecializer {
                 }
 
                 PrevInstCount = InstCount;
+              }
+
+              // Run GlobalDCE after all fixpoint iterations complete.
+              // Must not run during the fixpoint loop because virtual function implementations
+              // (e.g., Scan::next, Filter::next) may have no direct callers yet but are still
+              // needed as devirtualization targets in subsequent iterations.
+              {
+                llvm::ModulePassManager PostFixpointMPM;
+                PostFixpointMPM.addPass(llvm::GlobalDCEPass());
+                PostFixpointMPM.run(M, MAM);
               }
 
               // Final O3 pass for cleanup and additional optimizations
@@ -744,13 +741,17 @@ namespace clangRuntimeSpecializer {
          }
 
          if (KeepInternal) {
-             // When optimizing, available_externally lets the optimizer inline/use
-             // the body, then GlobalDCE eliminates unused copies before compilation.
-             // This avoids link failures when hidden symbols (e.g. benchmark
-             // internals) are referenced by functions the JIT never actually calls.
-             // WeakODRLinkage is still used in the !Optimize path so the
-             // instrumentation pass can compile and instrument every function.
-             F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
+             if (Optimize) {
+                 // WeakODR: body is available for inlining by the JIT optimizer, and the JIT
+                 // compiles its own copy.  Unlike AvailableExternally, WeakODR is not discarded
+                 // by GlobalOpt or the inliner's dead-function removal, so virtual-function bodies
+                 // survive across all fixpoint iterations (needed for multi-level devirtualization).
+                 F.setLinkage(llvm::GlobalValue::WeakODRLinkage);
+             } else {
+                 // In the baseline/instrumentation path the JIT must compile these functions
+                 // so the instrumented bodies are actually executed (not the host's versions).
+                 F.setLinkage(llvm::GlobalValue::InternalLinkage);
+             }
          } else {
              F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
          }
