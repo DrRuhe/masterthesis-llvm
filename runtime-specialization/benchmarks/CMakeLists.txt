@@ -98,3 +98,5 @@ set_target_properties(DBOperatorsBenchmark PROPERTIES ENABLE_EXPORTS ON)
 if(NOT APPLE AND NOT MSVC)
   target_link_options(DBOperatorsBenchmark PRIVATE "-Wl,--export-dynamic")
 endif()
+
+add_subdirectory(polybench)
