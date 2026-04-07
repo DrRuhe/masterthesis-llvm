@@ -234,7 +234,23 @@ namespace clangRuntimeSpecializer {
 
     Instance.reset(new ClangRuntimeSpecializer);
 
-    auto JITExp = llvm::orc::LLJITBuilder().create();
+    // Build the LLJIT with TrapUnreachable=true so that IR `unreachable`
+    // instructions always emit a ud2 trap instead of 0 machine bytes.
+    // Without this, a fully-optimised wrapper whose body reduces to
+    // `unreachable` (e.g. because internal globals are still null-initialised
+    // in the JIT clone) produces a zero-byte .text section.  JITLink's
+    // BasicLayout::apply() then calls setMutableContent({nullptr,0}), which
+    // asserts that the data pointer is non-null.
+    auto JTMBOrErr = llvm::orc::JITTargetMachineBuilder::detectHost();
+    if (!JTMBOrErr) {
+      const std::string ErrMsg = llvm::toString(JTMBOrErr.takeError());
+      throw ClangRuntimeSpecializerError("Failed to detect host for JIT: " + ErrMsg);
+    }
+    JTMBOrErr->getOptions().TrapUnreachable = true;
+
+    auto JITExp = llvm::orc::LLJITBuilder()
+        .setJITTargetMachineBuilder(std::move(*JTMBOrErr))
+        .create();
     if (!JITExp) {
       const std::string ErrMsg = llvm::toString(JITExp.takeError());
       throw ClangRuntimeSpecializerError("Failed to create JIT: " + ErrMsg);
@@ -790,6 +806,29 @@ namespace clangRuntimeSpecializer {
       GCtors->eraseFromParent();
     if (auto *GDtors = M.getGlobalVariable("llvm.global_dtors"))
       GDtors->eraseFromParent();
+
+    // Remove zero-sized globals (e.g., empty C++ init structs of type `{}`) before JIT
+    // compilation. The ELF backend can emit a SHT_PROGBITS section with sh_size=0 for
+    // such globals. JITLink's BasicLayout::apply() then calls setMutableContent with a
+    // null pointer (malloc(0) may return nullptr), triggering an assertion failure.
+    // These globals are always dead after llvm.global_ctors is erased above, so removing
+    // them here is safe; GlobalDCE in the IR transform will clean up any remaining
+    // references in dead constructor functions.
+    {
+      const auto &DL = M.getDataLayout();
+      llvm::SmallVector<llvm::GlobalVariable *, 16> ZeroSized;
+      for (auto &G : M.globals()) {
+        if (!G.isDeclaration()) {
+          uint64_t Sz = DL.getTypeAllocSize(G.getValueType());
+          if (Sz == 0)
+            ZeroSized.push_back(&G);
+        }
+      }
+      for (auto *G : ZeroSized) {
+        G->replaceAllUsesWith(llvm::PoisonValue::get(G->getType()));
+        G->eraseFromParent();
+      }
+    }
   }
 
   uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM,
