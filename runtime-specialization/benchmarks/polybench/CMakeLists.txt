@@ -8,6 +8,7 @@ add_custom_command(
             -I${CMAKE_CURRENT_SOURCE_DIR}
             -I${CMAKE_CURRENT_SOURCE_DIR}/..
             -I${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/ClangRuntimeSpecializer
+            -I${CMAKE_CURRENT_SOURCE_DIR}/PolyBenchC-4.2.1-master/utilities
             -I${LLVM_MAIN_INCLUDE_DIR}
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
@@ -31,6 +32,7 @@ target_include_directories(PolyBenchBenchmark PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/ClangRuntimeSpecializer
+    ${CMAKE_CURRENT_SOURCE_DIR}/PolyBenchC-4.2.1-master/utilities
     ${LLVM_MAIN_INCLUDE_DIR}
     ${LLVM_BINARY_DIR}/include
 )
