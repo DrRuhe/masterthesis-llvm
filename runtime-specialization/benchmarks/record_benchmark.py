@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""benchplot.py — Record Google Benchmark runs into DuckDB.
+"""record_benchmark.py — Record Google Benchmark runs into DuckDB.
 
 Usage:
-    benchplot record <binary> [--benchmark-filter=PATTERN] [--db=PATH]
+    record_benchmark.py <binary> [--benchmark-filter=PATTERN] [--db=PATH]
 """
 
 import argparse
@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS benchmarks (
 
 # Parse phase, kernel, raw_params out of the benchmark name.
 _SCHEMA_V_PARSED = r"""
-CREATE VIEW IF NOT EXISTS v_parsed AS
+CREATE OR REPLACE VIEW v_parsed AS
 SELECT
     b.*,
     c.git_sha,
@@ -78,7 +78,7 @@ JOIN context c USING (run_id);
 
 # Convert all times to nanoseconds; drop rows that didn't match the naming convention.
 _SCHEMA_V_NS = """
-CREATE VIEW IF NOT EXISTS v_ns AS
+CREATE OR REPLACE VIEW v_ns AS
 SELECT *,
     real_time * CASE time_unit
         WHEN 'ns' THEN 1.0
@@ -92,7 +92,7 @@ WHERE phase != '';
 
 # Pivot phases per (run_id, kernel, raw_params) for ratio computation.
 _SCHEMA_V_RATIOS = """
-CREATE VIEW IF NOT EXISTS v_ratios AS
+CREATE OR REPLACE VIEW v_ratios AS
 SELECT
     run_id,
     kernel,
@@ -178,8 +178,22 @@ def insert_benchmarks(con: duckdb.DuckDBPyConnection, run_id: str, benchmarks: l
 # DB helpers
 # ---------------------------------------------------------------------------
 
-def open_db(db_path: str) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(db_path)
+def resolve_db_path(flag_value: str | None) -> Path:
+    """Resolve DB path: --db flag > BENCHPLOT_DB_PATH env var > CWD/benchmarks.duckdb."""
+    if flag_value is not None:
+        return Path(flag_value)
+    env = os.environ.get("BENCHPLOT_DB_PATH")
+    if env:
+        return Path(env)
+    return Path.cwd() / "benchmarks.duckdb"
+
+
+def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
+    if not create and not db_path.exists():
+        print(f"Error: DB file not found: {db_path}", file=sys.stderr)
+        print("Pass --create-db to initialise a new database.", file=sys.stderr)
+        sys.exit(1)
+    con = duckdb.connect(str(db_path))
     for stmt in [
         _SCHEMA_CONTEXT,
         _SCHEMA_BENCHMARKS,
@@ -250,6 +264,49 @@ def get_git_sha() -> str:
 # Commands
 # ---------------------------------------------------------------------------
 
+def store_to_db(args, data: dict, json_path: str, delete_on_success: bool) -> None:
+    ctx = data.get("context", {})
+    benchmarks = data.get("benchmarks", [])
+    db_path = resolve_db_path(args.db)
+    try:
+        con = open_db(db_path, args.create_db)
+        run_id = str(uuid.uuid4())
+        run_ts = datetime.now()
+
+        con.execute(
+            "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [
+                run_id, run_ts,
+                ctx.get("git_sha", ""),
+                ctx.get("date", ""),
+                ctx.get("host_name", ""),
+                ctx.get("executable", ""),
+                ctx.get("num_cpus"),
+                ctx.get("mhz_per_cpu"),
+                ctx.get("cpu_scaling_enabled"),
+                ctx.get("library_version", ""),
+                ctx.get("library_build_type", ""),
+            ],
+        )
+
+        ensure_columns(con, benchmarks)
+        insert_benchmarks(con, run_id, benchmarks)
+
+        print(f"run_id: {run_id}")
+        print(f"Stored context + {len(benchmarks)} benchmark rows.")
+        if delete_on_success:
+            os.unlink(json_path)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        print(file=sys.stderr)
+        print(f"ERROR while adding data to DB. The output from this benchmark run is available at {json_path}", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"Please fix the importing issues and run:", file=sys.stderr)
+        print(f"  record_benchmark.py --record-json {json_path}", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_record(args):
     sha = get_git_sha()
 
@@ -278,36 +335,8 @@ def cmd_record(args):
 
     with open(out_path) as f:
         data = json.load(f)
-    os.unlink(out_path)
 
-    ctx = data.get("context", {})
-    benchmarks = data.get("benchmarks", [])
-
-    con = open_db(args.db)
-    run_id = str(uuid.uuid4())
-    run_ts = datetime.now()
-
-    con.execute(
-        "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            run_id, run_ts,
-            ctx.get("git_sha", sha),
-            ctx.get("date", ""),
-            ctx.get("host_name", ""),
-            ctx.get("executable", ""),
-            ctx.get("num_cpus"),
-            ctx.get("mhz_per_cpu"),
-            ctx.get("cpu_scaling_enabled"),
-            ctx.get("library_version", ""),
-            ctx.get("library_build_type", ""),
-        ],
-    )
-
-    ensure_columns(con, benchmarks)
-    insert_benchmarks(con, run_id, benchmarks)
-
-    print(f"run_id: {run_id}")
-    print(f"Stored context + {len(benchmarks)} benchmark rows.")
+    store_to_db(args, data, out_path, delete_on_success=True)
 
 
 # ---------------------------------------------------------------------------
@@ -318,23 +347,41 @@ def main():
     parser = argparse.ArgumentParser(
         description="Record Google Benchmark runs into DuckDB."
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
-
-    rec = subparsers.add_parser("record", help="Run a benchmark and store results.")
-    rec.add_argument("binary", help="Benchmark executable to run.")
-    rec.add_argument(
-        "--benchmark-filter", metavar="PATTERN",
+    parser.add_argument("binary", nargs="?", default=None,
+                        help="Benchmark executable to run.")
+    parser.add_argument(
+        "--record-json", metavar="PATH",
+        help="Import benchmark results from a previously saved JSON file instead of running a binary.",
+    )
+    parser.add_argument(
+        "--benchmark_filter", metavar="PATTERN",
         help="Passed as --benchmark_filter to the binary.",
     )
-    rec.add_argument(
+    parser.add_argument(
         "--benchmarking-best-practice", action="store_true",
-        help="Pin CPU governor to 'performance' for the duration of the run (requires sudo).",
+        help="Pin CPU governor to 'performance' for the duration of the run (requires sudo if the CPU govenor must be adjusted).",
     )
-    rec.add_argument("--db", default="benchmarks.duckdb", help="DuckDB file path.")
+    parser.add_argument(
+        "--db", default=None, metavar="PATH",
+        help="DuckDB file path (overrides BENCHPLOT_DB_PATH env var and CWD default).",
+    )
+    parser.add_argument(
+        "--create-db", action="store_true",
+        help="Create the database file if it does not exist.",
+    )
 
     args = parser.parse_args()
 
-    if args.command == "record":
+    if args.record_json and args.binary:
+        parser.error("--record-json and binary are mutually exclusive.")
+    if not args.record_json and not args.binary:
+        parser.error("Provide a binary to run, or use --record-json to import existing results.")
+
+    if args.record_json:
+        with open(args.record_json) as f:
+            data = json.load(f)
+        store_to_db(args, data, args.record_json, delete_on_success=False)
+    else:
         cmd_record(args)
 
 

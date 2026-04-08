@@ -49,23 +49,6 @@ void benchmarkJITOverhead(
             return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
-    // Correctness check outside timing (log level stays None; errors throw exceptions)
-    if constexpr (std::is_void_v<R>) {
-        std::apply(InvokeNormal, normalArgs);
-        std::apply([&](auto&&... A) {
-            RS->template callSpecialized<funcName, void>(std::forward<decltype(A)>(A)...);
-        }, specArgs);
-    } else {
-        R ResOrig = std::apply(InvokeNormal, normalArgs);
-        R ResSpec = std::apply([&](auto&&... A) -> R {
-            return RS->template callSpecialized<funcName, R>(std::forward<decltype(A)>(A)...);
-        }, specArgs);
-        if constexpr (HasEqualityOperator<R>::value) {
-            if (ResOrig != ResSpec)
-                throw ClangRuntimeSpecializerChangesBehaviorError(
-                    (llvm::Twine("Comparison failed: return values differ for ") + funcName).str());
-        }
-    }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
 }
 

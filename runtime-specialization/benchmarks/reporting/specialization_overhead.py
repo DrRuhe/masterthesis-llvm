@@ -79,11 +79,9 @@ def compute_bars(df: pd.DataFrame):
 # Plotting
 # ---------------------------------------------------------------------------
 
-def plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title, output_path):
+def plot_on_ax(ax, groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title):
+    """Plot normalized overhead bars on an existing axis."""
     n = len(groups)
-    width = max(8, n * 1.4)
-    fig, ax = uplt.subplots(figsize=(width, 4))
-
     x = np.arange(n)
     w = 0.18
 
@@ -104,8 +102,44 @@ def plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title, output_p
     ax.tick_params(axis="x", labelrotation=45)
     ax.legend(loc="b")
 
+
+def plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title, output_path):
+    n = len(groups)
+    width = max(8, n * 1.4)
+    fig, ax = uplt.subplots(figsize=(width, 4))
+    plot_on_ax(ax, groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title)
     fig.save(output_path)
     print(f"Saved chart to {output_path}")
+
+
+# ---------------------------------------------------------------------------
+# Data loading
+# ---------------------------------------------------------------------------
+
+def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
+              kernel_filter: str | None = None) -> pd.DataFrame:
+    """Load real_time pivot from v_ratios; returns df with t_unspec_ns/t_spec_ns/t_jit_ns."""
+    df = con.execute(
+        "SELECT kernel, raw_params, t_unspec_ns, t_spec_ns, t_jit_ns "
+        "FROM v_ratios WHERE run_id = ? ORDER BY kernel, raw_params",
+        [run_id],
+    ).df()
+
+    if kernel_filter:
+        pat = re.compile(kernel_filter, re.IGNORECASE)
+        df = df[df["kernel"].apply(lambda k: bool(pat.search(k)))]
+
+    return df
+
+
+def get_latest_run_id(con: duckdb.DuckDBPyConnection) -> str:
+    row = con.execute(
+        "SELECT run_id FROM context ORDER BY run_ts DESC LIMIT 1"
+    ).fetchone()
+    if row is None:
+        print("No runs found in database.", file=sys.stderr)
+        sys.exit(1)
+    return row[0]
 
 
 # ---------------------------------------------------------------------------
@@ -126,28 +160,9 @@ def main():
     args = parser.parse_args()
 
     con = duckdb.connect(args.db, read_only=True)
+    run_id = args.run_id or get_latest_run_id(con)
 
-    if args.run_id:
-        run_id = args.run_id
-    else:
-        row = con.execute(
-            "SELECT run_id FROM context ORDER BY run_ts DESC LIMIT 1"
-        ).fetchone()
-        if row is None:
-            print("No runs found in database.", file=sys.stderr)
-            sys.exit(1)
-        run_id = row[0]
-
-    df = con.execute(
-        "SELECT kernel, raw_params, t_unspec_ns, t_spec_ns, t_jit_ns "
-        "FROM v_ratios WHERE run_id = ? ORDER BY kernel, raw_params",
-        [run_id],
-    ).df()
-
-    if args.kernel_filter:
-        pat = re.compile(args.kernel_filter, re.IGNORECASE)
-        df = df[df["kernel"].apply(lambda k: bool(pat.search(k)))]
-
+    df = load_data(con, run_id, args.kernel_filter)
     if df.empty:
         print("No benchmarks match the filter.", file=sys.stderr)
         sys.exit(1)
