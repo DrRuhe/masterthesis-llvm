@@ -156,4 +156,6 @@ void BM_method_add_specialized_exec(benchmark::State& state) {
 }
 BENCHMARK(BM_method_add_specialized_exec);
 
+#ifndef ALL_BENCHMARKS_BUILD
 BENCHMARK_MAIN();
+#endif

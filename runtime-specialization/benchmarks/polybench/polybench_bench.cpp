@@ -1071,4 +1071,4 @@ extern "C" __attribute__((used)) void polybench_dummy_registration() {
     }
 }
 
-BENCHMARK_MAIN();
+#ifndef ALL_BENCHMARKS_BUILD

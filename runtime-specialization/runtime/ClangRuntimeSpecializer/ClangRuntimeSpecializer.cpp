@@ -2,12 +2,12 @@
 
 #include <algorithm>
 #include <cstdio>
-#include <dlfcn.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
 
 #include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
 #include "llvm/IR/PassManager.h"
@@ -55,41 +55,51 @@
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
 
+// ---------------------------------------------------------------------------
+// Multi-TU IR blob registry
+// Each TU compiled with the plugin injects a constructor that calls
+// clang_runtime_specializer_register_blob(), enabling multiple TUs to coexist
+// in a single binary.
+// ---------------------------------------------------------------------------
+
+namespace {
+  struct BlobEntry { const void* Ptr; std::uint64_t Len; };
+  std::vector<BlobEntry> g_registered_blobs;
+} // namespace
+
+extern "C" void clang_runtime_specializer_register_blob(const void* ptr, std::uint64_t len) {
+  g_registered_blobs.push_back({ptr, len});
+}
+
 namespace {
 
-  struct RuntimeSpecializableData {
-    const void* Ptr;
-    std::uint64_t Len;
-  };
-
-  RuntimeSpecializableData read_runtime_specializable_data() {
-    const void* ptrSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_ptr");
-    const void* lenSym = dlsym(RTLD_DEFAULT, "RuntimeSpecializeableIR_len");
-
-    if (!ptrSym || !lenSym) {
-      return {nullptr, 0};
+  std::unique_ptr<llvm::Module> load_and_merge_blobs(llvm::LLVMContext& ctx) {
+    if (g_registered_blobs.empty()) {
+      throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError(
+          "No IR blobs registered. Was the binary compiled with the plugin?");
     }
 
-    auto* PtrVar = reinterpret_cast<void* const*>(ptrSym);
-    auto* LenVar = reinterpret_cast<const std::uint64_t*>(lenSym);
-
-    return { *PtrVar, static_cast<std::uint64_t>(*LenVar) };
-  }
-
-  std::unique_ptr<llvm::Module> parse_module_from_runtime_data(const RuntimeSpecializableData& data,
-                                                               llvm::LLVMContext& ctx) {
-    const llvm::StringRef Bytes(reinterpret_cast<const char*>(data.Ptr), data.Len);
-    const llvm::MemoryBufferRef Buffer(Bytes, "RuntimeSpecializeableIR");
-
-    llvm::Expected<std::unique_ptr<llvm::Module>> M =
-        llvm::parseBitcodeFile(Buffer, ctx);
-
-    if (!M) {
-      const std::string Err = llvm::toString(M.takeError());
-      throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError("Failed to parse bitcode: " + Err);
+    std::unique_ptr<llvm::Module> Merged;
+    for (const auto& blob : g_registered_blobs) {
+      const llvm::StringRef Bytes(reinterpret_cast<const char*>(blob.Ptr), blob.Len);
+      const llvm::MemoryBufferRef Buffer(Bytes, "RuntimeSpecializeableIR");
+      llvm::Expected<std::unique_ptr<llvm::Module>> M =
+          llvm::parseBitcodeFile(Buffer, ctx);
+      if (!M) {
+        const std::string Err = llvm::toString(M.takeError());
+        throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError(
+            "Failed to parse bitcode: " + Err);
+      }
+      if (!Merged) {
+        Merged = std::move(*M);
+      } else {
+        if (llvm::Linker::linkModules(*Merged, std::move(*M))) {
+          throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError(
+              "Failed to link IR modules from multiple TUs");
+        }
+      }
     }
-
-    return std::move(*M);
+    return Merged;
   }
 
 } // namespace
@@ -226,11 +236,6 @@ namespace clangRuntimeSpecializer {
     llvm::InitializeNativeTarget();
     llvm::InitializeNativeTargetAsmPrinter();
     llvm::InitializeNativeTargetDisassembler();
-
-    const RuntimeSpecializableData data = read_runtime_specializable_data();
-    if (!data.Ptr || data.Len == 0) {
-      throw ClangRuntimeSpecializerError("No dumped IR found in the executable.\n");
-    }
 
     Instance.reset(new ClangRuntimeSpecializer);
 
@@ -675,7 +680,7 @@ namespace clangRuntimeSpecializer {
         });
 
     Instance->TSCtx.withContextDo([&](llvm::LLVMContext *Ctx) {
-        Instance->Module = parse_module_from_runtime_data(data, *Ctx);
+        Instance->Module = load_and_merge_blobs(*Ctx);
     });
 
     return Instance.get();

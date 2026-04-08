@@ -1,6 +1,7 @@
 #include "RuntimeSpecializerPass.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -10,6 +11,8 @@
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/Transforms/Utils/ModuleUtils.h"
+#include <algorithm>
 #include <cassert>
 
 using namespace llvm;
@@ -20,7 +23,7 @@ static std::pair<GlobalVariable*, GlobalVariable*> getOrCreateIRDumpGlobals(Modu
 
   LLVMContext &Ctx = M.getContext();
 
-  // ptr global: constant ptr null
+  // ptr global: constant ptr null (internal — no cross-TU symbol conflict)
   GlobalVariable *PtrGV = M.getNamedGlobal(kPtrName);
   if (!PtrGV) {
     Type * const PtrTy = PointerType::getUnqual(Ctx); // opaque 'ptr'
@@ -28,13 +31,13 @@ static std::pair<GlobalVariable*, GlobalVariable*> getOrCreateIRDumpGlobals(Modu
         M,
         PtrTy,
         /*isConstant=*/true,
-        GlobalValue::ExternalLinkage,
+        GlobalValue::InternalLinkage,
         /*Initializer=*/ConstantPointerNull::get(cast<PointerType>(PtrTy)),
         kPtrName);
     PtrGV->setUnnamedAddr(GlobalValue::UnnamedAddr::None);
   }
 
-  // len global: constant i64 0
+  // len global: constant i64 0 (internal)
   GlobalVariable *LenGV = M.getNamedGlobal(kLenName);
   if (!LenGV) {
     Type * const LenTy = Type::getInt64Ty(Ctx);
@@ -42,7 +45,7 @@ static std::pair<GlobalVariable*, GlobalVariable*> getOrCreateIRDumpGlobals(Modu
         M,
         LenTy,
         /*isConstant=*/true,
-        GlobalValue::ExternalLinkage,
+        GlobalValue::InternalLinkage,
         /*Initializer=*/ConstantInt::get(LenTy, 0),
         kLenName);
     LenGV->setUnnamedAddr(GlobalValue::UnnamedAddr::None);
@@ -91,6 +94,32 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
 
   PtrGV->setInitializer(DataPtr);
   LenGV->setInitializer(ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size()));
+
+  // 4) Register this IR blob at program startup via a module constructor.
+  //    This replaces the old dlsym-based single-blob approach and allows
+  //    multiple TUs (each with their own IR blob) to coexist in one binary.
+  FunctionType *RegTy = FunctionType::get(
+      Type::getVoidTy(Ctx),
+      {PointerType::getUnqual(Ctx), Type::getInt64Ty(Ctx)},
+      /*isVarArg=*/false);
+  FunctionCallee RegFn = M.getOrInsertFunction(
+      "clang_runtime_specializer_register_blob", RegTy);
+
+  // Give the constructor a name unique to this TU (based on module identifier).
+  std::string TUName = M.getModuleIdentifier();
+  std::replace_if(TUName.begin(), TUName.end(),
+                  [](char c) { return !isalnum(static_cast<unsigned char>(c)); }, '_');
+  Function *CtorFn = Function::Create(
+      FunctionType::get(Type::getVoidTy(Ctx), /*isVarArg=*/false),
+      GlobalValue::InternalLinkage,
+      "__clangRS_register_blob_" + TUName,
+      &M);
+  BasicBlock *BB = BasicBlock::Create(Ctx, "entry", CtorFn);
+  IRBuilder<> Builder(BB);
+  Builder.CreateCall(RegFn, {DataPtr, ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size())});
+  Builder.CreateRetVoid();
+
+  appendToGlobalCtors(M, CtorFn, /*Priority=*/65535);
 
   return PreservedAnalyses::none();
 }
