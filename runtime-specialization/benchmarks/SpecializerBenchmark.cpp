@@ -69,16 +69,16 @@ extern "C" __attribute__((used)) void dummy_registration() {
     }
 }
 
-extern "C" void BM_mypow_unspecialized(benchmark::State& state) {
+extern "C" void BM_unspecialized____mypow(benchmark::State& state) {
     int x = state.range(0);
     clangRuntimeSpecializer::benchmarkUnspecialized<Fn_mypow>(
         state,
         mypow_bench,
         std::make_tuple(x));
 }
-BENCHMARK(BM_mypow_unspecialized)->Range(1, 2<<6);
+BENCHMARK(BM_unspecialized____mypow)->Range(1, 2<<6);
 
-extern "C" void BM_mypow_jit_overhead(benchmark::State& state) {
+extern "C" void BM_jit_overhead_____mypow(benchmark::State& state) {
     int x = state.range(0);
     clangRuntimeSpecializer::benchmarkJITOverhead<Fn_mypow>(
         state,
@@ -86,53 +86,53 @@ extern "C" void BM_mypow_jit_overhead(benchmark::State& state) {
     std::make_tuple(x),
         std::make_tuple(x));
 }
-BENCHMARK(BM_mypow_jit_overhead)->Range(1, 2<<6);
+BENCHMARK(BM_jit_overhead_____mypow)->Range(1, 2<<6);
 
-extern "C" void BM_mypow_specialized_exec(benchmark::State& state) {
+extern "C" void BM_specialized_exec_mypow(benchmark::State& state) {
     int x = state.range(0);
     clangRuntimeSpecializer::benchmarkSpecializedExec<Fn_mypow>(
         state,
         mypow_bench,
         std::make_tuple(x));
 }
-BENCHMARK(BM_mypow_specialized_exec)->Range(1, 2<<6);
+BENCHMARK(BM_specialized_exec_mypow)->Range(1, 2<<6);
 
 // ── config_count benchmarks ───────────────────────────────────────────────────
 
-void BM_config_count_unspecialized(benchmark::State& state) {
+void BM_unspecialized____config_count(benchmark::State& state) {
     int n = state.range(0);
     clangRuntimeSpecializer::benchmarkUnspecialized<Fn_config_count>(
         state, config_count, std::make_tuple(&g_config, n));
 }
-BENCHMARK(BM_config_count_unspecialized)->Range(64, 2<<10);
+BENCHMARK(BM_unspecialized____config_count)->Range(64, 2<<10);
 
-void BM_config_count_jit_overhead(benchmark::State& state) {
+void BM_jit_overhead_____config_count(benchmark::State& state) {
     int n = state.range(0);
     clangRuntimeSpecializer::benchmarkJITOverhead<Fn_config_count>(
         state, config_count,
         std::make_tuple(&g_config, n),
         std::make_tuple(&g_config, n));
 }
-BENCHMARK(BM_config_count_jit_overhead)->Range(64, 2<<10)->MinWarmUpTime(1.0);
+BENCHMARK(BM_jit_overhead_____config_count)->Range(64, 2<<10)->MinWarmUpTime(1.0);
 
-void BM_config_count_specialized_exec(benchmark::State& state) {
+void BM_specialized_exec_config_count(benchmark::State& state) {
     int n = state.range(0);
     clangRuntimeSpecializer::benchmarkSpecializedExec<Fn_config_count>(
         state, config_count, std::make_tuple(&g_config, n));
 }
-BENCHMARK(BM_config_count_specialized_exec)->Range(64, 2<<10);
+BENCHMARK(BM_specialized_exec_config_count)->Range(64, 2<<10);
 
 // ── A::add benchmarks (method with known this pointer) ───────────────────────
 
-void BM_method_add_unspecialized(benchmark::State& state) {
+void BM_unspecialized____method_add(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(g_a_instance);
         benchmark::DoNotOptimize(g_a_instance.add(7, 11));
     }
 }
-BENCHMARK(BM_method_add_unspecialized);
+BENCHMARK(BM_unspecialized____method_add);
 
-void BM_method_add_jit_overhead(benchmark::State& state) {
+void BM_jit_overhead_____method_add(benchmark::State& state) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
@@ -141,9 +141,9 @@ void BM_method_add_jit_overhead(benchmark::State& state) {
         benchmark::DoNotOptimize(RS->specializeOnly<Fn_A_add, int>(&g_a_instance, 7, 11));
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(Prev);
 }
-BENCHMARK(BM_method_add_jit_overhead);
+BENCHMARK(BM_jit_overhead_____method_add);
 
-void BM_method_add_specialized_exec(benchmark::State& state) {
+void BM_specialized_exec_method_add(benchmark::State& state) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
@@ -154,7 +154,7 @@ void BM_method_add_specialized_exec(benchmark::State& state) {
     for (auto _ : state)
         benchmark::DoNotOptimize(SpecFn());
 }
-BENCHMARK(BM_method_add_specialized_exec);
+BENCHMARK(BM_specialized_exec_method_add);
 
 #ifndef ALL_BENCHMARKS_BUILD
 BENCHMARK_MAIN();

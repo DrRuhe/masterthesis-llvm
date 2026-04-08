@@ -1,7 +1,6 @@
+#include <iostream>
 #include <benchmark/benchmark.h>
 #include "ClangRuntimeSpecializerBenchmark.h"
-#include <cstdlib>
-#include <cstring>
 
 namespace CRS = clangRuntimeSpecializer;
 
@@ -18,10 +17,10 @@ extern "C" void polybench_free_data(void* p) {
 // ── Macros ────────────────────────────────────────────────────────────────────
 
 #define POLYBENCH_IMPL_1(K) \
-  static void BM_unspecialized_##K(benchmark::State& S) { \
+  static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
     CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
-  static void BM_jit_overhead_##K(benchmark::State& S) { \
+  static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
@@ -29,10 +28,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_2(K) \
-  static void BM_unspecialized_##K(benchmark::State& S) { \
+  static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
     CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
-  static void BM_jit_overhead_##K(benchmark::State& S) { \
+  static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
@@ -40,10 +39,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_3(K) \
-  static void BM_unspecialized_##K(benchmark::State& S) { \
+  static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
     CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
-  static void BM_jit_overhead_##K(benchmark::State& S) { \
+  static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
@@ -51,10 +50,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_4(K) \
-  static void BM_unspecialized_##K(benchmark::State& S) { \
+  static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
     CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
-  static void BM_jit_overhead_##K(benchmark::State& S) { \
+  static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
@@ -62,20 +61,17 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_5(K) \
-  static void BM_unspecialized_##K(benchmark::State& S) { \
+  static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
     CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
-  static void BM_jit_overhead_##K(benchmark::State& S) { \
+  static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
     CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
 
-#define POLYBENCH_BENCHMARK(K, ...) \
-    BENCHMARK(BM_unspecialized_##K)__VA_ARGS__; \
-    BENCHMARK(BM_jit_overhead_##K)__VA_ARGS__; \
-    BENCHMARK(BM_specialized_exec_##K)__VA_ARGS__
+
 
 
 // ── PolyBench Kernel Implementations ─────────────────────────────────────────
@@ -787,248 +783,57 @@ inline constexpr char Fn_seidel_2d[] = "kernel_seidel_2d";
 POLYBENCH_IMPL_2(seidel_2d)
 
 
+
+
 // ── Benchmark Registrations ───────────────────────────────────────────────────
+#define POLYBENCH_BENCHMARK_SPEC(K, MINI, SMALL, MEDIUM, LARGE, EXTRALARGE) \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/MINI")->MINI; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/SMALL")->SMALL; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/MEDIUM")->MEDIUM; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/LARGE")->LARGE; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/EXTRALARGE")->EXTRALARGE; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/MINI")->MINI; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/SMALL")->SMALL; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/MEDIUM")->MEDIUM; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/LARGE")->LARGE; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/EXTRALARGE")->EXTRALARGE; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/MINI")->MINI; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/SMALL")->SMALL; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/MEDIUM")->MEDIUM; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/LARGE")->LARGE; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/EXTRALARGE")->EXTRALARGE;
 
-POLYBENCH_BENCHMARK(correlation,
-    ->Args({28, 32})        // MINI
-    ->Args({80, 100})       // SMALL
-    ->Args({240, 260})      // MEDIUM
-    ->Args({1200, 1400})    // LARGE
-    ->Args({2600, 3000})    // EXTRALARGE
-);
 
-POLYBENCH_BENCHMARK(covariance,
-    ->Args({28, 32})        // MINI
-    ->Args({80, 100})       // SMALL
-    ->Args({240, 260})      // MEDIUM
-    ->Args({1200, 1400})    // LARGE
-    ->Args({2600, 3000})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(2mm,
-    ->Args({16, 18, 22, 24})           // MINI
-    ->Args({40, 50, 70, 80})           // SMALL
-    ->Args({180, 190, 210, 220})       // MEDIUM
-    ->Args({800, 900, 1100, 1200})     // LARGE
-    ->Args({1600, 1800, 2200, 2400})   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(3mm,
-    ->Args({16, 18, 20, 22, 24})           // MINI
-    ->Args({40, 50, 60, 70, 80})           // SMALL
-    ->Args({180, 190, 200, 210, 220})      // MEDIUM
-    ->Args({800, 900, 1000, 1100, 1200})   // LARGE
-    ->Args({1600, 1800, 2000, 2200, 2400}) // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(atax,
-    ->Args({38, 42})        // MINI
-    ->Args({116, 124})      // SMALL
-    ->Args({390, 410})      // MEDIUM
-    ->Args({1900, 2100})    // LARGE
-    ->Args({1800, 2200})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(bicg,
-    ->Args({38, 42})        // MINI
-    ->Args({116, 124})      // SMALL
-    ->Args({390, 410})      // MEDIUM
-    ->Args({1900, 2100})    // LARGE
-    ->Args({1800, 2200})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(doitgen,
-    ->Args({8, 10, 12})       // MINI
-    ->Args({20, 25, 30})      // SMALL
-    ->Args({40, 50, 60})      // MEDIUM
-    ->Args({140, 150, 160})   // LARGE
-    ->Args({220, 250, 270})   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(mvt,
-    ->Arg(40)     // MINI
-    ->Arg(120)    // SMALL
-    ->Arg(400)    // MEDIUM
-    ->Arg(2000)   // LARGE
-    ->Arg(4000)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(gemm,
-    ->Args({20, 25, 30})          // MINI
-    ->Args({60, 70, 80})          // SMALL
-    ->Args({200, 220, 240})       // MEDIUM
-    ->Args({1000, 1100, 1200})    // LARGE
-    ->Args({2000, 2300, 2600})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(gemver,
-    ->Arg(40)     // MINI
-    ->Arg(120)    // SMALL
-    ->Arg(400)    // MEDIUM
-    ->Arg(2000)   // LARGE
-    ->Arg(4000)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(gesummv,
-    ->Arg(30)     // MINI
-    ->Arg(90)     // SMALL
-    ->Arg(250)    // MEDIUM
-    ->Arg(1300)   // LARGE
-    ->Arg(2800)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(symm,
-    ->Args({20, 30})        // MINI
-    ->Args({60, 80})        // SMALL
-    ->Args({200, 240})      // MEDIUM
-    ->Args({1000, 1200})    // LARGE
-    ->Args({2000, 2600})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(syr2k,
-    ->Args({20, 30})        // MINI
-    ->Args({60, 80})        // SMALL
-    ->Args({200, 240})      // MEDIUM
-    ->Args({1000, 1200})    // LARGE
-    ->Args({2000, 2600})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(syrk,
-    ->Args({20, 30})        // MINI
-    ->Args({60, 80})        // SMALL
-    ->Args({200, 240})      // MEDIUM
-    ->Args({1000, 1200})    // LARGE
-    ->Args({2000, 2600})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(trmm,
-    ->Args({20, 30})        // MINI
-    ->Args({60, 80})        // SMALL
-    ->Args({200, 240})      // MEDIUM
-    ->Args({1000, 1200})    // LARGE
-    ->Args({2000, 2600})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(cholesky,
-    ->Arg(40)     // MINI
-    ->Arg(120)    // SMALL
-    ->Arg(400)    // MEDIUM
-    ->Arg(2000)   // LARGE
-    ->Arg(4000)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(durbin,
-    ->Arg(40)     // MINI
-    ->Arg(120)    // SMALL
-    ->Arg(400)    // MEDIUM
-    ->Arg(2000)   // LARGE
-    ->Arg(4000)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(gramschmidt,
-    ->Args({20, 30})        // MINI
-    ->Args({60, 80})        // SMALL
-    ->Args({200, 240})      // MEDIUM
-    ->Args({1000, 1200})    // LARGE
-    ->Args({2000, 2600})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(lu,
-    ->Arg(40)     // MINI
-    ->Arg(120)    // SMALL
-    ->Arg(400)    // MEDIUM
-    ->Arg(2000)   // LARGE
-    ->Arg(4000)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(ludcmp,
-    ->Arg(40)     // MINI
-    ->Arg(120)    // SMALL
-    ->Arg(400)    // MEDIUM
-    ->Arg(2000)   // LARGE
-    ->Arg(4000)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(trisolv,
-    ->Arg(40)     // MINI
-    ->Arg(120)    // SMALL
-    ->Arg(400)    // MEDIUM
-    ->Arg(2000)   // LARGE
-    ->Arg(4000)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(deriche,
-    ->Args({64, 64})        // MINI
-    ->Args({192, 128})      // SMALL
-    ->Args({720, 480})      // MEDIUM
-    ->Args({4096, 2160})    // LARGE
-    ->Args({7680, 4320})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(floyd_warshall,
-    ->Arg(60)     // MINI
-    ->Arg(180)    // SMALL
-    ->Arg(500)    // MEDIUM
-    ->Arg(2800)   // LARGE
-    ->Arg(5600)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(nussinov,
-    ->Arg(60)     // MINI
-    ->Arg(180)    // SMALL
-    ->Arg(500)    // MEDIUM
-    ->Arg(2500)   // LARGE
-    ->Arg(5500)   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(adi,
-    ->Args({20, 20})        // MINI
-    ->Args({40, 60})        // SMALL
-    ->Args({100, 200})      // MEDIUM
-    ->Args({500, 1000})     // LARGE
-    ->Args({1000, 2000})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(fdtd_2d,
-    ->Args({20, 20, 30})        // MINI
-    ->Args({40, 60, 80})        // SMALL
-    ->Args({100, 200, 240})     // MEDIUM
-    ->Args({500, 1000, 1200})   // LARGE
-    ->Args({1000, 2000, 2600})  // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(heat_3d,
-    ->Args({20, 10})      // MINI
-    ->Args({40, 20})      // SMALL
-    ->Args({100, 40})     // MEDIUM
-    ->Args({500, 120})    // LARGE
-    ->Args({1000, 200})   // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(jacobi_1d,
-    ->Args({20, 30})        // MINI
-    ->Args({40, 120})       // SMALL
-    ->Args({100, 400})      // MEDIUM
-    ->Args({500, 2000})     // LARGE
-    ->Args({1000, 4000})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(jacobi_2d,
-    ->Args({20, 30})        // MINI
-    ->Args({40, 90})        // SMALL
-    ->Args({100, 250})      // MEDIUM
-    ->Args({500, 1300})     // LARGE
-    ->Args({1000, 2800})    // EXTRALARGE
-);
-
-POLYBENCH_BENCHMARK(seidel_2d,
-    ->Args({20, 40})        // MINI
-    ->Args({40, 120})       // SMALL
-    ->Args({100, 400})      // MEDIUM
-    ->Args({500, 2000})     // LARGE
-    ->Args({1000, 4000})    // EXTRALARGE
-);
-
+POLYBENCH_BENCHMARK_SPEC(correlation,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
+POLYBENCH_BENCHMARK_SPEC(covariance,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
+POLYBENCH_BENCHMARK_SPEC(2mm,Args({16, 18, 22, 24}),Args({40, 50, 70, 80}),Args({180, 190, 210, 220}),Args({800, 900, 1100, 1200}),Args({1600, 1800, 2200, 2400}))
+POLYBENCH_BENCHMARK_SPEC(3mm,Args({16, 18, 20, 22, 24}),Args({40, 50, 60, 70, 80}),Args({180, 190, 200, 210, 220}),Args({800, 900, 1000, 1100, 1200}),Args({1600, 1800, 2000, 2200, 2400}))
+POLYBENCH_BENCHMARK_SPEC(atax,Args({38, 42}),Args({116, 124}),Args({390, 410}),Args({1900, 2100}),Args({1800, 2200}))
+POLYBENCH_BENCHMARK_SPEC(bicg,Args({38, 42}),Args({116, 124}),Args({390, 410}),Args({1900, 2100}),Args({1800, 2200}))
+POLYBENCH_BENCHMARK_SPEC(doitgen,Args({8, 10, 12}),Args({20, 25, 30}),Args({40, 50, 60}),Args({140, 150, 160}),Args({220, 250, 270}))
+POLYBENCH_BENCHMARK_SPEC(mvt,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
+POLYBENCH_BENCHMARK_SPEC(gemm,Args({20, 25, 30}),Args({60, 70, 80}),Args({200, 220, 240}),Args({1000, 1100, 1200}),Args({2000, 2300, 2600}))
+POLYBENCH_BENCHMARK_SPEC(gemver,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
+POLYBENCH_BENCHMARK_SPEC(gesummv,Arg(30),Arg(90),Arg(250),Arg(1300),Arg(2800))
+POLYBENCH_BENCHMARK_SPEC(symm,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
+POLYBENCH_BENCHMARK_SPEC(syr2k,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
+POLYBENCH_BENCHMARK_SPEC(syrk,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
+POLYBENCH_BENCHMARK_SPEC(trmm,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
+POLYBENCH_BENCHMARK_SPEC(cholesky,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
+POLYBENCH_BENCHMARK_SPEC(durbin,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
+POLYBENCH_BENCHMARK_SPEC(gramschmidt,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
+POLYBENCH_BENCHMARK_SPEC(lu,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
+POLYBENCH_BENCHMARK_SPEC(ludcmp,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
+POLYBENCH_BENCHMARK_SPEC(trisolv,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
+POLYBENCH_BENCHMARK_SPEC(deriche,Args({64, 64}),Args({192, 128}),Args({720, 480}),Args({4096, 2160}),Args({7680, 4320}))
+POLYBENCH_BENCHMARK_SPEC(floyd_warshall,Arg(60),Arg(180),Arg(500),Arg(2800),Arg(5600))
+POLYBENCH_BENCHMARK_SPEC(nussinov,Arg(60),Arg(180),Arg(500),Arg(2500),Arg(5500))
+POLYBENCH_BENCHMARK_SPEC(adi,Args({20, 20}),Args({40, 60}),Args({100, 200}),Args({500, 1000}),Args({1000, 2000}))
+POLYBENCH_BENCHMARK_SPEC(fdtd_2d,Args({20, 20, 30}),Args({40, 60, 80}),Args({100, 200, 240}),Args({500, 1000, 1200}),Args({1000, 2000, 2600}))
+POLYBENCH_BENCHMARK_SPEC(heat_3d,Args({20, 10}),Args({40, 20}),Args({100, 40}),Args({500, 120}),Args({1000, 200}))
+POLYBENCH_BENCHMARK_SPEC(jacobi_1d,Args({20, 30}),Args({40, 120}),Args({100, 400}),Args({500, 2000}),Args({1000, 4000}))
+POLYBENCH_BENCHMARK_SPEC(jacobi_2d,Args({20, 30}),Args({40, 90}),Args({100, 250}),Args({500, 1300}),Args({1000, 2800}))
+POLYBENCH_BENCHMARK_SPEC(seidel_2d,Args({20, 40}),Args({40, 120}),Args({100, 400}),Args({500, 2000}),Args({1000, 4000}))
 
 // ── IR Embedding Trigger ──────────────────────────────────────────────────────
 // Dead code that forces the IR-dumping pass to embed all 30 kernel functions.
@@ -1072,3 +877,29 @@ extern "C" __attribute__((used)) void polybench_dummy_registration() {
 }
 
 #ifndef ALL_BENCHMARKS_BUILD
+
+int main(int argc, char** argv) {
+    char arg0_default[] = "benchmark";
+    char* args_default = arg0_default;
+    if (!argv) {
+        argc = 1;
+        argv = &args_default;
+    }
+    ::benchmark::Initialize(&argc, argv);
+    if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+
+    // Exclude EXTRALARGE benchmarks by default (too slow for routine runs).
+    // "_LARGE" is not a substring of "_EXTRALARGE", so this correctly matches
+    // only MINI/SMALL/MEDIUM/LARGE
+    if (::benchmark::GetBenchmarkFilter() == "")
+    {
+        ::benchmark::SetBenchmarkFilter("/MINI|/SMALL|/MEDIUM|/LARGE");
+        std::cout << "Using default benchmark filter: \"" << ::benchmark::GetBenchmarkFilter() <<"\""<< std::endl;
+    }
+
+    ::benchmark::RunSpecifiedBenchmarks();
+    ::benchmark::Shutdown();
+    return 0;
+}
+int main(int, char**);
+#endif

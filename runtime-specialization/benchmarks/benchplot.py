@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""benchplot.py — Run Google Benchmark binaries and plot specialization overhead."""
+"""benchplot.py — Record Google Benchmark runs into DuckDB.
+
+Usage:
+    benchplot record <binary> [--benchmark-filter=PATTERN] [--db=PATH]
+"""
 
 import argparse
-import hashlib
 import json
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -14,292 +16,258 @@ from datetime import datetime
 from pathlib import Path
 
 import duckdb
-import numpy as np
-import pandas as pd
-import ultraplot as uplt
 
 # ---------------------------------------------------------------------------
 # Schema
 # ---------------------------------------------------------------------------
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS benchmark_results (
-    run_id       VARCHAR NOT NULL,
-    run_ts       TIMESTAMP NOT NULL,
-    binary_path  VARCHAR NOT NULL,
-    binary_hash  VARCHAR NOT NULL,
-    name         VARCHAR NOT NULL,
-    real_time    DOUBLE NOT NULL,
-    cpu_time     DOUBLE NOT NULL,
-    time_unit    VARCHAR NOT NULL,
-    iterations   BIGINT NOT NULL,
+_SCHEMA_CONTEXT = """
+CREATE TABLE IF NOT EXISTS context (
+    run_id              VARCHAR PRIMARY KEY,
+    run_ts              TIMESTAMP NOT NULL,
+    git_sha             VARCHAR,
+    date                VARCHAR,
+    host_name           VARCHAR,
+    executable          VARCHAR,
+    num_cpus            INTEGER,
+    mhz_per_cpu         INTEGER,
+    cpu_scaling_enabled BOOLEAN,
+    library_version     VARCHAR,
+    library_build_type  VARCHAR
+);
+"""
+
+# Base columns that are always present in Google Benchmark JSON output.
+# Dynamic columns (perf counters, custom counters, etc.) are added on demand.
+_SCHEMA_BENCHMARKS = """
+CREATE TABLE IF NOT EXISTS benchmarks (
+    run_id                     VARCHAR NOT NULL REFERENCES context(run_id),
+    name                       VARCHAR NOT NULL,
+    family_index               INTEGER,
+    per_family_instance_index  INTEGER,
+    run_type                   VARCHAR,
+    repetitions                INTEGER,
+    repetition_index           INTEGER,
+    threads                    INTEGER,
+    iterations                 BIGINT,
+    real_time                  DOUBLE,
+    cpu_time                   DOUBLE,
+    time_unit                  VARCHAR,
     PRIMARY KEY (run_id, name)
 );
 """
+
+# Parse phase, kernel, raw_params out of the benchmark name.
+_SCHEMA_V_PARSED = r"""
+CREATE VIEW IF NOT EXISTS v_parsed AS
+SELECT
+    b.*,
+    c.git_sha,
+    c.run_ts,
+    c.host_name,
+    regexp_extract(b.name,
+        '^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)(/\d.*)?$', 1) AS phase,
+    regexp_extract(b.name,
+        '^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)(/\d.*)?$', 2) AS kernel,
+    regexp_extract(b.name,
+        '^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)((/\d+)+)?$', 3) AS raw_params
+FROM benchmarks b
+JOIN context c USING (run_id);
+"""
+
+# Convert all times to nanoseconds; drop rows that didn't match the naming convention.
+_SCHEMA_V_NS = """
+CREATE VIEW IF NOT EXISTS v_ns AS
+SELECT *,
+    real_time * CASE time_unit
+        WHEN 'ns' THEN 1.0
+        WHEN 'us' THEN 1e3
+        WHEN 'ms' THEN 1e6
+        WHEN 's'  THEN 1e9
+    END AS real_time_ns
+FROM v_parsed
+WHERE phase != '';
+"""
+
+# Pivot phases per (run_id, kernel, raw_params) for ratio computation.
+_SCHEMA_V_RATIOS = """
+CREATE VIEW IF NOT EXISTS v_ratios AS
+SELECT
+    run_id,
+    kernel,
+    raw_params,
+    git_sha,
+    run_ts,
+    host_name,
+    MAX(CASE WHEN phase = 'unspecialized'    THEN real_time_ns END) AS t_unspec_ns,
+    MAX(CASE WHEN phase = 'specialized_exec' THEN real_time_ns END) AS t_spec_ns,
+    MAX(CASE WHEN phase = 'jit_overhead'     THEN real_time_ns END) AS t_jit_ns
+FROM v_ns
+GROUP BY run_id, kernel, raw_params, git_sha, run_ts, host_name;
+"""
+
+# Fixed column names (lowercase) that are part of the base schema.
+_BASE_COLUMNS = {
+    "run_id", "name", "family_index", "per_family_instance_index",
+    "run_type", "repetitions", "repetition_index", "threads",
+    "iterations", "real_time", "cpu_time", "time_unit",
+}
+
+
+# ---------------------------------------------------------------------------
+# Dynamic column helpers
+# ---------------------------------------------------------------------------
+
+def _col_name(key: str) -> str:
+    """Normalize a JSON key to a valid SQL column name."""
+    return key.replace("-", "_").replace(".", "_")
+
+
+def _infer_sql_type(val) -> str:
+    if isinstance(val, bool):
+        return "BOOLEAN"
+    if isinstance(val, int):
+        return "BIGINT"
+    if isinstance(val, float):
+        return "DOUBLE"
+    return "VARCHAR"
+
+
+def ensure_columns(con: duckdb.DuckDBPyConnection, benchmarks: list) -> None:
+    """Add any JSON keys missing from the benchmarks table as new columns (NULL default)."""
+    existing = {
+        row[0].lower()
+        for row in con.execute("DESCRIBE benchmarks").fetchall()
+    }
+    for b in benchmarks:
+        for key, val in b.items():
+            col = _col_name(key)
+            if col.lower() in existing:
+                continue
+            if val is None:
+                continue  # defer until we see an actual value for type inference
+            dtype = _infer_sql_type(val)
+            con.execute(f'ALTER TABLE benchmarks ADD COLUMN "{col}" {dtype}')
+            existing.add(col.lower())
+
+
+def insert_benchmarks(con: duckdb.DuckDBPyConnection, run_id: str, benchmarks: list) -> None:
+    """Insert all benchmark rows, mapping JSON keys to column names dynamically."""
+    cols_in_db = {
+        row[0].lower(): row[0]  # lower -> actual case
+        for row in con.execute("DESCRIBE benchmarks").fetchall()
+    }
+
+    for b in benchmarks:
+        row_data: dict = {"run_id": run_id}
+        for key, val in b.items():
+            col = _col_name(key)
+            if col.lower() in cols_in_db:
+                row_data[col] = val
+
+        col_list = ", ".join(f'"{c}"' for c in row_data)
+        placeholders = ", ".join(["?"] * len(row_data))
+        con.execute(
+            f"INSERT INTO benchmarks ({col_list}) VALUES ({placeholders})",
+            list(row_data.values()),
+        )
+
+
+# ---------------------------------------------------------------------------
+# DB helpers
+# ---------------------------------------------------------------------------
+
+def open_db(db_path: str) -> duckdb.DuckDBPyConnection:
+    con = duckdb.connect(db_path)
+    for stmt in [
+        _SCHEMA_CONTEXT,
+        _SCHEMA_BENCHMARKS,
+        _SCHEMA_V_PARSED,
+        _SCHEMA_V_NS,
+        _SCHEMA_V_RATIOS,
+    ]:
+        con.execute(stmt)
+    return con
+
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-TIME_UNITS = {"ns": 1e-9, "us": 1e-6, "ms": 1e-3, "s": 1.0}
-
-
-def sha256_file(path: str) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def parse_name(name: str):
-    """Parse a Google Benchmark name into (phase, kernel, params, group_key)."""
-    m = re.match(
-        r"^BM_(unspecialized|jit_overhead|specialized_exec)_(.+?)(/.*)?$",
-        name,
-    )
-    if not m:
-        return None
-    phase = m.group(1)
-    kernel = m.group(2)
-    raw_params = m.group(3) or ""
-    # Keep only purely numeric segments (drops e.g. "min_warmup_time:1.000")
-    numeric_parts = [p for p in raw_params.split("/") if p.isdigit()]
-    params = ",".join(numeric_parts)
-    group_key = f"{kernel}/{params}" if params else kernel
-    return phase, kernel, params, group_key
-
-
-def convert_time(value: float, from_unit: str, to_unit: str) -> float:
-    return value * TIME_UNITS[from_unit] / TIME_UNITS[to_unit]
-
-
-def auto_unit(median_ns: float) -> str:
-    """Pick a human-friendly time unit based on median time in nanoseconds."""
-    if median_ns >= 1e9:
-        return "s"
-    if median_ns >= 1e6:
-        return "ms"
-    if median_ns >= 1e3:
-        return "us"
-    return "ns"
+def get_git_sha() -> str:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=True,
+        )
+        return result.stdout.strip()
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------------------
-# Run / Load
+# Commands
 # ---------------------------------------------------------------------------
 
-def run_binary(binary: str) -> list[dict]:
-    """Run the benchmark binary and return parsed JSON benchmarks list."""
+def cmd_record(args):
+    sha = get_git_sha()
+
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         out_path = tmp.name
-    cmd = [
-        binary,
+
+    run_sh = Path(__file__).parent / "run-benchmark.sh"
+
+    flags = [
         "--benchmark_out_format=json",
         f"--benchmark_out={out_path}",
+        f"--benchmark_context=git_sha={sha}",
+        (
+            "--benchmark_perf_counters="
+            "instructions,cpu-cycles,branch-misses,"
+            "L1-icache-load-misses,L1-icache-loads,iTLB-load-misses"
+        ),
     ]
-    print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    if args.benchmark_filter:
+        flags.append(f"--benchmark_filter={args.benchmark_filter}")
+
+    cmd = [str(run_sh), args.binary] + flags
+    print(f"Running: {' '.join(cmd)}", flush=True)
+    result = subprocess.run(cmd)
     if result.returncode != 0:
-        print(result.stderr, file=sys.stderr)
-        sys.exit(1)
+        sys.exit(result.returncode)
+
     with open(out_path) as f:
         data = json.load(f)
-    return data.get("benchmarks", [])
+    os.unlink(out_path)
 
+    ctx = data.get("context", {})
+    benchmarks = data.get("benchmarks", [])
 
-def load_json(path: str) -> list[dict]:
-    with open(path) as f:
-        data = json.load(f)
-    return data.get("benchmarks", [])
-
-
-# ---------------------------------------------------------------------------
-# DuckDB
-# ---------------------------------------------------------------------------
-
-def open_db(db_path: str) -> duckdb.DuckDBPyConnection:
-    con = duckdb.connect(db_path)
-    con.execute(SCHEMA)
-    return con
-
-
-def store_results(con, benchmarks: list[dict], binary_path: str, binary_hash: str):
+    con = open_db(args.db)
     run_id = str(uuid.uuid4())
     run_ts = datetime.now()
-    rows = []
-    for b in benchmarks:
-        rows.append((
-            run_id,
-            run_ts,
-            binary_path,
-            binary_hash,
-            b["name"],
-            b["real_time"],
-            b["cpu_time"],
-            b["time_unit"],
-            int(b["iterations"]),
-        ))
-    con.executemany(
-        """
-        INSERT OR REPLACE INTO benchmark_results
-            (run_id, run_ts, binary_path, binary_hash, name,
-             real_time, cpu_time, time_unit, iterations)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        rows,
-    )
-    print(f"Stored {len(rows)} rows (run_id={run_id})")
 
-
-def load_from_db(con, binary_hash: str) -> pd.DataFrame:
-    return con.execute(
-        """
-        SELECT r.*
-        FROM benchmark_results r
-        INNER JOIN (
-            SELECT name, MAX(run_ts) AS latest_ts
-            FROM benchmark_results
-            WHERE binary_hash = ?
-            GROUP BY name
-        ) latest ON r.name = latest.name AND r.run_ts = latest.latest_ts
-        WHERE r.binary_hash = ?
-        """,
-        [binary_hash, binary_hash],
-    ).df()
-
-
-def benchmarks_to_df(benchmarks: list[dict]) -> pd.DataFrame:
-    rows = [
-        {
-            "name": b["name"],
-            "real_time": b["real_time"],
-            "cpu_time": b["cpu_time"],
-            "time_unit": b["time_unit"],
-            "iterations": int(b["iterations"]),
-        }
-        for b in benchmarks
-    ]
-    return pd.DataFrame(rows)
-
-
-# ---------------------------------------------------------------------------
-# Processing
-# ---------------------------------------------------------------------------
-
-def process(df: pd.DataFrame, kernel_filter: str | None, time_unit: str | None):
-    """Parse names, filter, normalize times, compute bar heights."""
-    # Parse names
-    parsed = df["name"].apply(parse_name)
-    mask = parsed.notna()
-    df = df[mask].copy()
-    parsed = parsed[mask]
-
-    df["phase"] = parsed.apply(lambda x: x[0])
-    df["kernel"] = parsed.apply(lambda x: x[1])
-    df["params"] = parsed.apply(lambda x: x[2])
-    df["group_key"] = parsed.apply(lambda x: x[3])
-
-    # Apply filter
-    if kernel_filter:
-        pat = re.compile(kernel_filter, re.IGNORECASE)
-        df = df[df["kernel"].apply(lambda k: bool(pat.search(k)))]
-
-    if df.empty:
-        print("No benchmarks match the filter.", file=sys.stderr)
-        sys.exit(1)
-
-    # Normalize to a common time unit
-    # First convert everything to nanoseconds
-    df["real_time_ns"] = df.apply(
-        lambda r: convert_time(r["real_time"], r["time_unit"], "ns"), axis=1
+    con.execute(
+        "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            run_id, run_ts,
+            ctx.get("git_sha", sha),
+            ctx.get("date", ""),
+            ctx.get("host_name", ""),
+            ctx.get("executable", ""),
+            ctx.get("num_cpus"),
+            ctx.get("mhz_per_cpu"),
+            ctx.get("cpu_scaling_enabled"),
+            ctx.get("library_version", ""),
+            ctx.get("library_build_type", ""),
+        ],
     )
 
-    if time_unit:
-        target_unit = time_unit
-    else:
-        median_ns = df[df["phase"] == "unspecialized"]["real_time_ns"].median()
-        target_unit = auto_unit(median_ns)
+    ensure_columns(con, benchmarks)
+    insert_benchmarks(con, run_id, benchmarks)
 
-    df["real_time_norm"] = df.apply(
-        lambda r: convert_time(r["real_time"], r["time_unit"], target_unit), axis=1
-    )
-
-    return df, target_unit
-
-
-def compute_bars(df: pd.DataFrame):
-    """Return group labels and arrays of bar heights (ratios relative to unspecialized)."""
-    groups = df["group_key"].unique()
-    # Preserve order by first appearance
-    seen = {}
-    for gk in df["group_key"]:
-        if gk not in seen:
-            seen[gk] = len(seen)
-    groups = sorted(groups, key=lambda g: seen[g])
-
-    h_unspec = []
-    h_spec = []
-    h_jit = []
-    h_spec_jit = []
-    valid_groups = []
-
-    for gk in groups:
-        sub = df[df["group_key"] == gk]
-
-        def get_time(phase):
-            rows = sub[sub["phase"] == phase]["real_time_norm"]
-            return rows.iloc[0] if not rows.empty else None
-
-        t_u = get_time("unspecialized")
-        t_s = get_time("specialized_exec")
-        t_j = get_time("jit_overhead")
-
-        if t_u is None or t_u == 0:
-            continue
-
-        valid_groups.append(gk)
-        h_unspec.append(1.0)
-        h_spec.append(t_s / t_u if t_s is not None else float("nan"))
-        h_jit.append(t_j / t_u if t_j is not None else float("nan"))
-        h_spec_jit.append(
-            (t_s + t_j) / t_u if (t_s is not None and t_j is not None) else float("nan")
-        )
-
-    return valid_groups, np.array(h_unspec), np.array(h_spec), np.array(h_jit), np.array(h_spec_jit)
-
-
-# ---------------------------------------------------------------------------
-# Plotting
-# ---------------------------------------------------------------------------
-
-def plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title, output_path):
-    n = len(groups)
-    width = max(8, n * 1.4)
-    fig, ax = uplt.subplots(figsize=(width, 4))
-
-    x = np.arange(n)
-    w = 0.18
-
-    ax.bar(x - 1.5 * w, h_unspec,   w, label="Unspecialized",   color="gray7")
-    ax.bar(x - 0.5 * w, h_spec,     w, label="Specialized",     color="green7")
-    ax.bar(x + 0.5 * w, h_jit,      w, label="JIT Overhead",    color="orange7")
-    ax.bar(x + 1.5 * w, h_spec_jit, w, label="Specialized + JIT", color="blue7")
-
-    ax.axhline(1.0, color="k", ls="--", lw=0.8)
-
-    ax.format(
-        xlocator=x,
-        xformatter=[str(g) for g in groups],
-        ylabel=f"Normalized Time ({time_unit}, lower = faster)",
-        yscale="log",
-        title=title,
-    )
-    ax.tick_params(axis="x", labelrotation=45)
-    ax.legend(loc="b")
-
-    fig.save(output_path)
-    print(f"Saved chart to {output_path}")
+    print(f"run_id: {run_id}")
+    print(f"Stored context + {len(benchmarks)} benchmark rows.")
 
 
 # ---------------------------------------------------------------------------
@@ -307,68 +275,23 @@ def plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title, output_p
 # ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description="Run benchmarks and plot specialization overhead.")
-    src = parser.add_mutually_exclusive_group()
-    src.add_argument("--binary", help="Benchmark executable to run")
-    src.add_argument("--json", dest="json_path", help="Load existing benchmark JSON output")
-    parser.add_argument("--db", default=None, help="DuckDB cache file")
-    parser.add_argument("--no-run", action="store_true", help="Skip running; load from DB only")
-    parser.add_argument("--filter", dest="kernel_filter", help="Regex filter on kernel name", default=None)
-    parser.add_argument("--output", default="benchmarks.pdf", help="Output chart path")
-    parser.add_argument("--time-unit", choices=["ns", "us", "ms", "s"], help="Time unit override")
+    parser = argparse.ArgumentParser(
+        description="Record Google Benchmark runs into DuckDB."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    rec = subparsers.add_parser("record", help="Run a benchmark and store results.")
+    rec.add_argument("binary", help="Benchmark executable to run.")
+    rec.add_argument(
+        "--benchmark-filter", metavar="PATTERN",
+        help="Passed as --benchmark_filter to the binary.",
+    )
+    rec.add_argument("--db", default="benchmarks.duckdb", help="DuckDB file path.")
+
     args = parser.parse_args()
 
-    env_db = os.environ.get("BENCHPLOT_DB_PATH")
-    if env_db:
-        db_path = env_db
-    else:
-        db_path = args.db or "benchmarks.duckdb"
-        if not Path(db_path).exists():
-            print(f"Warning: '{db_path}' not found in CWD.", file=sys.stderr)
-            if not args.binary and not args.json_path:
-                print("Error: No data source available. Provide --binary or --json, "
-                      "or set BENCHPLOT_DB_PATH.", file=sys.stderr)
-                sys.exit(1)
-    con = open_db(db_path)
-
-    df = None
-    binary_hash = None
-
-    if args.no_run:
-        if not args.binary:
-            parser.error("--no-run requires --binary to identify the cache entry")
-        binary_hash = sha256_file(args.binary)
-        df = load_from_db(con, binary_hash)
-        if df.empty:
-            print("No cached results found for this binary.", file=sys.stderr)
-            sys.exit(1)
-        print(f"Loaded {len(df)} rows from cache.")
-
-    elif args.json_path:
-        benchmarks = load_json(args.json_path)
-        df = benchmarks_to_df(benchmarks)
-
-    elif args.binary:
-        binary_hash = sha256_file(args.binary)
-        # Check cache
-        cached = load_from_db(con, binary_hash)
-        if not cached.empty:
-            print(f"Cache hit: loaded {len(cached)} rows from DB.")
-            df = cached
-        else:
-            benchmarks = run_binary(args.binary)
-            df = benchmarks_to_df(benchmarks)
-            store_results(con, benchmarks, str(Path(args.binary).resolve()), binary_hash)
-
-    else:
-        parser.error("Provide --binary, --json, or --no-run with --binary")
-
-    df, target_unit = process(df, args.kernel_filter, args.time_unit)
-    groups, h_unspec, h_spec, h_jit, h_spec_jit = compute_bars(df)
-
-    filter_label = args.kernel_filter or "All Kernels"
-    title = f"Specialization Overhead — {filter_label}"
-    plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, target_unit, title, args.output)
+    if args.command == "record":
+        cmd_record(args)
 
 
 if __name__ == "__main__":
