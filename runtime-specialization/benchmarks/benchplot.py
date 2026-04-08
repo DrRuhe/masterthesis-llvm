@@ -8,6 +8,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -191,6 +192,46 @@ def open_db(db_path: str) -> duckdb.DuckDBPyConnection:
 
 
 # ---------------------------------------------------------------------------
+# CPU scaling helpers
+# ---------------------------------------------------------------------------
+
+_GOV_DIR = Path("/sys/devices/system/cpu/cpu0/cpufreq")
+_GOV_FILE = _GOV_DIR / "scaling_governor"
+
+
+def _set_governor(gov: str) -> None:
+    if shutil.which("cpupower"):
+        subprocess.run(["sudo", "cpupower", "frequency-set", "-g", gov],
+                       check=True, capture_output=True)
+    else:
+        for f in Path("/sys/devices/system/cpu").glob("cpu*/cpufreq/scaling_governor"):
+            subprocess.run(["sudo", "tee", str(f)],
+                           input=gov, text=True, check=True, capture_output=True)
+
+
+def run_with_cpu_management(cmd: list, best_practice: bool) -> subprocess.CompletedProcess:
+    """Run cmd, optionally pinning the CPU governor to 'performance' first."""
+    if not best_practice or not _GOV_FILE.exists():
+        if best_practice and not _GOV_FILE.exists():
+            print("Warning: CPU frequency scaling not available — running benchmark as-is.",
+                  file=sys.stderr)
+        return subprocess.run(cmd)
+
+    original_gov = _GOV_FILE.read_text().strip()
+    if original_gov == "performance":
+        print("CPU governor already set to: performance", file=sys.stderr)
+        return subprocess.run(cmd)
+
+    print(f"Setting CPU governor to: performance (was: {original_gov})", file=sys.stderr)
+    _set_governor("performance")
+    try:
+        return subprocess.run(cmd)
+    finally:
+        print(f"Restoring CPU governor to: {original_gov}", file=sys.stderr)
+        _set_governor(original_gov)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -215,8 +256,6 @@ def cmd_record(args):
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
         out_path = tmp.name
 
-    run_sh = Path(__file__).parent / "run-benchmark.sh"
-
     flags = [
         "--benchmark_out_format=json",
         f"--benchmark_out={out_path}",
@@ -230,9 +269,10 @@ def cmd_record(args):
     if args.benchmark_filter:
         flags.append(f"--benchmark_filter={args.benchmark_filter}")
 
-    cmd = [str(run_sh), args.binary] + flags
+    binary = str(Path(args.binary).resolve())
+    cmd = [binary] + flags
     print(f"Running: {' '.join(cmd)}", flush=True)
-    result = subprocess.run(cmd)
+    result = run_with_cpu_management(cmd, args.benchmarking_best_practice)
     if result.returncode != 0:
         sys.exit(result.returncode)
 
@@ -285,6 +325,10 @@ def main():
     rec.add_argument(
         "--benchmark-filter", metavar="PATTERN",
         help="Passed as --benchmark_filter to the binary.",
+    )
+    rec.add_argument(
+        "--benchmarking-best-practice", action="store_true",
+        help="Pin CPU governor to 'performance' for the duration of the run (requires sudo).",
     )
     rec.add_argument("--db", default="benchmarks.duckdb", help="DuckDB file path.")
 
