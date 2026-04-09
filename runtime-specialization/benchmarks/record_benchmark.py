@@ -6,6 +6,7 @@ Usage:
 """
 
 import argparse
+import contextlib
 import json
 import os
 import shutil
@@ -206,43 +207,280 @@ def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
 
 
 # ---------------------------------------------------------------------------
-# CPU scaling helpers
+# CPU management helpers (best-practice mode)
 # ---------------------------------------------------------------------------
 
 _GOV_DIR = Path("/sys/devices/system/cpu/cpu0/cpufreq")
 _GOV_FILE = _GOV_DIR / "scaling_governor"
 
 
+def _parse_cpu_list(s: str) -> list[int]:
+    """Parse a kernel cpulist string like '0,4-7,10' into a sorted list of ints."""
+    cpus = []
+    for part in s.strip().split(","):
+        if "-" in part:
+            lo, hi = part.split("-", 1)
+            cpus.extend(range(int(lo), int(hi) + 1))
+        else:
+            cpus.append(int(part))
+    return sorted(set(cpus))
+
+
+def _online_cpus() -> list[int]:
+    """Return sorted list of currently online CPU indices."""
+    result = []
+    for cpu_dir in sorted(
+        Path("/sys/devices/system/cpu").glob("cpu[0-9]*"),
+        key=lambda p: int(p.name[3:]),
+    ):
+        idx = int(cpu_dir.name[3:])
+        online_file = cpu_dir / "online"
+        if not online_file.exists():
+            result.append(idx)  # cpu0 has no 'online' file, always on
+        elif online_file.read_text().strip() == "1":
+            result.append(idx)
+    return result
+
+
+def _get_smt_siblings(cpu: int) -> list[int]:
+    """Return all sibling logical CPUs for cpu (including cpu itself)."""
+    siblings_file = Path(
+        f"/sys/devices/system/cpu/cpu{cpu}/topology/thread_siblings_list"
+    )
+    if not siblings_file.exists():
+        return [cpu]
+    return _parse_cpu_list(siblings_file.read_text())
+
+
+def _sudo_cmd() -> list[str]:
+    """Return the sudo invocation to use.
+
+    Uses ``sudo -A`` (askpass) when SUDO_ASKPASS is set in the environment or
+    when there is no interactive terminal, so the script works in non-terminal
+    environments (CI, remote sessions, IDE runners).
+    """
+    if os.environ.get("SUDO_ASKPASS") or not sys.stdin.isatty():
+        return ["sudo", "-A"]
+    return ["sudo"]
+
+
+def _sudo_write(path: str, value: str) -> None:
+    subprocess.run(
+        _sudo_cmd() + ["tee", path], input=value, text=True, check=True, capture_output=True
+    )
+
+
 def _set_governor(gov: str) -> None:
     if shutil.which("cpupower"):
-        subprocess.run(["sudo", "cpupower", "frequency-set", "-g", gov],
-                       check=True, capture_output=True)
+        subprocess.run(
+            _sudo_cmd() + ["cpupower", "frequency-set", "-g", gov],
+            check=True, capture_output=True,
+        )
     else:
         for f in Path("/sys/devices/system/cpu").glob("cpu*/cpufreq/scaling_governor"):
-            subprocess.run(["sudo", "tee", str(f)],
-                           input=gov, text=True, check=True, capture_output=True)
+            _sudo_write(str(f), gov)
 
 
-def run_with_cpu_management(cmd: list, best_practice: bool) -> subprocess.CompletedProcess:
-    """Run cmd, optionally pinning the CPU governor to 'performance' first."""
-    if not best_practice or not _GOV_FILE.exists():
-        if best_practice and not _GOV_FILE.exists():
-            print("Warning: CPU frequency scaling not available — running benchmark as-is.",
-                  file=sys.stderr)
-        return subprocess.run(cmd)
+def _classify_cpus() -> tuple[list[int], list[int]]:
+    """
+    Classify online CPUs into P-cores and E-cores.
 
-    original_gov = _GOV_FILE.read_text().strip()
-    if original_gov == "performance":
-        print("CPU governor already set to: performance", file=sys.stderr)
-        return subprocess.run(cmd)
+    P-cores (Performance): physical cores with more than one logical CPU,
+    i.e. hyperthreaded cores.  Each physical core is represented by its
+    lowest-numbered logical CPU.
 
-    print(f"Setting CPU governor to: performance (was: {original_gov})", file=sys.stderr)
-    _set_governor("performance")
+    E-cores (Efficiency): physical cores with exactly one logical CPU
+    (no hyperthreading sibling).
+
+    Returns (p_core_representatives, e_core_representatives), each sorted.
+    """
+    online = set(_online_cpus())
+    seen: set[frozenset] = set()
+    p_cores: list[int] = []
+    e_cores: list[int] = []
+    for cpu in sorted(online):
+        siblings = frozenset(_get_smt_siblings(cpu))
+        if siblings in seen:
+            continue
+        seen.add(siblings)
+        if len(siblings) > 1:
+            p_cores.append(min(siblings))
+        else:
+            e_cores.append(cpu)
+    return sorted(p_cores), sorted(e_cores)
+
+
+def _pick_benchmark_cpus(requested: list[int] | None) -> list[int]:
+    """
+    Return CPUs to dedicate to the benchmark.
+    If requested is given, validate and use those.
+    Otherwise auto-pick the 2 highest-indexed P-cores (one logical CPU per
+    physical core, so their HT siblings can be disabled).  Falls back to
+    E-cores if no P-cores are available.
+    """
+    online = set(_online_cpus())
+    if requested is not None:
+        valid = [c for c in requested if c in online]
+        invalid = [c for c in requested if c not in online]
+        if invalid:
+            print(f"Warning: CPU(s) {invalid} not online; skipping.", file=sys.stderr)
+        if valid:
+            return valid
+        print("Warning: no valid requested CPUs; falling back to auto-selection.", file=sys.stderr)
+
+    p_cores, e_cores = _classify_cpus()
+    if p_cores:
+        # Exclude CPU 0 (handles boot/IRQ traffic) unless it's the only option.
+        candidates = [c for c in p_cores if c != 0] or p_cores
+        core_type = "P-core"
+    else:
+        candidates = [c for c in e_cores if c != 0] or e_cores
+        core_type = "E-core"
+
+    chosen = candidates[-2:] if len(candidates) >= 2 else list(candidates)
+    print(f"Auto-selected {core_type}(s) {chosen} for benchmarking.", file=sys.stderr)
+    return chosen
+
+
+@contextlib.contextmanager
+def best_practice_env(benchmark_cpus: list[int]):
+    """
+    Context manager: applies LLVM Linux benchmarking best practices then
+    restores the original state on exit.
+
+    Yields True if cpuset shield was activated (caller must prefix the
+    benchmark command with `sudo cset shield --exec --`), False otherwise.
+
+    Steps applied (in order):
+      1. Disable ASLR
+      2. Disable Intel Turbo Boost (if available)
+      3. Set CPU governor to performance
+      4. Disable SMT siblings of benchmark CPUs
+      5. Set up cpuset shield on benchmark CPUs
+    """
+    disabled_cpus: list[int] = []
+    original_gov: str | None = None
+    original_aslr: str | None = None
+    original_turbo: str | None = None
+    cset_active = False
+    setup_failed = False
+    cset_bin = shutil.which("cset") or "cset"
+
+    cpu_list_str = ",".join(str(c) for c in sorted(benchmark_cpus))
+    aslr_path = "/proc/sys/kernel/randomize_va_space"
+    turbo_path = "/sys/devices/system/cpu/intel_pstate/no_turbo"
+
+    # 1. Disable ASLR
     try:
-        return subprocess.run(cmd)
+        original_aslr = Path(aslr_path).read_text().strip()
+        if original_aslr != "0":
+            print("Disabling ASLR...", file=sys.stderr)
+            _sudo_write(aslr_path, "0\n")
+    except Exception as e:
+        print(f"Warning: could not configure ASLR: {e}", file=sys.stderr)
+        setup_failed = True
+
+    # 2. Disable Intel Turbo Boost (Intel pstate only)
+    if Path(turbo_path).exists():
+        try:
+            original_turbo = Path(turbo_path).read_text().strip()
+            if original_turbo != "1":
+                print("Disabling Intel Turbo Boost...", file=sys.stderr)
+                _sudo_write(turbo_path, "1\n")
+        except Exception as e:
+            print(f"Warning: could not disable Turbo Boost: {e}", file=sys.stderr)
+            setup_failed = True
+
+    # 3. Set CPU governor to performance
+    if _GOV_FILE.exists():
+        try:
+            original_gov = _GOV_FILE.read_text().strip()
+            if original_gov != "performance":
+                print(
+                    f"Setting CPU governor to performance (was: {original_gov})...",
+                    file=sys.stderr,
+                )
+                _set_governor("performance")
+        except Exception as e:
+            print(f"Warning: could not set CPU governor: {e}", file=sys.stderr)
+            setup_failed = True
+    else:
+        print("Warning: CPU frequency scaling not available.", file=sys.stderr)
+        setup_failed = True
+
+    # 4. Disable SMT siblings of benchmark CPUs
+    benchmark_cpu_set = set(benchmark_cpus)
+    siblings_to_disable: set[int] = set()
+    for cpu in benchmark_cpus:
+        for sib in _get_smt_siblings(cpu):
+            if sib not in benchmark_cpu_set:
+                siblings_to_disable.add(sib)
+
+    for sib in sorted(siblings_to_disable):
+        online_file = f"/sys/devices/system/cpu/cpu{sib}/online"
+        if Path(online_file).exists():
+            try:
+                print(f"Disabling SMT sibling CPU {sib}...", file=sys.stderr)
+                _sudo_write(online_file, "0\n")
+                disabled_cpus.append(sib)
+            except Exception as e:
+                print(f"Warning: could not disable CPU {sib}: {e}", file=sys.stderr)
+                setup_failed = True
+
+    # 5. Set up cpuset shield
+    try:
+        print(f"Setting up cpuset shield on CPU(s) {cpu_list_str}...", file=sys.stderr)
+        subprocess.run(
+            _sudo_cmd() + [cset_bin, "shield", "-c", cpu_list_str, "-k", "on"],
+            check=True,
+        )
+        cset_active = True
+    except Exception as e:
+        print(f"Warning: could not set up cpuset shield: {e}", file=sys.stderr)
+        setup_failed = True
+
+    try:
+        yield cset_active, not setup_failed
     finally:
-        print(f"Restoring CPU governor to: {original_gov}", file=sys.stderr)
-        _set_governor(original_gov)
+        # Teardown in reverse order
+
+        if cset_active:
+            try:
+                print("Tearing down cpuset shield...", file=sys.stderr)
+                subprocess.run(
+                    _sudo_cmd() + [cset_bin, "shield", "--reset"],
+                    check=True, capture_output=True,
+                )
+            except Exception as e:
+                print(f"Warning: could not reset cpuset shield: {e}", file=sys.stderr)
+
+        for sib in sorted(disabled_cpus):
+            online_file = f"/sys/devices/system/cpu/cpu{sib}/online"
+            try:
+                print(f"Re-enabling SMT sibling CPU {sib}...", file=sys.stderr)
+                _sudo_write(online_file, "1\n")
+            except Exception as e:
+                print(f"Warning: could not re-enable CPU {sib}: {e}", file=sys.stderr)
+
+        if original_gov is not None and original_gov != "performance":
+            try:
+                print(f"Restoring CPU governor to {original_gov}...", file=sys.stderr)
+                _set_governor(original_gov)
+            except Exception as e:
+                print(f"Warning: could not restore CPU governor: {e}", file=sys.stderr)
+
+        if original_turbo is not None and original_turbo != "1" and Path(turbo_path).exists():
+            try:
+                _sudo_write(turbo_path, f"{original_turbo}\n")
+            except Exception as e:
+                print(f"Warning: could not restore Turbo Boost: {e}", file=sys.stderr)
+
+        if original_aslr is not None and original_aslr != "0":
+            try:
+                print("Restoring ASLR...", file=sys.stderr)
+                _sudo_write(aslr_path, f"{original_aslr}\n")
+            except Exception as e:
+                print(f"Warning: could not restore ASLR: {e}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
@@ -264,15 +502,59 @@ def get_git_sha() -> str:
 # Commands
 # ---------------------------------------------------------------------------
 
+def check_dependencies(args) -> None:
+    missing = []
+    if getattr(args, 'binary', None) and not Path(args.binary).exists():
+        missing.append(f"benchmark binary not found: {args.binary}")
+    if getattr(args, 'benchmarking_best_practice', False):
+        if not shutil.which("sudo"):
+            missing.append("sudo (required for --benchmarking-best-practice)")
+        if not shutil.which("cset"):
+            missing.append("cset (install cpuset package; required for --benchmarking-best-practice)")
+    if missing:
+        print("Error: missing dependencies:", file=sys.stderr)
+        for m in missing:
+            print(f"  - {m}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _load_json_safe(path: str) -> dict:
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except Exception:
+        import traceback
+        traceback.print_exc()
+        print(file=sys.stderr)
+        print(f"ERROR: could not parse benchmark JSON output at {path}", file=sys.stderr)
+        try:
+            lines = Path(path).read_text().splitlines()
+            if lines:
+                print(f"First {min(10, len(lines))} lines of the file:", file=sys.stderr)
+                for ln in lines[:10]:
+                    print(f"  {ln}", file=sys.stderr)
+            else:
+                print("  (file is empty — benchmark may have crashed before writing output)", file=sys.stderr)
+        except Exception:
+            print("  (could not read file)", file=sys.stderr)
+        print(file=sys.stderr)
+        print(f"The raw output file is preserved at: {path}", file=sys.stderr)
+        print(f"If the data is recoverable, run:", file=sys.stderr)
+        print(f"  record_benchmark.py --record-json {path}", file=sys.stderr)
+        sys.exit(1)
+
+
 def store_to_db(args, data: dict, json_path: str, delete_on_success: bool) -> None:
     ctx = data.get("context", {})
     benchmarks = data.get("benchmarks", [])
     db_path = resolve_db_path(args.db)
+    con = None
     try:
         con = open_db(db_path, args.create_db)
         run_id = str(uuid.uuid4())
         run_ts = datetime.now()
 
+        con.begin()
         con.execute(
             "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
@@ -288,15 +570,20 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool) -> No
                 ctx.get("library_build_type", ""),
             ],
         )
-
         ensure_columns(con, benchmarks)
         insert_benchmarks(con, run_id, benchmarks)
+        con.commit()
 
         print(f"run_id: {run_id}")
         print(f"Stored context + {len(benchmarks)} benchmark rows.")
         if delete_on_success:
             os.unlink(json_path)
     except Exception:
+        if con is not None:
+            try:
+                con.rollback()
+            except Exception:
+                pass
         import traceback
         traceback.print_exc()
         print(file=sys.stderr)
@@ -308,6 +595,11 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool) -> No
 
 
 def cmd_record(args):
+    check_dependencies(args)
+
+    if args.sudo_askpass:
+        os.environ["SUDO_ASKPASS"] = str(Path(args.sudo_askpass).resolve())
+
     sha = get_git_sha()
 
     with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
@@ -317,6 +609,7 @@ def cmd_record(args):
         "--benchmark_out_format=json",
         f"--benchmark_out={out_path}",
         f"--benchmark_context=git_sha={sha}",
+        f"--benchmark_context=benchmark_best_practice={args.benchmarking_best_practice}",
         (
             "--benchmark_perf_counters="
             "instructions,cpu-cycles,branch-misses,"
@@ -328,14 +621,28 @@ def cmd_record(args):
 
     binary = str(Path(args.binary).resolve())
     cmd = [binary] + flags
-    print(f"Running: {' '.join(cmd)}", flush=True)
-    result = run_with_cpu_management(cmd, args.benchmarking_best_practice)
+
+    if args.benchmarking_best_practice:
+        requested_cpus = _parse_cpu_list(args.benchmark_cpus) if args.benchmark_cpus else None
+        benchmark_cpus = _pick_benchmark_cpus(requested_cpus)
+        with best_practice_env(benchmark_cpus) as (cset_active, setup_ok):
+            if not setup_ok:
+                print("Error: benchmarking best-practice setup failed; aborting to avoid unreliable results.", file=sys.stderr)
+                sys.exit(1)
+            if cset_active:
+                full_cmd = ["sudo", shutil.which("cset") or "cset", "shield", "--exec", "--"] + cmd
+            else:
+                full_cmd = cmd
+            print(f"Running: {' '.join(full_cmd)}", flush=True)
+            result = subprocess.run(full_cmd)
+    else:
+        print(f"Running: {' '.join(cmd)}", flush=True)
+        result = subprocess.run(cmd)
+
     if result.returncode != 0:
         sys.exit(result.returncode)
 
-    with open(out_path) as f:
-        data = json.load(f)
-
+    data = _load_json_safe(out_path)
     store_to_db(args, data, out_path, delete_on_success=True)
 
 
@@ -359,7 +666,20 @@ def main():
     )
     parser.add_argument(
         "--benchmarking-best-practice", action="store_true",
-        help="Pin CPU governor to 'performance' for the duration of the run (requires sudo if the CPU govenor must be adjusted).",
+        help="Apply LLVM Linux benchmarking best practices: performance CPU governor, "
+             "disable ASLR, disable Turbo Boost, disable SMT siblings, isolate CPUs "
+             "with cpuset shield (requires sudo).",
+    )
+    parser.add_argument(
+        "--benchmark-cpus", metavar="LIST", default=None,
+        help="Comma-separated CPU indices to dedicate for benchmarking (e.g. '2,3'). "
+             "Used with --benchmarking-best-practice. Default: auto-select the 2 "
+             "highest-indexed non-boot CPUs.",
+    )
+    parser.add_argument(
+        "--sudo-askpass", metavar="PATH", default=None,
+        help="Path to an askpass helper program (sets SUDO_ASKPASS and uses 'sudo -A'). "
+             "Required when running without a terminal. Example: /usr/lib/ssh/x11-ssh-askpass",
     )
     parser.add_argument(
         "--db", default=None, metavar="PATH",
@@ -378,8 +698,7 @@ def main():
         parser.error("Provide a binary to run, or use --record-json to import existing results.")
 
     if args.record_json:
-        with open(args.record_json) as f:
-            data = json.load(f)
+        data = _load_json_safe(args.record_json)
         store_to_db(args, data, args.record_json, delete_on_success=False)
     else:
         cmd_record(args)
