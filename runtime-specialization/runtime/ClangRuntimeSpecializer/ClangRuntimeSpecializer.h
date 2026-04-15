@@ -85,6 +85,17 @@ namespace clangRuntimeSpecializer {
       uint64_t Other;
     };
 
+    struct JITModuleStats {
+      size_t FunctionCount    = 0;  // non-declaration functions in merged module
+      size_t InstructionCount = 0;  // total instructions in merged module
+      size_t BitcodeSizeBytes = 0;  // raw size of all registered IR blobs combined
+      size_t FunctionCountAfterPrune    = 0;  // after early GlobalDCE in IRTransformLayer
+      size_t InstructionCountAfterPrune = 0;
+    };
+
+    static JITModuleStats getModuleStats();
+    static JITModuleStats getLastTransformStats();
+
     static void resetCounters();
     static InstructionCounts getCurrentCounters();
     static void printCounters();

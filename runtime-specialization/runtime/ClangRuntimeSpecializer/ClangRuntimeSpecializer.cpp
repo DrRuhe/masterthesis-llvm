@@ -119,6 +119,19 @@ extern "C" {
 namespace clangRuntimeSpecializer {
 
   static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Debug;
+  static ClangRuntimeSpecializer::JITModuleStats g_lastTransformStats;
+
+  static size_t countNonDecl(const llvm::Module& M) {
+    size_t n = 0;
+    for (auto& F : M) if (!F.isDeclaration()) ++n;
+    return n;
+  }
+
+  static size_t countInstrs(const llvm::Module& M) {
+    size_t n = 0;
+    for (auto& F : M) for (auto& BB : F) n += BB.size();
+    return n;
+  }
 
   void ClangRuntimeSpecializer::setLogLevel(const LogLevel Level) {
       CurrentLogLevel = Level;
@@ -226,6 +239,24 @@ namespace clangRuntimeSpecializer {
       for (const auto& r : IndividualRows) {
           printRow(r);
       }
+  }
+
+  ClangRuntimeSpecializer::JITModuleStats ClangRuntimeSpecializer::getModuleStats() {
+    JITModuleStats Stats;
+    if (!Instance || !Instance->Module) return Stats;
+    for (auto& F : *Instance->Module) {
+      if (!F.isDeclaration()) {
+        ++Stats.FunctionCount;
+        for (auto& BB : F) Stats.InstructionCount += BB.size();
+      }
+    }
+    for (const auto& Blob : g_registered_blobs)
+      Stats.BitcodeSizeBytes += Blob.Len;
+    return Stats;
+  }
+
+  ClangRuntimeSpecializer::JITModuleStats ClangRuntimeSpecializer::getLastTransformStats() {
+    return g_lastTransformStats;
   }
 
   ClangRuntimeSpecializer* ClangRuntimeSpecializer::init() {
@@ -360,6 +391,24 @@ namespace clangRuntimeSpecializer {
             }
 
             if (Optimize) {
+              // Snapshot pre-prune stats
+              g_lastTransformStats.FunctionCount    = countNonDecl(M);
+              g_lastTransformStats.InstructionCount = countInstrs(M);
+
+              // Early pruning: remove definitions unreachable from the wrapper + vtable roots.
+              // Safe: prepareModuleForJIT already gave the wrapper ExternalLinkage and vtable
+              // functions WeakODRLinkage (both are GlobalDCE roots). AvailableExternally functions
+              // that get removed are resolved from the host via DynamicLibrarySearchGenerator.
+              {
+                llvm::ModulePassManager PruneMPM;
+                PruneMPM.addPass(llvm::GlobalDCEPass());
+                PruneMPM.run(M, MAM);
+              }
+
+              // Snapshot post-prune stats
+              g_lastTransformStats.FunctionCountAfterPrune    = countNonDecl(M);
+              g_lastTransformStats.InstructionCountAfterPrune = countInstrs(M);
+
               // FIXPOINT ITERATION: Runtime specialization requires aggressive devirtualization
               // and inlining. We iterate with a carefully ordered pipeline:
               // 1. IPSCCP -> GlobalOpt -> GlobalDCE (interprocedural constant propagation & devirt)
@@ -793,12 +842,17 @@ namespace clangRuntimeSpecializer {
     // Special care for constant strings and other internal globals.
     for (auto &G : M.globals()) {
       if (!G.isDeclaration()) {
-        // If it's a constant string or similar internal, we might want to keep it
-        // as private/internal if we can't find it in the host.
-        // However, available_externally for globals usually works if they are
-        // indeed available. For JIT, internal globals might NOT be available.
         if (G.hasInternalLinkage() || G.hasPrivateLinkage()) {
           continue; // Keep internal/private globals as is.
+        }
+        if (G.isConstant() && G.hasInitializer()) {
+          // Constant globals (vtables, RTTI, etc.) must survive GlobalDCE in the
+          // IRTransformLayer so that DevirtualizeConstantVtableCallsPass can read
+          // their initializers.  WeakODR is a GlobalDCE root (not discardable if
+          // unused), whereas AvailableExternally would be removed by GlobalDCE
+          // once constructors are erased and no direct IR reference remains.
+          G.setLinkage(llvm::GlobalValue::WeakODRLinkage);
+          continue;
         }
         G.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
       }
