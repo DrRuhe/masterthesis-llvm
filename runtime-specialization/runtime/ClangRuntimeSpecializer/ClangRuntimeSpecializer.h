@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -213,10 +214,10 @@ namespace clangRuntimeSpecializer {
       {
           log(LogLevel::Info, CallerName, (llvm::Twine("Specializing call to: ") + funcName).str());
       }
-      // TODO reuse a clean copy of the llvm module. Possibly perform llvm::CloneModule(*Module) and then add the specialization wrapper to the copied module only.
-      //   Currently we get conflicts, so specialization fails.
+      // Clone only the blob module that contains the target function.
+      // This avoids cloning the full merged module when multiple TUs are linked.
       std::string UniqueWrapperName = createUniqueWrapperName() + (Optimize ? "" : "_no_opt");
-      auto NewModule = llvm::CloneModule(*Module);
+      auto NewModule = llvm::CloneModule(*TargetFunc->getParent());
       auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
       encourageInlining(TargetFuncInNewModule);
 
@@ -269,14 +270,18 @@ namespace clangRuntimeSpecializer {
     }
 
     llvm::orc::ThreadSafeContext TSCtx;
-    std::unique_ptr<llvm::Module> Module;
+    // Per-blob modules: one entry per registered blob, all in TSCtx's LLVMContext.
+    // Cloning from BlobModules[i] instead of a full merged module reduces the
+    // per-call CloneModule cost when multiple TUs are linked together.
+    std::vector<std::unique_ptr<llvm::Module>> BlobModules;
+    std::unordered_map<std::string, size_t> FuncToBlobIdx;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
     Options CurrentOptions;
     std::vector<std::unique_ptr<char[]>> SerializationBuffers;
 
     void checkInitialization(const char* funcName) const;
-    llvm::Function* getTargetFunction(const char* funcName) const;
+    llvm::Function* getTargetFunction(const char* funcName);
     void validateArgs(llvm::Function* TargetFunc, size_t NumArgs) const;
     std::string createUniqueWrapperName() const;
     void prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const;

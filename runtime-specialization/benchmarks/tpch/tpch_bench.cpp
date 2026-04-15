@@ -191,35 +191,35 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
 // ── Q1: Pricing Summary Report ────────────────────────────────────────────────
 
 void BM_unspecialized_tpch_q1(benchmark::State& state) { phaseUnspecialized(state, TPCH_Q1); }
-BENCHMARK(BM_unspecialized_tpch_q1)->MinTime(1.0);
+BENCHMARK(BM_unspecialized_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:unspecialized;")->MinTime(1.0);
 
 void BM_jit_overhead_tpch_q1(benchmark::State& state) { phaseJITOverhead(state, TPCH_Q1); }
-BENCHMARK(BM_jit_overhead_tpch_q1)->Iterations(1);
+BENCHMARK(BM_jit_overhead_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:jit_overhead;")->Iterations(1);
 
 void BM_specialized_exec_tpch_q1(benchmark::State& state) { phaseSpecializedExec(state, TPCH_Q1); }
-BENCHMARK(BM_specialized_exec_tpch_q1)->MinTime(1.0);
+BENCHMARK(BM_specialized_exec_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:specialized_exec;")->MinTime(1.0);
 
 // ── Q6: Forecasting Revenue Change ───────────────────────────────────────────
 
 void BM_unspecialized_tpch_q6(benchmark::State& state) { phaseUnspecialized(state, TPCH_Q6); }
-BENCHMARK(BM_unspecialized_tpch_q6)->MinTime(1.0);
+BENCHMARK(BM_unspecialized_tpch_q6)->Name("BM_g:tpch;n:tpch_q6;t:unspecialized;")->MinTime(1.0);
 
 void BM_jit_overhead_tpch_q6(benchmark::State& state) { phaseJITOverhead(state, TPCH_Q6); }
-BENCHMARK(BM_jit_overhead_tpch_q6)->Iterations(1);
+BENCHMARK(BM_jit_overhead_tpch_q6)->Name("BM_g:tpch;n:tpch_q6;t:jit_overhead;")->Iterations(1);
 
 void BM_specialized_exec_tpch_q6(benchmark::State& state) { phaseSpecializedExec(state, TPCH_Q6); }
-BENCHMARK(BM_specialized_exec_tpch_q6)->MinTime(1.0);
+BENCHMARK(BM_specialized_exec_tpch_q6)->Name("BM_g:tpch;n:tpch_q6;t:specialized_exec;")->MinTime(1.0);
 
 // ── Q3: Shipping Priority ─────────────────────────────────────────────────────
 
 void BM_unspecialized_tpch_q3(benchmark::State& state) { phaseUnspecialized(state, TPCH_Q3); }
-BENCHMARK(BM_unspecialized_tpch_q3)->MinTime(1.0);
+BENCHMARK(BM_unspecialized_tpch_q3)->Name("BM_g:tpch;n:tpch_q3;t:unspecialized;")->MinTime(1.0);
 
 void BM_jit_overhead_tpch_q3(benchmark::State& state) { phaseJITOverhead(state, TPCH_Q3); }
-BENCHMARK(BM_jit_overhead_tpch_q3)->Iterations(1);
+BENCHMARK(BM_jit_overhead_tpch_q3)->Name("BM_g:tpch;n:tpch_q3;t:jit_overhead;")->Iterations(1);
 
 void BM_specialized_exec_tpch_q3(benchmark::State& state) { phaseSpecializedExec(state, TPCH_Q3); }
-BENCHMARK(BM_specialized_exec_tpch_q3)->MinTime(1.0);
+BENCHMARK(BM_specialized_exec_tpch_q3)->Name("BM_g:tpch;n:tpch_q3;t:specialized_exec;")->MinTime(1.0);
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 

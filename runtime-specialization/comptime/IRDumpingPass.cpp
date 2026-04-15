@@ -62,6 +62,14 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
     return PreservedAnalyses::all();
   }
 
+  // 0) Collect defined function names before serialization so the runtime can
+  //    build a funcName -> blob index map without parsing every blob at startup.
+  SmallVector<std::string, 64> FuncNames;
+  for (auto &F : M) {
+    if (!F.isDeclaration() && !F.getName().starts_with("__clangRS"))
+      FuncNames.push_back(F.getName().str());
+  }
+
   const auto [PtrGV, LenGV] = getOrCreateIRDumpGlobals(M);
 
   // 1) Serialize the entire module to LLVM bitcode in-memory.
@@ -95,15 +103,44 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
   PtrGV->setInitializer(DataPtr);
   LenGV->setInitializer(ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size()));
 
-  // 4) Register this IR blob at program startup via a module constructor.
-  //    This replaces the old dlsym-based single-blob approach and allows
-  //    multiple TUs (each with their own IR blob) to coexist in one binary.
+  // 4) Build an array of C-string pointers for the defined function names.
+  //    The runtime uses this to map funcName -> blob index at init() time,
+  //    so only the relevant per-TU module needs to be cloned per specialization.
+  Constant *FuncsArrayPtr;
+  if (!FuncNames.empty()) {
+    SmallVector<Constant *, 64> NamePtrs;
+    for (const auto &Name : FuncNames) {
+      ArrayType *StrTy = ArrayType::get(Type::getInt8Ty(Ctx), Name.size() + 1);
+      auto *StrGV = new GlobalVariable(M, StrTy, /*isConstant=*/true,
+                                       GlobalValue::InternalLinkage,
+                                       ConstantDataArray::getString(Ctx, Name, /*AddNull=*/true),
+                                       "");
+      StrGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+      Constant *StrGEPIdxs[] = {Zero32, Zero32};
+      NamePtrs.push_back(ConstantExpr::getInBoundsGetElementPtr(StrTy, StrGV, StrGEPIdxs));
+    }
+    ArrayType *FuncArrayTy = ArrayType::get(PointerType::getUnqual(Ctx), FuncNames.size());
+    auto *FuncsGV = new GlobalVariable(M, FuncArrayTy, /*isConstant=*/true,
+                                       GlobalValue::InternalLinkage,
+                                       ConstantArray::get(FuncArrayTy, NamePtrs),
+                                       "RuntimeSpecializeableIR_funcs");
+    FuncsGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+    Constant *FuncGEPIdxs[] = {Zero32, Zero32};
+    FuncsArrayPtr = ConstantExpr::getInBoundsGetElementPtr(FuncArrayTy, FuncsGV, FuncGEPIdxs);
+  } else {
+    FuncsArrayPtr = ConstantPointerNull::get(PointerType::getUnqual(Ctx));
+  }
+
+  // 5) Register this IR blob at program startup via a module constructor.
+  //    v2 includes the function name array so the runtime can build a
+  //    funcName -> blob index map without parsing all blobs.
   FunctionType *RegTy = FunctionType::get(
       Type::getVoidTy(Ctx),
-      {PointerType::getUnqual(Ctx), Type::getInt64Ty(Ctx)},
+      {PointerType::getUnqual(Ctx), Type::getInt64Ty(Ctx),
+       PointerType::getUnqual(Ctx), Type::getInt64Ty(Ctx)},
       /*isVarArg=*/false);
   FunctionCallee RegFn = M.getOrInsertFunction(
-      "clang_runtime_specializer_register_blob", RegTy);
+      "clang_runtime_specializer_register_blob_v2", RegTy);
 
   // Give the constructor a name unique to this TU (based on module identifier).
   std::string TUName = M.getModuleIdentifier();
@@ -116,7 +153,12 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
       &M);
   BasicBlock *BB = BasicBlock::Create(Ctx, "entry", CtorFn);
   IRBuilder<> Builder(BB);
-  Builder.CreateCall(RegFn, {DataPtr, ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size())});
+  Builder.CreateCall(RegFn, {
+      DataPtr,
+      ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size()),
+      FuncsArrayPtr,
+      ConstantInt::get(Type::getInt64Ty(Ctx), FuncNames.size())
+  });
   Builder.CreateRetVoid();
 
   appendToGlobalCtors(M, CtorFn, /*Priority=*/65535);

@@ -9,6 +9,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS context (
 
 # Base columns that are always present in Google Benchmark JSON output.
 # Dynamic columns (perf counters, custom counters, etc.) are added on demand.
+# kv_* columns are parsed from the benchmark name KV prefix (e.g. BM_g:X;n:Y;t:Z;).
 _SCHEMA_BENCHMARKS = """
 CREATE TABLE IF NOT EXISTS benchmarks (
     run_id                     VARCHAR NOT NULL REFERENCES context(run_id),
@@ -55,24 +57,26 @@ CREATE TABLE IF NOT EXISTS benchmarks (
     real_time                  DOUBLE,
     cpu_time                   DOUBLE,
     time_unit                  VARCHAR,
+    kv_g                       VARCHAR,
+    kv_n                       VARCHAR,
+    kv_t                       VARCHAR,
+    kv_raw_params              VARCHAR,
     PRIMARY KEY (run_id, name)
 );
 """
 
-# Parse phase, kernel, raw_params out of the benchmark name.
-_SCHEMA_V_PARSED = r"""
+# Expose stored KV columns as readable aliases.
+_SCHEMA_V_PARSED = """
 CREATE OR REPLACE VIEW v_parsed AS
 SELECT
     b.*,
     c.git_sha,
     c.run_ts,
     c.host_name,
-    regexp_extract(b.name,
-        '^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)(/\d.*)?$', 1) AS phase,
-    regexp_extract(b.name,
-        '^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)(/\d.*)?$', 2) AS kernel,
-    regexp_extract(b.name,
-        '^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)((/\d+)+)?$', 3) AS raw_params
+    b.kv_t          AS phase,
+    b.kv_n          AS kernel,
+    b.kv_g          AS "group",
+    b.kv_raw_params AS raw_params
 FROM benchmarks b
 JOIN context c USING (run_id);
 """
@@ -91,13 +95,14 @@ FROM v_parsed
 WHERE phase != '';
 """
 
-# Pivot phases per (run_id, kernel, raw_params) for ratio computation.
+# Pivot phases per (run_id, kernel, raw_params, group) for ratio computation.
 _SCHEMA_V_RATIOS = """
 CREATE OR REPLACE VIEW v_ratios AS
 SELECT
     run_id,
     kernel,
     raw_params,
+    "group",
     git_sha,
     run_ts,
     host_name,
@@ -105,7 +110,17 @@ SELECT
     MAX(CASE WHEN phase = 'specialized_exec' THEN real_time_ns END) AS t_spec_ns,
     MAX(CASE WHEN phase = 'jit_overhead'     THEN real_time_ns END) AS t_jit_ns
 FROM v_ns
-GROUP BY run_id, kernel, raw_params, git_sha, run_ts, host_name;
+GROUP BY run_id, kernel, raw_params, "group", git_sha, run_ts, host_name;
+"""
+
+# JIT stats for jit_overhead rows (columns may not exist; view creation guarded).
+_SCHEMA_V_JIT_STATS = """
+CREATE OR REPLACE VIEW v_jit_stats AS
+SELECT run_id, kernel, raw_params, "group",
+       jit_module_fns, jit_module_instrs, jit_blob_kb,
+       jit_pruned_fns, jit_pruned_instrs, max_bytes_used
+FROM v_parsed
+WHERE phase = 'jit_overhead' AND run_type = 'iteration';
 """
 
 # Fixed column names (lowercase) that are part of the base schema.
@@ -113,7 +128,33 @@ _BASE_COLUMNS = {
     "run_id", "name", "family_index", "per_family_instance_index",
     "run_type", "repetitions", "repetition_index", "threads",
     "iterations", "real_time", "cpu_time", "time_unit",
+    "kv_g", "kv_n", "kv_t", "kv_raw_params",
 }
+
+# ---------------------------------------------------------------------------
+# KV name parsing
+# ---------------------------------------------------------------------------
+
+_KV_PREFIX_RE = re.compile(r'^BM_(?P<kvs>[^/]+?)(?:/(?P<params>.*))?$')
+_KV_PAIR_RE = re.compile(r'(\w+):([^;/]+);')
+
+
+def _parse_bm_name(name: str) -> dict:
+    """Parse 'BM_g:X;n:Y;t:Z;/1/2' → {'kv_g': 'X', 'kv_n': 'Y', 'kv_t': 'Z', 'kv_raw_params': '/1/2'}.
+
+    Returns empty dict if the name does not match the KV format.
+    """
+    m = _KV_PREFIX_RE.match(name)
+    if not m:
+        return {}
+    result = {}
+    for key, val in _KV_PAIR_RE.findall(m.group('kvs') or ''):
+        result[f'kv_{key}'] = val
+    if 'kv_g' not in result:
+        return {}  # not a KV-format name (no 'g:' key)
+    params = m.group('params')
+    result['kv_raw_params'] = f'/{params}' if params else ''
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -136,12 +177,13 @@ def _infer_sql_type(val) -> str:
 
 
 def ensure_columns(con: duckdb.DuckDBPyConnection, benchmarks: list) -> None:
-    """Add any JSON keys missing from the benchmarks table as new columns (NULL default)."""
+    """Add any JSON keys or KV name keys missing from the benchmarks table as new columns."""
     existing = {
         row[0].lower()
         for row in con.execute("DESCRIBE benchmarks").fetchall()
     }
     for b in benchmarks:
+        # JSON fields from benchmark output
         for key, val in b.items():
             col = _col_name(key)
             if col.lower() in existing:
@@ -151,10 +193,15 @@ def ensure_columns(con: duckdb.DuckDBPyConnection, benchmarks: list) -> None:
             dtype = _infer_sql_type(val)
             con.execute(f'ALTER TABLE benchmarks ADD COLUMN "{col}" {dtype}')
             existing.add(col.lower())
+        # KV columns parsed from the benchmark name (always VARCHAR)
+        for col in _parse_bm_name(b.get('name', '')):
+            if col.lower() not in existing:
+                con.execute(f'ALTER TABLE benchmarks ADD COLUMN "{col}" VARCHAR')
+                existing.add(col.lower())
 
 
 def insert_benchmarks(con: duckdb.DuckDBPyConnection, run_id: str, benchmarks: list) -> None:
-    """Insert all benchmark rows, mapping JSON keys to column names dynamically."""
+    """Insert all benchmark rows, mapping JSON keys and KV name keys to columns dynamically."""
     cols_in_db = {
         row[0].lower(): row[0]  # lower -> actual case
         for row in con.execute("DESCRIBE benchmarks").fetchall()
@@ -164,6 +211,10 @@ def insert_benchmarks(con: duckdb.DuckDBPyConnection, run_id: str, benchmarks: l
         row_data: dict = {"run_id": run_id}
         for key, val in b.items():
             col = _col_name(key)
+            if col.lower() in cols_in_db:
+                row_data[col] = val
+        # Merge KV columns parsed from the benchmark name
+        for col, val in _parse_bm_name(b.get('name', '')).items():
             if col.lower() in cols_in_db:
                 row_data[col] = val
 
@@ -190,6 +241,10 @@ def resolve_db_path(flag_value: str | None) -> Path:
 
 
 def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
+    if create and db_path.exists():
+        print(f"Error: DB file already exists: {db_path}", file=sys.stderr)
+        print("Remove it first, or omit --create-db to append to the existing database.", file=sys.stderr)
+        sys.exit(1)
     if not create and not db_path.exists():
         print(f"Error: DB file not found: {db_path}", file=sys.stderr)
         print("Pass --create-db to initialise a new database.", file=sys.stderr)
@@ -203,6 +258,10 @@ def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
         _SCHEMA_V_RATIOS,
     ]:
         con.execute(stmt)
+    try:
+        con.execute(_SCHEMA_V_JIT_STATS)
+    except Exception:
+        pass  # JIT counter columns not yet present in this DB
     return con
 
 
@@ -348,23 +407,21 @@ def best_practice_env(benchmark_cpus: list[int]):
     Context manager: applies LLVM Linux benchmarking best practices then
     restores the original state on exit.
 
-    Yields True if cpuset shield was activated (caller must prefix the
-    benchmark command with `sudo cset shield --exec --`), False otherwise.
+    Yields True if all setup steps succeeded (caller should prefix the
+    benchmark command with `taskset -c <cpus>`), False on any failure.
 
     Steps applied (in order):
       1. Disable ASLR
       2. Disable Intel Turbo Boost (if available)
       3. Set CPU governor to performance
       4. Disable SMT siblings of benchmark CPUs
-      5. Set up cpuset shield on benchmark CPUs
+    CPU affinity is enforced by the caller via taskset (no cpuset filesystem needed).
     """
     disabled_cpus: list[int] = []
     original_gov: str | None = None
     original_aslr: str | None = None
     original_turbo: str | None = None
-    cset_active = False
     setup_failed = False
-    cset_bin = shutil.which("cset") or "cset"
 
     cpu_list_str = ",".join(str(c) for c in sorted(benchmark_cpus))
     aslr_path = "/proc/sys/kernel/randomize_va_space"
@@ -427,33 +484,12 @@ def best_practice_env(benchmark_cpus: list[int]):
                 print(f"Warning: could not disable CPU {sib}: {e}", file=sys.stderr)
                 setup_failed = True
 
-    # 5. Set up cpuset shield
-    try:
-        print(f"Setting up cpuset shield on CPU(s) {cpu_list_str}...", file=sys.stderr)
-        subprocess.run(
-            _sudo_cmd() + [cset_bin, "shield", "-c", cpu_list_str, "-k", "on"],
-            check=True,
-        )
-        cset_active = True
-    except Exception as e:
-        print(f"Warning: could not set up cpuset shield: {e}", file=sys.stderr)
-        setup_failed = True
+    print(f"CPU affinity will be set via taskset on CPU(s) {cpu_list_str}.", file=sys.stderr)
 
     try:
-        yield cset_active, not setup_failed
+        yield not setup_failed
     finally:
         # Teardown in reverse order
-
-        if cset_active:
-            try:
-                print("Tearing down cpuset shield...", file=sys.stderr)
-                subprocess.run(
-                    _sudo_cmd() + [cset_bin, "shield", "--reset"],
-                    check=True, capture_output=True,
-                )
-            except Exception as e:
-                print(f"Warning: could not reset cpuset shield: {e}", file=sys.stderr)
-
         for sib in sorted(disabled_cpus):
             online_file = f"/sys/devices/system/cpu/cpu{sib}/online"
             try:
@@ -509,8 +545,6 @@ def check_dependencies(args) -> None:
     if getattr(args, 'benchmarking_best_practice', False):
         if not shutil.which("sudo"):
             missing.append("sudo (required for --benchmarking-best-practice)")
-        if not shutil.which("cset"):
-            missing.append("cset (install cpuset package; required for --benchmarking-best-practice)")
     if missing:
         print("Error: missing dependencies:", file=sys.stderr)
         for m in missing:
@@ -625,14 +659,13 @@ def cmd_record(args):
     if args.benchmarking_best_practice:
         requested_cpus = _parse_cpu_list(args.benchmark_cpus) if args.benchmark_cpus else None
         benchmark_cpus = _pick_benchmark_cpus(requested_cpus)
-        with best_practice_env(benchmark_cpus) as (cset_active, setup_ok):
+        cpu_list_str = ",".join(str(c) for c in sorted(benchmark_cpus))
+        with best_practice_env(benchmark_cpus) as setup_ok:
             if not setup_ok:
                 print("Error: benchmarking best-practice setup failed; aborting to avoid unreliable results.", file=sys.stderr)
                 sys.exit(1)
-            if cset_active:
-                full_cmd = ["sudo", shutil.which("cset") or "cset", "shield", "--exec", "--"] + cmd
-            else:
-                full_cmd = cmd
+            taskset_bin = shutil.which("taskset") or "taskset"
+            full_cmd = [taskset_bin, "-c", cpu_list_str] + cmd
             print(f"Running: {' '.join(full_cmd)}", flush=True)
             result = subprocess.run(full_cmd)
     else:
@@ -695,6 +728,11 @@ def main():
     if args.record_json and args.binary:
         parser.error("--record-json and binary are mutually exclusive.")
     if not args.record_json and not args.binary:
+        if args.create_db:
+            db_path = resolve_db_path(args.db)
+            open_db(db_path, create=True).close()
+            print(f"Database initialised: {db_path}")
+            return
         parser.error("Provide a binary to run, or use --record-json to import existing results.")
 
     if args.record_json:

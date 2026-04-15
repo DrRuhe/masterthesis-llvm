@@ -92,13 +92,11 @@ static void phaseUnspecialized(benchmark::State& state, Operator* op) {
 
 // Phase 2: JIT overhead — measures specialization compilation cost per call.
 static void phaseJITOverhead(benchmark::State& state, Operator* op) {
-    auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
-    clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
-        clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::None);
-    for (auto _ : state)
-        benchmark::DoNotOptimize(RS->specializeOnly<Fn_execute_query, int>(op));
-    clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(Prev);
+    clangRuntimeSpecializer::benchmarkJITOverhead<Fn_execute_query>(
+        state,
+        execute_query,
+        std::make_tuple(op),
+        std::make_tuple(op));
 }
 
 // Phase 3: specialized exec — pre-compile once, then measure execution.
@@ -121,34 +119,34 @@ static void phaseSpecializedExec(benchmark::State& state, Operator* op) {
 void BM_unspecialized_single_filter(benchmark::State& state) {
     phaseUnspecialized(state, &g_single_filter);
 }
-BENCHMARK(BM_unspecialized_single_filter);
+BENCHMARK(BM_unspecialized_single_filter)->Name("BM_g:db_operators;n:single_filter;t:unspecialized;");
 
 void BM_jit_overhead_single_filter(benchmark::State& state) {
     phaseJITOverhead(state, &g_single_filter);
 }
-BENCHMARK(BM_jit_overhead_single_filter);
+BENCHMARK(BM_jit_overhead_single_filter)->Name("BM_g:db_operators;n:single_filter;t:jit_overhead;");
 
 void BM_specialized_exec_single_filter(benchmark::State& state) {
     phaseSpecializedExec(state, &g_single_filter);
 }
-BENCHMARK(BM_specialized_exec_single_filter);
+BENCHMARK(BM_specialized_exec_single_filter)->Name("BM_g:db_operators;n:single_filter;t:specialized_exec;");
 
 // ── Chained filter benchmarks (scenario 2) ───────────────────────────────────
 
 void BM_unspecialized_chained_filter(benchmark::State& state) {
     phaseUnspecialized(state, &g_outer_filter);
 }
-BENCHMARK(BM_unspecialized_chained_filter);
+BENCHMARK(BM_unspecialized_chained_filter)->Name("BM_g:db_operators;n:chained_filter;t:unspecialized;");
 
 void BM_jit_overhead_chained_filter(benchmark::State& state) {
     phaseJITOverhead(state, &g_outer_filter);
 }
-BENCHMARK(BM_jit_overhead_chained_filter);
+BENCHMARK(BM_jit_overhead_chained_filter)->Name("BM_g:db_operators;n:chained_filter;t:jit_overhead;");
 
 void BM_specialized_exec_chained_filter(benchmark::State& state) {
     phaseSpecializedExec(state, &g_outer_filter);
 }
-BENCHMARK(BM_specialized_exec_chained_filter);
+BENCHMARK(BM_specialized_exec_chained_filter)->Name("BM_g:db_operators;n:chained_filter;t:specialized_exec;");
 
 #ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {

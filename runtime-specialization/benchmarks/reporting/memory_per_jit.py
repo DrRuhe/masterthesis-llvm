@@ -41,20 +41,24 @@ def fmt_mem(val_bytes: float) -> str:
     return f"{val_bytes:.0f}B"
 
 
+# New KV format: BM_g:GROUP;n:KERNEL;[s:SIZE;]t:PHASE;[/params]
+_KV_NAME_RE = re.compile(
+    r"^BM_g:[^;]+;n:(?P<n>[^;]+);(?:[^;]+;)*?t:(?P<t>[^;]+);(?P<params>/.*)?$"
+)
+# Legacy format (fallback)
 _NAME_RE = re.compile(
     r"^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)(/\d.*)?$"
 )
-_PARAMS_RE = re.compile(r"^BM_(unspecialized|jit_overhead|specialized_exec)_+(.+?)((/\d+)+)?$")
 
 
 def parse_name(name: str):
+    m = _KV_NAME_RE.match(name)
+    if m:
+        return m.group('t'), m.group('n'), m.group('params') or ""
     m = _NAME_RE.match(name)
     if not m:
         return None, None, None
-    phase = m.group(1)
-    kernel = m.group(2)
-    raw_params = m.group(3) or ""
-    return phase, kernel, raw_params
+    return m.group(1), m.group(2), m.group(3) or ""
 
 
 def make_group_key(kernel: str, raw_params: str) -> str:
@@ -71,12 +75,19 @@ def make_group_key(kernel: str, raw_params: str) -> str:
 def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
               kernel_filter: str | None = None) -> pd.DataFrame:
     """Load max_bytes_used and jit_blob_kb for jit_overhead rows."""
+    has_blob = con.execute(
+        "SELECT count(*) FROM duckdb_columns() "
+        "WHERE table_name='benchmarks' AND column_name='jit_blob_kb'"
+    ).fetchone()[0] > 0
+    blob_col = "jit_blob_kb" if has_blob else "0.0 AS jit_blob_kb"
+
     df = con.execute(
-        """
-        SELECT name, max_bytes_used, jit_blob_kb
+        f"""
+        SELECT name, max_bytes_used, {blob_col}
         FROM benchmarks
         WHERE run_id = ?
-          AND name LIKE 'BM_jit_overhead%'
+          AND name LIKE 'BM_%'
+          AND name LIKE '%t:jit_overhead%'
           AND run_type = 'iteration'
         """,
         [run_id],

@@ -63,46 +63,23 @@ extern "C" void clang_runtime_specializer_link_anchor() {}
 // ---------------------------------------------------------------------------
 
 namespace {
-  struct BlobEntry { const void* Ptr; std::uint64_t Len; };
+  struct BlobEntry {
+    const void* Ptr;
+    std::uint64_t Len;
+    std::vector<std::string> FuncNames; // populated by v2 API; empty for v1 blobs
+  };
   std::vector<BlobEntry> g_registered_blobs;
 } // namespace
 
-extern "C" void clang_runtime_specializer_register_blob(const void* ptr, std::uint64_t len) {
-  g_registered_blobs.push_back({ptr, len});
+extern "C" void clang_runtime_specializer_register_blob_v2(
+    const void* ptr, std::uint64_t len,
+    const char* const* funcs, std::uint64_t nfuncs) {
+  std::vector<std::string> Names;
+  Names.reserve(nfuncs);
+  for (std::uint64_t i = 0; i < nfuncs; ++i)
+    Names.push_back(funcs[i]);
+  g_registered_blobs.push_back({ptr, len, std::move(Names)});
 }
-
-namespace {
-
-  std::unique_ptr<llvm::Module> load_and_merge_blobs(llvm::LLVMContext& ctx) {
-    if (g_registered_blobs.empty()) {
-      throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError(
-          "No IR blobs registered. Was the binary compiled with the plugin?");
-    }
-
-    std::unique_ptr<llvm::Module> Merged;
-    for (const auto& blob : g_registered_blobs) {
-      const llvm::StringRef Bytes(reinterpret_cast<const char*>(blob.Ptr), blob.Len);
-      const llvm::MemoryBufferRef Buffer(Bytes, "RuntimeSpecializeableIR");
-      llvm::Expected<std::unique_ptr<llvm::Module>> M =
-          llvm::parseBitcodeFile(Buffer, ctx);
-      if (!M) {
-        const std::string Err = llvm::toString(M.takeError());
-        throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError(
-            "Failed to parse bitcode: " + Err);
-      }
-      if (!Merged) {
-        Merged = std::move(*M);
-      } else {
-        if (llvm::Linker::linkModules(*Merged, std::move(*M))) {
-          throw clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError(
-              "Failed to link IR modules from multiple TUs");
-        }
-      }
-    }
-    return Merged;
-  }
-
-} // namespace
 
 extern "C" {
     uint64_t g_inst_count = 0;
@@ -243,11 +220,14 @@ namespace clangRuntimeSpecializer {
 
   ClangRuntimeSpecializer::JITModuleStats ClangRuntimeSpecializer::getModuleStats() {
     JITModuleStats Stats;
-    if (!Instance || !Instance->Module) return Stats;
-    for (auto& F : *Instance->Module) {
-      if (!F.isDeclaration()) {
-        ++Stats.FunctionCount;
-        for (auto& BB : F) Stats.InstructionCount += BB.size();
+    if (!Instance || Instance->BlobModules.empty()) return Stats;
+    for (const auto& BM : Instance->BlobModules) {
+      if (!BM) continue;
+      for (auto& F : *BM) {
+        if (!F.isDeclaration()) {
+          ++Stats.FunctionCount;
+          for (auto& BB : F) Stats.InstructionCount += BB.size();
+        }
       }
     }
     for (const auto& Blob : g_registered_blobs)
@@ -728,9 +708,49 @@ namespace clangRuntimeSpecializer {
           return std::move(TSM);
         });
 
+    if (g_registered_blobs.empty()) {
+      throw ClangRuntimeSpecializerDumpedIRError(
+          "No IR blobs registered. Was the binary compiled with the plugin?");
+    }
+
+    // Parse each blob into its own module (all sharing TSCtx's LLVMContext).
     Instance->TSCtx.withContextDo([&](llvm::LLVMContext *Ctx) {
-        Instance->Module = load_and_merge_blobs(*Ctx);
+      Instance->BlobModules.resize(g_registered_blobs.size());
+      for (size_t i = 0; i < g_registered_blobs.size(); ++i) {
+        const auto& Blob = g_registered_blobs[i];
+        const llvm::StringRef Bytes(reinterpret_cast<const char*>(Blob.Ptr), Blob.Len);
+        const llvm::MemoryBufferRef Buffer(Bytes, "RuntimeSpecializeableIR");
+        llvm::Expected<std::unique_ptr<llvm::Module>> M = llvm::parseBitcodeFile(Buffer, *Ctx);
+        if (!M) {
+          const std::string Err = llvm::toString(M.takeError());
+          throw ClangRuntimeSpecializerDumpedIRError("Failed to parse bitcode blob " +
+                                                     std::to_string(i) + ": " + Err);
+        }
+        Instance->BlobModules[i] = std::move(*M);
+      }
     });
+
+    // Build funcName -> blob index map from the pre-registered name lists.
+    for (size_t i = 0; i < g_registered_blobs.size(); ++i) {
+      for (const auto& Name : g_registered_blobs[i].FuncNames)
+        Instance->FuncToBlobIdx[Name] = i;
+    }
+
+    {
+      size_t NumBlobs = g_registered_blobs.size();
+      size_t TotalBytes = 0;
+      for (const auto& Blob : g_registered_blobs) TotalBytes += Blob.Len;
+      size_t NumFunctions = 0, NumInstructions = 0;
+      for (const auto& BM : Instance->BlobModules) {
+        if (BM) {
+          NumFunctions += countNonDecl(*BM);
+          NumInstructions += countInstrs(*BM);
+        }
+      }
+      std::fprintf(stdout,
+          "[CRS init] blobs=%zu  bitcode=%zu KB  functions=%zu  instructions=%zu\n",
+          NumBlobs, TotalBytes / 1024, NumFunctions, NumInstructions);
+    }
 
     return Instance.get();
   }
@@ -741,22 +761,29 @@ namespace clangRuntimeSpecializer {
     if (funcName == nullptr) {
       throw ClangRuntimeSpecializerError("funcName was null!");
     }
-    if (Module == nullptr) {
-      throw ClangRuntimeSpecializerError("Module was null!");
+    if (BlobModules.empty()) {
+      throw ClangRuntimeSpecializerError("No blob modules loaded! Was init() called?");
     }
     if (!JIT) {
       throw ClangRuntimeSpecializerError("JIT was not initialized!");
     }
   }
 
-  llvm::Function* ClangRuntimeSpecializer::getTargetFunction(const char* const funcName) const {
+  llvm::Function* ClangRuntimeSpecializer::getTargetFunction(const char* const funcName) {
     std::string FuncNameStr(funcName);
     if (!FuncNameStr.empty() && FuncNameStr.front() == '&') {
       FuncNameStr.erase(0, 1);
     }
-    llvm::Function * const TargetFunc = Module->getFunction(FuncNameStr);
+    auto It = FuncToBlobIdx.find(FuncNameStr);
+    if (It == FuncToBlobIdx.end()) {
+      throw ClangRuntimeSpecializerDumpedIRError(
+          (llvm::Twine("Could not find function: ") + funcName +
+           " (not found in any registered blob — was the binary compiled with the plugin?)").str());
+    }
+    llvm::Function* TargetFunc = BlobModules[It->second]->getFunction(FuncNameStr);
     if (TargetFunc == nullptr) {
-      throw ClangRuntimeSpecializerDumpedIRError((llvm::Twine("Could not find function: ") + funcName + " (It might be optimized out already by dead-code-elimination?)").str());
+      throw ClangRuntimeSpecializerDumpedIRError(
+          (llvm::Twine("Could not find function: ") + funcName + " in its blob module").str());
     }
     return TargetFunc;
   }

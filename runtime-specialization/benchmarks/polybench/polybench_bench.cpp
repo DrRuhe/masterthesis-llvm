@@ -787,21 +787,21 @@ POLYBENCH_IMPL_2(seidel_2d)
 
 // ── Benchmark Registrations ───────────────────────────────────────────────────
 #define POLYBENCH_BENCHMARK_SPEC(K, MINI, SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/MINI")->MINI; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/SMALL")->SMALL; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/MEDIUM")->MEDIUM; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/LARGE")->LARGE; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_unspecialized____" #K "/EXTRALARGE")->EXTRALARGE; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/MINI")->MINI; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/SMALL")->SMALL; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/MEDIUM")->MEDIUM; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/LARGE")->LARGE; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_jit_overhead_____" #K "/EXTRALARGE")->EXTRALARGE; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/MINI")->MINI; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/SMALL")->SMALL; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/MEDIUM")->MEDIUM; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/LARGE")->LARGE; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_specialized_exec_" #K "/EXTRALARGE")->EXTRALARGE;
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:unspecialized;")->MINI; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:unspecialized;")->SMALL; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:unspecialized;")->MEDIUM; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:unspecialized;")->LARGE; \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_overhead;")->MINI; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_overhead;")->SMALL; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_overhead;")->MEDIUM; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_overhead;")->LARGE; \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:specialized_exec;")->MINI; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:specialized_exec;")->SMALL; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:specialized_exec;")->MEDIUM; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:specialized_exec;")->LARGE; \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE;
 
 
 POLYBENCH_BENCHMARK_SPEC(correlation,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
@@ -895,7 +895,7 @@ int main(int argc, char** argv) {
     // only MINI/SMALL/MEDIUM/LARGE
     if (::benchmark::GetBenchmarkFilter() == "")
     {
-        ::benchmark::SetBenchmarkFilter("/MINI|/SMALL|/MEDIUM|/LARGE");
+        ::benchmark::SetBenchmarkFilter("s:MINI|s:SMALL|s:MEDIUM|s:LARGE");
         std::cout << "Using default benchmark filter: \"" << ::benchmark::GetBenchmarkFilter() <<"\""<< std::endl;
     }
 
