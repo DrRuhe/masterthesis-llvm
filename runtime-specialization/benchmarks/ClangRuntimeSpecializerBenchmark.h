@@ -1,6 +1,35 @@
 #pragma once
 #include "ClangRuntimeSpecializer.h"
 #include <benchmark/benchmark.h>
+#include <cstdio>
+
+// Tracks process RSS growth across each benchmark run using Google Benchmark's
+// MemoryManager API. Register once in main() with:
+//   static RSSMemoryManager g_rss_mgr;
+//   benchmark::RegisterMemoryManager(&g_rss_mgr);
+// Results appear as max_bytes_used in JSON output.
+class RSSMemoryManager : public benchmark::MemoryManager {
+    size_t rss_before_ = 0;
+
+    static size_t readVmRSS() {
+        FILE* f = fopen("/proc/self/status", "r");
+        if (!f) return 0;
+        size_t rss = 0;
+        char line[128];
+        while (fgets(line, sizeof(line), f))
+            if (sscanf(line, "VmRSS: %zu kB", &rss) == 1) break;
+        fclose(f);
+        return rss * 1024;
+    }
+public:
+    void Start() override { rss_before_ = readVmRSS(); }
+    void Stop(Result& result) override {
+        size_t after = readVmRSS();
+        result.max_bytes_used = after > rss_before_
+            ? static_cast<int64_t>(after - rss_before_) : 0;
+        result.num_allocs = 0;
+    }
+};
 
 namespace clangRuntimeSpecializer {
 
@@ -42,6 +71,7 @@ void benchmarkJITOverhead(
     };
     using R = decltype(std::apply(InvokeNormal, normalArgs));
 
+    auto modStats = ClangRuntimeSpecializer::getModuleStats();
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
@@ -50,6 +80,13 @@ void benchmarkJITOverhead(
         }, specArgs));
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+    auto txStats = ClangRuntimeSpecializer::getLastTransformStats();
+
+    state.counters["jit_module_fns"]    = (double)modStats.FunctionCount;
+    state.counters["jit_module_instrs"] = (double)modStats.InstructionCount;
+    state.counters["jit_blob_kb"]       = (double)(modStats.BitcodeSizeBytes / 1024);
+    state.counters["jit_pruned_fns"]    = (double)txStats.FunctionCountAfterPrune;
+    state.counters["jit_pruned_instrs"] = (double)txStats.InstructionCountAfterPrune;
 }
 
 // Phase 3: Measure specialized execution only (setup: compile once before loop).
@@ -123,6 +160,7 @@ void benchmarkJITOverheadMethod(
     };
     using R = decltype(std::apply(InvokeNormal, normalArgs));
 
+    auto modStats = ClangRuntimeSpecializer::getModuleStats();
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
@@ -130,6 +168,7 @@ void benchmarkJITOverheadMethod(
             return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
+    auto txStats = ClangRuntimeSpecializer::getLastTransformStats();
     // Correctness check outside timing (log level stays None; errors throw exceptions)
     if constexpr (std::is_void_v<R>) {
         std::apply(InvokeNormal, normalArgs);
@@ -148,6 +187,12 @@ void benchmarkJITOverheadMethod(
         }
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+
+    state.counters["jit_module_fns"]    = (double)modStats.FunctionCount;
+    state.counters["jit_module_instrs"] = (double)modStats.InstructionCount;
+    state.counters["jit_blob_kb"]       = (double)(modStats.BitcodeSizeBytes / 1024);
+    state.counters["jit_pruned_fns"]    = (double)txStats.FunctionCountAfterPrune;
+    state.counters["jit_pruned_instrs"] = (double)txStats.InstructionCountAfterPrune;
 }
 
 // Phase 3: Measure specialized method execution only (setup: compile once before loop).

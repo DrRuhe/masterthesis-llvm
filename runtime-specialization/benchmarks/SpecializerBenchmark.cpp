@@ -157,5 +157,13 @@ void BM_specialized_exec_method_add(benchmark::State& state) {
 BENCHMARK(BM_specialized_exec_method_add);
 
 #ifndef ALL_BENCHMARKS_BUILD
-BENCHMARK_MAIN();
+int main(int argc, char** argv) {
+    static RSSMemoryManager g_rss_mgr;
+    benchmark::RegisterMemoryManager(&g_rss_mgr);
+    benchmark::Initialize(&argc, argv);
+    if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+    benchmark::RunSpecifiedBenchmarks();
+    benchmark::Shutdown();
+    return 0;
+}
 #endif

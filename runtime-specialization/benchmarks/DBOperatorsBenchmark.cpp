@@ -1,6 +1,7 @@
 
 #include <benchmark/benchmark.h>
 #include "ClangRuntimeSpecializer.h"
+#include "ClangRuntimeSpecializerBenchmark.h"
 
 // ── DB Operator classes ───────────────────────────────────────────────────────
 
@@ -150,5 +151,13 @@ void BM_specialized_exec_chained_filter(benchmark::State& state) {
 BENCHMARK(BM_specialized_exec_chained_filter);
 
 #ifndef ALL_BENCHMARKS_BUILD
-BENCHMARK_MAIN();
+int main(int argc, char** argv) {
+    static RSSMemoryManager g_rss_mgr;
+    benchmark::RegisterMemoryManager(&g_rss_mgr);
+    benchmark::Initialize(&argc, argv);
+    if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+    benchmark::RunSpecifiedBenchmarks();
+    benchmark::Shutdown();
+    return 0;
+}
 #endif

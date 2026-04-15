@@ -100,6 +100,7 @@ if(NOT APPLE AND NOT MSVC)
 endif()
 
 add_subdirectory(polybench)
+add_subdirectory(tpch)
 
 # ── AllBenchmarks ─────────────────────────────────────────────────────────────
 
@@ -159,8 +160,33 @@ add_custom_command(
     COMMENT "Compiling polybench_bench for AllBenchmarks"
 )
 
+# ── AllBenchmarks TPCH object ─────────────────────────────────────────────────
+# Custom commands must be defined in the same CMakeLists.txt as the target that
+# uses their output (CMake limitation). We define it here in the parent using
+# paths exported from tpch/CMakeLists.txt via PARENT_SCOPE.
+set(ALL_OBJ_TPCH "${CMAKE_CURRENT_BINARY_DIR}/AllBenchmarks_tpch_bench.o")
+add_custom_command(
+    OUTPUT ${ALL_OBJ_TPCH}
+    COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
+            -DALL_BENCHMARKS_BUILD=1
+            -I${TPCH_SRC_DIR}
+            -I${CMAKE_CURRENT_SOURCE_DIR}
+            -I${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
+            -I${TPCH_SQLITE3_SRC_DIR}
+            -I${LLVM_MAIN_INCLUDE_DIR}
+            -I${LLVM_BINARY_DIR}/include
+            -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
+            -fpass-plugin=${PLUGIN_LIB}
+            -fexceptions -frtti
+            -c ${TPCH_SRC_FILE}
+            -o ${ALL_OBJ_TPCH}
+    DEPENDS ${TPCH_SRC_FILE} LLVMRuntimeSpecializationComptimePlugin clang
+            ${TPCH_SQLITE3_IR_OBJ}
+    COMMENT "Compiling tpch_bench.cpp for AllBenchmarks"
+)
+
 add_benchmark(AllBenchmarks PARTIAL_SOURCES_INTENDED
-    ${ALL_OBJ_SPEC} ${ALL_OBJ_DB} ${ALL_OBJ_POLY}
+    ${ALL_OBJ_SPEC} ${ALL_OBJ_DB} ${ALL_OBJ_POLY} ${ALL_OBJ_TPCH} ${TPCH_SQLITE3_IR_OBJ}
     AllBenchmarks_main.cpp)
 
 target_include_directories(AllBenchmarks PRIVATE
@@ -169,10 +195,15 @@ target_include_directories(AllBenchmarks PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
     ${CMAKE_CURRENT_SOURCE_DIR}/polybench
     ${CMAKE_CURRENT_SOURCE_DIR}/polybench/PolyBenchC-4.2.1-master/utilities
+    ${CMAKE_CURRENT_SOURCE_DIR}/tpch
+    ${TPCH_SQLITE3_SRC_DIR}
     ${LLVM_MAIN_INCLUDE_DIR}
     ${LLVM_BINARY_DIR}/include
 )
 target_link_libraries(AllBenchmarks PRIVATE ClangRuntimeSpecializer benchmark)
+# AllBenchmarks_main.cpp includes ClangRuntimeSpecializerBenchmark.h which
+# transitively pulls in LLVM headers; those require exceptions to be enabled.
+target_compile_options(AllBenchmarks PRIVATE -fexceptions -frtti)
 set_target_properties(AllBenchmarks PROPERTIES ENABLE_EXPORTS ON)
 if(NOT APPLE AND NOT MSVC)
     target_link_options(AllBenchmarks PRIVATE "-Wl,--export-dynamic")

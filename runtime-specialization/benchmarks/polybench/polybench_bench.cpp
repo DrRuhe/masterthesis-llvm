@@ -885,6 +885,8 @@ int main(int argc, char** argv) {
         argc = 1;
         argv = &args_default;
     }
+    static RSSMemoryManager g_rss_mgr;
+    ::benchmark::RegisterMemoryManager(&g_rss_mgr);
     ::benchmark::Initialize(&argc, argv);
     if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
 
