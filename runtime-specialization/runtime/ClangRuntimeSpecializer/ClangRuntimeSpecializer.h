@@ -94,8 +94,21 @@ namespace clangRuntimeSpecializer {
       size_t InstructionCountAfterPrune = 0;
     };
 
+    // Per-pass record produced by PassInstrumentationCallbacks in the transform layer.
+    struct PassRecord {
+      std::string Name;       // LLVM pass class name, e.g. "GlobalDCEPass"
+      std::string Group;      // "prune"|"initial"|"fixpoint"|"postfix"|"final"
+      int FixpointIter;       // -1 if not inside fixpoint loop
+      uint64_t FnsBefore, FnsAfter;
+      uint64_t InstrsBefore, InstrsAfter;
+      uint64_t BBsBefore, BBsAfter;
+      double WallTimeMs;
+      bool IRChanged;         // true when !PA.areAllPreserved()
+    };
+
     static JITModuleStats getModuleStats();
     static JITModuleStats getLastTransformStats();
+    static std::vector<PassRecord> getLastPassTrace();
 
     static void resetCounters();
     static InstructionCounts getCurrentCounters();

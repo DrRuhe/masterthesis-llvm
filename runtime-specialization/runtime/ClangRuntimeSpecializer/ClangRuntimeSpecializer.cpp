@@ -38,9 +38,11 @@
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/IR/DebugInfo.h"
+#include "llvm/IR/PassInstrumentation.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Analysis/InlineCost.h"
 #include "llvm/Config/llvm-config.h"
+#include <chrono>
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -97,6 +99,7 @@ namespace clangRuntimeSpecializer {
 
   static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Debug;
   static ClangRuntimeSpecializer::JITModuleStats g_lastTransformStats;
+  static std::vector<ClangRuntimeSpecializer::PassRecord> g_lastPassTrace;
 
   static size_t countNonDecl(const llvm::Module& M) {
     size_t n = 0;
@@ -239,6 +242,10 @@ namespace clangRuntimeSpecializer {
     return g_lastTransformStats;
   }
 
+  std::vector<ClangRuntimeSpecializer::PassRecord> ClangRuntimeSpecializer::getLastPassTrace() {
+    return g_lastPassTrace;
+  }
+
   ClangRuntimeSpecializer* ClangRuntimeSpecializer::init() {
     if (Instance) {
       return Instance.get();
@@ -306,7 +313,52 @@ namespace clangRuntimeSpecializer {
         [](llvm::orc::ThreadSafeModule TSM, llvm::orc::MaterializationResponsibility &R)
             -> llvm::Expected<llvm::orc::ThreadSafeModule> {
           TSM.withModuleDo([&](llvm::Module &M) {
-            llvm::PassBuilder PB;
+            // Per-pass trace infrastructure using PassInstrumentationCallbacks.
+            // Tracks module-level passes only (function/loop-level are skipped via any_cast).
+            std::vector<ClangRuntimeSpecializer::PassRecord> TraceRecords;
+            std::string CurrentGroup;
+            int CurrentFixpointIter = -1;
+
+            std::string PendingName;
+            uint64_t PendingFns = 0, PendingInstrs = 0, PendingBBs = 0;
+            std::chrono::steady_clock::time_point PendingT0;
+
+            auto countModule = [](const llvm::Module& Mod) -> std::tuple<uint64_t, uint64_t, uint64_t> {
+              uint64_t Fns = 0, Instrs = 0, BBs = 0;
+              for (const auto& F : Mod) {
+                if (F.isDeclaration()) continue;
+                ++Fns;
+                for (const auto& BB : F) { ++BBs; Instrs += BB.size(); }
+              }
+              return {Fns, Instrs, BBs};
+            };
+
+            llvm::PassInstrumentationCallbacks PIC;
+            PIC.registerBeforeNonSkippedPassCallback(
+                [&](llvm::StringRef ID, llvm::Any IR) {
+                  if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
+                    PendingName = std::string(ID);
+                    auto [F, I, B] = countModule(**MP);
+                    PendingFns = F; PendingInstrs = I; PendingBBs = B;
+                    PendingT0 = std::chrono::steady_clock::now();
+                  }
+                });
+            PIC.registerAfterPassCallback(
+                [&](llvm::StringRef /*ID*/, llvm::Any IR,
+                    const llvm::PreservedAnalyses& PA) {
+                  if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
+                    auto [FA, IA, BA] = countModule(**MP);
+                    double Ms = std::chrono::duration<double, std::milli>(
+                        std::chrono::steady_clock::now() - PendingT0).count();
+                    TraceRecords.push_back({
+                        PendingName, CurrentGroup, CurrentFixpointIter,
+                        PendingFns, FA, PendingInstrs, IA, PendingBBs, BA,
+                        Ms, !PA.areAllPreserved()
+                    });
+                  }
+                });
+
+            llvm::PassBuilder PB(nullptr, {}, std::nullopt, &PIC);
             llvm::LoopAnalysisManager LAM;
             llvm::FunctionAnalysisManager FAM;
             llvm::CGSCCAnalysisManager CGAM;
@@ -380,6 +432,7 @@ namespace clangRuntimeSpecializer {
               // functions WeakODRLinkage (both are GlobalDCE roots). AvailableExternally functions
               // that get removed are resolved from the host via DynamicLibrarySearchGenerator.
               {
+                CurrentGroup = "prune";
                 llvm::ModulePassManager PruneMPM;
                 PruneMPM.addPass(llvm::GlobalDCEPass());
                 PruneMPM.run(M, MAM);
@@ -388,6 +441,20 @@ namespace clangRuntimeSpecializer {
               // Snapshot post-prune stats
               g_lastTransformStats.FunctionCountAfterPrune    = countNonDecl(M);
               g_lastTransformStats.InstructionCountAfterPrune = countInstrs(M);
+
+              // Classify module size after pruning to gate expensive transforms.
+              // Large modules (e.g. the sqlite3 amalgamation compiled as a single
+              // translation unit) must use conservative inlining and loop-unroll
+              // settings to avoid catastrophic IR explosion.
+              const bool LargeModule =
+                  g_lastTransformStats.InstructionCountAfterPrune > 10000;
+
+              // Per-function instruction count, used to scope alwaysinline below.
+              auto countFnInstrs = [](const llvm::Function &F) -> size_t {
+                size_t n = 0;
+                for (const auto &BB : F) n += BB.size();
+                return n;
+              };
 
               // FIXPOINT ITERATION: Runtime specialization requires aggressive devirtualization
               // and inlining. We iterate with a carefully ordered pipeline:
@@ -400,16 +467,27 @@ namespace clangRuntimeSpecializer {
               // This ensures virtual calls like Filter::next and Scan::next are fully devirtualized
               // and inlined, eliminating all vtable lookups.
 
-              // Prepare all functions for aggressive inlining
+              // Mark functions for inlining.  Functions already marked by
+              // encourageInlining() (wrapper + target) keep alwaysinline.  On small
+              // modules every function gets it; on large modules only functions with
+              // ≤200 instructions get alwaysinline — larger ones are left for the
+              // ModuleInliner's cost model, preventing unbounded IR expansion on
+              // monolithic translation units like sqlite3.
+              constexpr size_t AlwaysInlineMaxInstrs = 200;
               for (auto &F : M) {
                 if (!F.isDeclaration()) {
                   F.removeFnAttr(llvm::Attribute::NoInline);
                   F.removeFnAttr(llvm::Attribute::OptimizeNone);
-                  F.addFnAttr(llvm::Attribute::AlwaysInline);
+                  if (!LargeModule ||
+                      F.hasFnAttribute(llvm::Attribute::AlwaysInline) ||
+                      countFnInstrs(F) <= AlwaysInlineMaxInstrs) {
+                    F.addFnAttr(llvm::Attribute::AlwaysInline);
+                  }
                 }
               }
 
               // Initial pass: Always inline marked functions
+              CurrentGroup = "initial";
               {
                 llvm::ModulePassManager InitialMPM;
 
@@ -451,6 +529,8 @@ namespace clangRuntimeSpecializer {
               size_t PrevInstCount = 0;
 
               for (int Iteration = 0; Iteration < MaxFixpointIterations; ++Iteration) {
+                CurrentGroup = "fixpoint";
+                CurrentFixpointIter = Iteration;
                 if (Instance->printsFixpointIterations()) log(LogLevel::Debug, "IRTransform",
                     llvm::formatv("Fixpoint iteration {0}", Iteration).str());
 
@@ -463,6 +543,13 @@ namespace clangRuntimeSpecializer {
 
                 // 1b. Devirtualize indirect calls through constant vtable pointers
                 FixpointMPM.addPass(DevirtualizeConstantVtableCallsPass());
+
+                // 1b-post. Prune functions made dead by IPSCCP/devirt before inlining.
+                // WeakODR vtable functions are GlobalDCE roots and survive; only
+                // AvailableExternal and other dead functions are removed.  Running
+                // this inside the loop prevents dead-inlined code from accumulating
+                // across iterations on large modules (e.g. sqlite3).
+                FixpointMPM.addPass(llvm::GlobalDCEPass());
 
                 // 1b2. Infer attributes again after optimistic resolution
                 FixpointMPM.addPass(llvm::ReversePostOrderFunctionAttrsPass());
@@ -510,15 +597,20 @@ namespace clangRuntimeSpecializer {
 
                 // 5. Aggressive inlining - inline everything possible
                 llvm::InlineParams IP = llvm::getInlineParams();
-                IP.DefaultThreshold = 500000;
-                IP.HintThreshold = 500000;
-                IP.ColdThreshold = 500000;
-                IP.OptSizeThreshold = 500000;
-                IP.OptMinSizeThreshold = 500000;
-                IP.HotCallSiteThreshold = 500000;
-                IP.LocallyHotCallSiteThreshold = 500000;
-                IP.ColdCallSiteThreshold = 500000;
-                IP.ComputeFullInlineCost = false;  // Faster
+                if (!LargeModule) {
+                  // Small module: inline everything regardless of size.
+                  IP.DefaultThreshold            = 500000;
+                  IP.HintThreshold               = 500000;
+                  IP.ColdThreshold               = 500000;
+                  IP.OptSizeThreshold            = 500000;
+                  IP.OptMinSizeThreshold         = 500000;
+                  IP.HotCallSiteThreshold        = 500000;
+                  IP.LocallyHotCallSiteThreshold = 500000;
+                  IP.ColdCallSiteThreshold       = 500000;
+                }
+                // Large module: keep getInlineParams() defaults — still aggressive
+                // but bounded by the cost model, preventing multi-GB IR explosion.
+                IP.ComputeFullInlineCost = false;
                 IP.EnableDeferral = false;
                 IP.AllowRecursiveCall = true;
 
@@ -564,12 +656,17 @@ namespace clangRuntimeSpecializer {
                 LPM.addPass(llvm::LICMPass(llvm::LICMOptions()));
                 PostInlineFPM.addPass(llvm::createFunctionToLoopPassAdaptor(std::move(LPM), /*UseMemorySSA=*/true));
 
-                // Aggressive loop unrolling (runs on functions, not loops)
+                // Loop unrolling.  On small modules use aggressive settings to expose
+                // more constants.  On large modules limit to partial unrolling only:
+                // runtime/full unrolling of a giant dispatch loop (e.g. the sqlite3
+                // VDBE opcode switch) with count 128 causes catastrophic IR blowup.
                 llvm::LoopUnrollOptions UnrollOpts;
                 UnrollOpts.setPartial(true);
-                UnrollOpts.setRuntime(true);
-                UnrollOpts.setUpperBound(true);
-                UnrollOpts.setFullUnrollMaxCount(128);
+                if (!LargeModule) {
+                  UnrollOpts.setRuntime(true);
+                  UnrollOpts.setUpperBound(true);
+                  UnrollOpts.setFullUnrollMaxCount(128);
+                }
                 PostInlineFPM.addPass(llvm::LoopUnrollPass(UnrollOpts));
 
                 // Post-unroll cleanup
@@ -614,11 +711,14 @@ namespace clangRuntimeSpecializer {
                 PrevInstCount = InstCount;
               }
 
-              // Run GlobalDCE after all fixpoint iterations complete.
-              // Must not run during the fixpoint loop because virtual function implementations
-              // (e.g., Scan::next, Filter::next) may have no direct callers yet but are still
-              // needed as devirtualization targets in subsequent iterations.
+              CurrentFixpointIter = -1;
+
+              // Final GlobalDCE after all fixpoint iterations.
+              // Per-iteration GlobalDCE (runs after IPSCCP/devirt in each iteration)
+              // handles most dead code; this postfix pass sweeps up any residual
+              // definitions that only became unreachable at the very end.
               {
+                CurrentGroup = "postfix";
                 llvm::ModulePassManager PostFixpointMPM;
                 PostFixpointMPM.addPass(llvm::GlobalDCEPass());
                 PostFixpointMPM.run(M, MAM);
@@ -626,6 +726,7 @@ namespace clangRuntimeSpecializer {
 
               // Final O3 pass for cleanup and additional optimizations
               {
+                CurrentGroup = "final";
                 llvm::ModulePassManager FinalMPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
                 FinalMPM.run(M, MAM);
               }
@@ -704,6 +805,8 @@ namespace clangRuntimeSpecializer {
                 });
               }
             }
+
+            g_lastPassTrace = std::move(TraceRecords);
           });
           return std::move(TSM);
         });

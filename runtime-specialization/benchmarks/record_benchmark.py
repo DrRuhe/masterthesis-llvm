@@ -123,6 +123,26 @@ FROM v_parsed
 WHERE phase = 'jit_overhead' AND run_type = 'iteration';
 """
 
+# Per-pass records from PassInstrumentationCallbacks (written by benchmarkJITAnalysis).
+_SCHEMA_PASS_TRACES = """
+CREATE TABLE IF NOT EXISTS pass_traces (
+    run_id          VARCHAR NOT NULL REFERENCES context(run_id),
+    benchmark_name  VARCHAR NOT NULL,
+    pass_idx        INTEGER NOT NULL,
+    pass_name       VARCHAR,
+    pass_group      VARCHAR,
+    fixpoint_iter   INTEGER,
+    fns_before      BIGINT,
+    fns_after       BIGINT,
+    instrs_before   BIGINT,
+    instrs_after    BIGINT,
+    bbs_before      BIGINT,
+    bbs_after       BIGINT,
+    wall_time_ms    DOUBLE,
+    ir_changed      BOOLEAN
+);
+"""
+
 # Fixed column names (lowercase) that are part of the base schema.
 _BASE_COLUMNS = {
     "run_id", "name", "family_index", "per_family_instance_index",
@@ -227,6 +247,37 @@ def insert_benchmarks(con: duckdb.DuckDBPyConnection, run_id: str, benchmarks: l
 
 
 # ---------------------------------------------------------------------------
+# Pass-trace import
+# ---------------------------------------------------------------------------
+
+def import_pass_traces(con: duckdb.DuckDBPyConnection, run_id: str, trace_dir: Path) -> int:
+    """Import *_pass_trace.json files written by benchmarkJITAnalysis into pass_traces table."""
+    total = 0
+    for trace_file in sorted(trace_dir.glob("*_pass_trace.json")):
+        try:
+            with open(trace_file) as f:
+                records = json.load(f)
+            bm_name = trace_file.stem[:-len("_pass_trace")]
+            for idx, r in enumerate(records):
+                con.execute(
+                    "INSERT INTO pass_traces VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        run_id, bm_name, idx,
+                        r.get("name"), r.get("group"), r.get("fixpoint_iter"),
+                        r.get("fns_before"), r.get("fns_after"),
+                        r.get("instrs_before"), r.get("instrs_after"),
+                        r.get("bbs_before"), r.get("bbs_after"),
+                        r.get("wall_time_ms"), r.get("ir_changed"),
+                    ],
+                )
+                total += 1
+            print(f"  Imported {len(records)} pass records from {trace_file.name}")
+        except Exception as e:
+            print(f"Warning: could not import pass trace {trace_file}: {e}", file=sys.stderr)
+    return total
+
+
+# ---------------------------------------------------------------------------
 # DB helpers
 # ---------------------------------------------------------------------------
 
@@ -253,6 +304,7 @@ def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
     for stmt in [
         _SCHEMA_CONTEXT,
         _SCHEMA_BENCHMARKS,
+        _SCHEMA_PASS_TRACES,
         _SCHEMA_V_PARSED,
         _SCHEMA_V_NS,
         _SCHEMA_V_RATIOS,
@@ -578,7 +630,8 @@ def _load_json_safe(path: str) -> dict:
         sys.exit(1)
 
 
-def store_to_db(args, data: dict, json_path: str, delete_on_success: bool) -> None:
+def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
+                trace_dir: Path | None = None) -> None:
     ctx = data.get("context", {})
     benchmarks = data.get("benchmarks", [])
     db_path = resolve_db_path(args.db)
@@ -606,6 +659,10 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool) -> No
         )
         ensure_columns(con, benchmarks)
         insert_benchmarks(con, run_id, benchmarks)
+        if trace_dir is not None:
+            n_traces = import_pass_traces(con, run_id, trace_dir)
+            if n_traces:
+                print(f"Imported {n_traces} pass-trace records.")
         con.commit()
 
         print(f"run_id: {run_id}")
@@ -676,7 +733,8 @@ def cmd_record(args):
         sys.exit(result.returncode)
 
     data = _load_json_safe(out_path)
-    store_to_db(args, data, out_path, delete_on_success=True)
+    trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else Path.cwd()
+    store_to_db(args, data, out_path, delete_on_success=True, trace_dir=trace_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -722,6 +780,11 @@ def main():
         "--create-db", action="store_true",
         help="Create the database file if it does not exist.",
     )
+    parser.add_argument(
+        "--pass-trace-dir", metavar="DIR", default=None,
+        help="Directory to scan for *_pass_trace.json files written by benchmarkJITAnalysis. "
+             "Defaults to the current working directory when running a binary.",
+    )
 
     args = parser.parse_args()
 
@@ -737,7 +800,8 @@ def main():
 
     if args.record_json:
         data = _load_json_safe(args.record_json)
-        store_to_db(args, data, args.record_json, delete_on_success=False)
+        trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else None
+        store_to_db(args, data, args.record_json, delete_on_success=False, trace_dir=trace_dir)
     else:
         cmd_record(args)
 

@@ -131,6 +131,24 @@ void BM_specialized_exec_single_filter(benchmark::State& state) {
 }
 BENCHMARK(BM_specialized_exec_single_filter)->Name("BM_g:db_operators;n:single_filter;t:specialized_exec;");
 
+// ── Analysis benchmarks (single JIT call + pass-trace JSON) ──────────────────
+
+void BM_jit_analysis_single_filter(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_execute_query>(
+        state, execute_query, std::make_tuple((Operator*)&g_single_filter));
+}
+BENCHMARK(BM_jit_analysis_single_filter)
+    ->Name("BM_g:db_operators;n:single_filter;t:jit_analysis;")
+    ->Iterations(1)->UseManualTime();
+
+void BM_jit_analysis_chained_filter(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_execute_query>(
+        state, execute_query, std::make_tuple((Operator*)&g_outer_filter));
+}
+BENCHMARK(BM_jit_analysis_chained_filter)
+    ->Name("BM_g:db_operators;n:chained_filter;t:jit_analysis;")
+    ->Iterations(1)->UseManualTime();
+
 // ── Chained filter benchmarks (scenario 2) ───────────────────────────────────
 
 void BM_unspecialized_chained_filter(benchmark::State& state) {

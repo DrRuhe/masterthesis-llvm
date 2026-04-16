@@ -1,7 +1,10 @@
 #pragma once
 #include "ClangRuntimeSpecializer.h"
 #include <benchmark/benchmark.h>
+#include <chrono>
 #include <cstdio>
+#include <fstream>
+#include <string>
 
 // Tracks process RSS growth across each benchmark run using Google Benchmark's
 // MemoryManager API. Register once in main() with:
@@ -225,6 +228,109 @@ void benchmarkSpecializedExecMethod(
         else
             benchmark::DoNotOptimize(SpecFnPtr());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Pass-trace JSON utilities
+// ---------------------------------------------------------------------------
+
+// Serialize a pass trace to a JSON file named <benchmark_name>_pass_trace.json.
+// Non-filename characters in benchmark_name are replaced with '_'.
+inline void writePassTraceJSON(const std::string& BenchmarkName,
+                               const std::vector<ClangRuntimeSpecializer::PassRecord>& Trace) {
+    std::string Filename = BenchmarkName + "_pass_trace.json";
+    for (char& C : Filename)
+        if (C != '.' && C != '-' && C != '_' &&
+            !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
+            C = '_';
+
+    std::ofstream Out(Filename);
+    if (!Out.is_open()) return;
+
+    Out << "[\n";
+    for (size_t I = 0; I < Trace.size(); ++I) {
+        const auto& R = Trace[I];
+        Out << "  {"
+            << "\"name\":\"" << R.Name << "\""
+            << ",\"group\":\"" << R.Group << "\""
+            << ",\"fixpoint_iter\":" << R.FixpointIter
+            << ",\"fns_before\":" << R.FnsBefore
+            << ",\"fns_after\":" << R.FnsAfter
+            << ",\"instrs_before\":" << R.InstrsBefore
+            << ",\"instrs_after\":" << R.InstrsAfter
+            << ",\"bbs_before\":" << R.BBsBefore
+            << ",\"bbs_after\":" << R.BBsAfter
+            << ",\"wall_time_ms\":" << R.WallTimeMs
+            << ",\"ir_changed\":" << (R.IRChanged ? "true" : "false")
+            << "}";
+        if (I + 1 < Trace.size()) Out << ",";
+        Out << "\n";
+    }
+    Out << "]\n";
+}
+
+// Single-invocation analysis benchmark: measures JIT time once, then writes a
+// per-pass trace JSON alongside the benchmark output.
+// Register with: ->Iterations(1)->UseManualTime()
+template <const char* funcName, class Fn, class Tuple>
+__attribute__((always_inline))
+void benchmarkJITAnalysis(
+    benchmark::State& state,
+    Fn F,
+    Tuple specArgs)
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+
+    auto InvokeNormal = [&](auto&&... a) {
+        return std::invoke(F, std::forward<decltype(a)>(a)...);
+    };
+    using R = decltype(std::apply(InvokeNormal, specArgs));
+
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    for (auto _ : state) {
+        auto T0 = std::chrono::steady_clock::now();
+        benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
+            return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+        }, specArgs));
+        double Ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - T0).count();
+        state.SetIterationTime(Ms / 1000.0);
+    }
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+
+    writePassTraceJSON(state.name(), ClangRuntimeSpecializer::getLastPassTrace());
+}
+
+// Method variant of benchmarkJITAnalysis.
+template <const char* funcName, class MemFn, class Tuple>
+__attribute__((always_inline))
+void benchmarkJITAnalysisMethod(
+    benchmark::State& state,
+    MemFn Mf,
+    Tuple specArgs)
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+
+    auto InvokeNormal = [&](auto&&... a) {
+        return std::invoke(Mf, std::forward<decltype(a)>(a)...);
+    };
+    using R = decltype(std::apply(InvokeNormal, specArgs));
+
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    for (auto _ : state) {
+        auto T0 = std::chrono::steady_clock::now();
+        benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
+            return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+        }, specArgs));
+        double Ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - T0).count();
+        state.SetIterationTime(Ms / 1000.0);
+    }
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+
+    writePassTraceJSON(state.name(), ClangRuntimeSpecializer::getLastPassTrace());
 }
 
 } // namespace clangRuntimeSpecializer

@@ -199,6 +199,19 @@ BENCHMARK(BM_jit_overhead_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:jit_overhead;")-
 void BM_specialized_exec_tpch_q1(benchmark::State& state) { phaseSpecializedExec(state, TPCH_Q1); }
 BENCHMARK(BM_specialized_exec_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:specialized_exec;")->MinTime(1.0);
 
+void BM_jit_analysis_tpch_q1(benchmark::State& state) {
+    sqlite3* db = openDB();
+    sqlite3_stmt* stmt = prepareQuery(db, TPCH_Q1);
+    auto* vdbe = reinterpret_cast<Vdbe*>(stmt);
+    clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_sqlite3VdbeExec>(
+        state, sqlite3VdbeExec, std::make_tuple(vdbe));
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+}
+BENCHMARK(BM_jit_analysis_tpch_q1)
+    ->Name("BM_g:tpch;n:tpch_q1;t:jit_analysis;")
+    ->Iterations(1)->UseManualTime();
+
 // ── Q6: Forecasting Revenue Change ───────────────────────────────────────────
 
 void BM_unspecialized_tpch_q6(benchmark::State& state) { phaseUnspecialized(state, TPCH_Q6); }
