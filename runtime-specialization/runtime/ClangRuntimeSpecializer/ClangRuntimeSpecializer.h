@@ -20,8 +20,6 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
-#define CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME "call_specialized_func_name"
-
 // TODO refactor the error handling: create a special "ClangRuntimeSpecializationError" for this project.
 namespace clangRuntimeSpecializer {
 
@@ -146,8 +144,10 @@ namespace clangRuntimeSpecializer {
       int LoopUnrollCount = 128;             // full-unroll max count (small modules only)
       bool EnableEarlyPrune = true;          // run GlobalDCE before fixpoint
       bool EnableO3Final = true;             // run O3 as final pass
+      unsigned FuncSpecMaxGroups = 0;        // 0 = unlimited; skip function if it has more distinct constant-arg groups
 
       // --- Debug / analysis ---
+      bool Optimize = true;                          // when false → skips all JIT optimization passes
       bool EnableInstructionInstrumentation = false;
       bool KeepDebugInfo = false;
       bool PrintFixpointIterations = false;
@@ -166,6 +166,10 @@ namespace clangRuntimeSpecializer {
         Options O; O.MaxFixpointIterations = 3;
         O.LargeModuleInstrThreshold = 0; return O;
       }
+      static Options NoOptimize() {
+        Options O; O.MaxFixpointIterations = 0; O.EnableEarlyPrune = false;
+        O.EnableO3Final = false; O.Optimize = false; return O;
+      }
 
       // --- Fluent builder ---
       Options& withMaxFixpointIterations(int N)       { MaxFixpointIterations = N; return *this; }
@@ -177,6 +181,8 @@ namespace clangRuntimeSpecializer {
       Options& withKeepDebugInfo(bool V)              { KeepDebugInfo = V; return *this; }
       Options& withPrintFixpointIterations(bool V)    { PrintFixpointIterations = V; return *this; }
       Options& withInstructionInstrumentation(bool V) { EnableInstructionInstrumentation = V; return *this; }
+      Options& withOptimize(bool V)                   { Optimize = V; return *this; }
+      Options& withFuncSpecMaxGroups(unsigned N)      { FuncSpecMaxGroups = N; return *this; }
     };
 
     static ClangRuntimeSpecializer* init();
@@ -187,63 +193,49 @@ namespace clangRuntimeSpecializer {
     }
 
 
-    template <const char* funcName, class R, class... ARGS>
-    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    template <class R, class... ARGS>
     __attribute__((noinline))
-    R callSpecialized(ARGS&&... Args) {
-      return callImpl<funcName, R, false, true>(__FUNCTION__, std::forward<ARGS>(Args)...);
+    R callSpecialized(const char* funcName, ARGS&&... Args) {
+      return callImpl<R>(funcName, __FUNCTION__, CurrentOptions, std::forward<ARGS>(Args)...);
     }
 
-    template <const char* funcName, class R, class... ARGS>
-    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    template <class R, class... ARGS>
     __attribute__((noinline))
-    R call_instrumented(ARGS&&... Args) {
-      return callImpl<funcName, R, true, true>(__FUNCTION__, std::forward<ARGS>(Args)...);
+    R callSpecialized(const char* funcName, const Options& opts, ARGS&&... Args) {
+      return callImpl<R>(funcName, __FUNCTION__, opts, std::forward<ARGS>(Args)...);
     }
 
-    template <const char* funcName, class R, class... ARGS>
-    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    template <class... ARGS>
     __attribute__((noinline))
-    R call_instrumented_baseline(ARGS&&... Args) {
-      return callImpl<funcName, R, true, false>(__FUNCTION__, std::forward<ARGS>(Args)...);
+    uintptr_t specializeOnly(const char* funcName, ARGS&&... Args) {
+      return specializeOnlyImpl(funcName, __FUNCTION__, CurrentOptions, std::forward<ARGS>(Args)...);
     }
 
-    template <const char* funcName, class R, class... ARGS>
-    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    template <class... ARGS>
     __attribute__((noinline))
-    uintptr_t specializeOnly(ARGS&&... Args) {
-      return specializeOnlyImpl<funcName, R, false, true>(__FUNCTION__, CurrentOptions, std::forward<ARGS>(Args)...);
-    }
-
-    template <const char* funcName, class R, class... ARGS>
-    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
-    __attribute__((noinline))
-    uintptr_t specializeOnlyWithOptions(const Options& Opts, ARGS&&... Args) {
-      return specializeOnlyImpl<funcName, R, false, true>(__FUNCTION__, Opts, std::forward<ARGS>(Args)...);
+    uintptr_t specializeOnly(const char* funcName, const Options& opts, ARGS&&... Args) {
+      return specializeOnlyImpl(funcName, __FUNCTION__, opts, std::forward<ARGS>(Args)...);
     }
 
     ~ClangRuntimeSpecializer();
 
   private:
 
-    template <const char* funcName, class R, bool Instrument, bool Optimize = true, class... ARGS>
-    uintptr_t specializeOnlyImpl(const char* CallerName, const Options& Opts, ARGS&&... Args) {
+    template <class... ARGS>
+    uintptr_t specializeOnlyImpl(const char* funcName, const char* CallerName, const Options& Opts, ARGS&&... Args) {
       checkInitialization(funcName);
       llvm::Function *TargetFunc = getTargetFunction(funcName);
 
       validateArgs(TargetFunc, sizeof...(ARGS));
 
-      if constexpr (Instrument)
-      {
+      if (Opts.EnableInstructionInstrumentation) {
           log(LogLevel::Info, CallerName, (llvm::Twine("Instrumenting call to: ") + funcName).str());
-      }
-      else
-      {
+      } else {
           log(LogLevel::Info, CallerName, (llvm::Twine("Specializing call to: ") + funcName).str());
       }
       // Clone only the blob module that contains the target function.
       // This avoids cloning the full merged module when multiple TUs are linked.
-      std::string UniqueWrapperName = createUniqueWrapperName() + (Optimize ? "" : "_no_opt");
+      std::string UniqueWrapperName = createUniqueWrapperName() + (Opts.Optimize ? "" : "_no_opt");
       auto NewModule = llvm::CloneModule(*TargetFunc->getParent());
       auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
       encourageInlining(TargetFuncInNewModule);
@@ -253,10 +245,10 @@ namespace clangRuntimeSpecializer {
       llvm::FunctionType* const FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
 
       llvm::Function* const NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
-      if (Instrument) {
+      if (Opts.EnableInstructionInstrumentation) {
           NewFunc->addFnAttr("force-instrument");
       }
-      if (!Optimize) {
+      if (!Opts.Optimize) {
           NewFunc->addFnAttr("force-no-optimize");
       }
 
@@ -284,10 +276,9 @@ namespace clangRuntimeSpecializer {
       return addModuleAndLookup(std::move(TSM), UniqueWrapperName, std::string(funcName));
     }
 
-    template <const char* funcName, class R, bool Instrument, bool Optimize = true, class... ARGS>
-    R callImpl(const char* CallerName, ARGS&&... Args) {
-      uintptr_t Addr = specializeOnlyImpl<funcName, R, Instrument, Optimize>(
-          CallerName, CurrentOptions, std::forward<ARGS>(Args)...);
+    template <class R, class... ARGS>
+    R callImpl(const char* funcName, const char* CallerName, const Options& Opts, ARGS&&... Args) {
+      uintptr_t Addr = specializeOnlyImpl(funcName, CallerName, Opts, std::forward<ARGS>(Args)...);
       auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
       if constexpr (std::is_void_v<R>) {
           SpecializedFnPtr();
@@ -318,8 +309,6 @@ namespace clangRuntimeSpecializer {
                                   const std::string& OrigFuncName = {});
     uint64_t dumpJITAssembly(const std::string& OrigFuncName, uintptr_t Addr);
     static void encourageInlining(llvm::Function* F);
-    llvm::Function* buildWrapperIR(llvm::Module& M, const std::string& WrapperName, llvm::Function* TargetFunc,
-                                   llvm::ArrayRef<llvm::Value*> SpecializedArgs, bool ForceInstrument, bool Optimize = true) const;
 
     explicit ClangRuntimeSpecializer();
 
@@ -370,9 +359,9 @@ namespace clangRuntimeSpecializer {
 
   };
 
-  template <const char* funcName, class MemFn, class OBJ, class... ARGS>
+  template <class MemFn, class OBJ, class... ARGS>
   __attribute__((always_inline))
-  decltype(auto) specializeMethodOrFallback(MemFn MF, OBJ&& Obj, ARGS&&... Args) {
+  decltype(auto) specializeMethodOrFallback(const char* funcName, MemFn MF, OBJ&& Obj, ARGS&&... Args) {
     auto Invoke = [&]() -> decltype(auto) {
       return (std::forward<OBJ>(Obj).*MF)(std::forward<ARGS>(Args)...);
     };
@@ -380,10 +369,10 @@ namespace clangRuntimeSpecializer {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
         using R = decltype(Invoke());
         if constexpr (std::is_void_v<R>) {
-          RS->callSpecialized<funcName,void>(std::forward<OBJ>(Obj), std::forward<ARGS>(Args)...);
+          RS->callSpecialized<void>(funcName, std::forward<OBJ>(Obj), std::forward<ARGS>(Args)...);
           return;
         } else {
-          return RS->callSpecialized<funcName,R>( std::forward<OBJ>(Obj), std::forward<ARGS>(Args)...);
+          return RS->callSpecialized<R>(funcName, std::forward<OBJ>(Obj), std::forward<ARGS>(Args)...);
         }
       }
     } catch (const std::exception& E) {
@@ -400,9 +389,9 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  template <const char* funcName, class Fn, class... ARGS>
+  template <class Fn, class... ARGS>
   __attribute__((always_inline))
-  decltype(auto) specializeFunctionOrFallback(Fn F, ARGS&&... Args) {
+  decltype(auto) specializeFunctionOrFallback(const char* funcName, Fn F, ARGS&&... Args) {
     auto Invoke = [&]() -> decltype(auto) {
       return F(std::forward<ARGS>(Args)...);
     };
@@ -411,10 +400,10 @@ namespace clangRuntimeSpecializer {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
         using R = decltype(Invoke());
         if constexpr (std::is_void_v<R>) {
-          RS->callSpecialized<funcName, void>(std::forward<ARGS>(Args)...);
+          RS->callSpecialized<void>(funcName, std::forward<ARGS>(Args)...);
           return;
         } else {
-          return RS->callSpecialized<funcName, R>(std::forward<ARGS>(Args)...);
+          return RS->callSpecialized<R>(funcName, std::forward<ARGS>(Args)...);
         }
 
       }
@@ -432,9 +421,9 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  template <const char* funcName, class Fn, class Tuple, class Comparator>
+  template <class Fn, class Tuple, class Comparator>
   __attribute__((always_inline))
-  void assertSpecializedFunctionIsEquivalent(Fn F, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
+  void assertSpecializedFunctionIsEquivalent(const char* funcName, Fn F, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
     auto* RS = ClangRuntimeSpecializer::init();
 
     auto InvokeNormal = [&](auto&&... args) {
@@ -449,7 +438,7 @@ namespace clangRuntimeSpecializer {
 
         // Call specialized
         std::apply([&](auto&&... CallArgs) {
-            RS->callSpecialized<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            RS->callSpecialized<void>(funcName, std::forward<decltype(CallArgs)>(CallArgs)...);
         }, specArgs);
     } else {
         // Call original
@@ -457,7 +446,7 @@ namespace clangRuntimeSpecializer {
 
         // Call specialized
         R ResSpec = std::apply([&](auto&&... CallArgs) -> R {
-            return RS->callSpecialized<funcName, R>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            return RS->callSpecialized<R>(funcName, std::forward<decltype(CallArgs)>(CallArgs)...);
         }, specArgs);
 
         // Compare return values
@@ -478,9 +467,9 @@ namespace clangRuntimeSpecializer {
   // TODO this does NOT work with deep objects.
   //
 
-  template <const char* funcName, class MemFn, class Tuple, class Comparator>
+  template <class MemFn, class Tuple, class Comparator>
   __attribute__((always_inline))
-  void assertSpecializedMethodIsEquivalent(MemFn Mf, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
+  void assertSpecializedMethodIsEquivalent(const char* funcName, MemFn Mf, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
     auto* RS = ClangRuntimeSpecializer::init();
 
     auto InvokeNormal = [&](auto&&... args) {
@@ -495,7 +484,7 @@ namespace clangRuntimeSpecializer {
 
         // Call specialized
         std::apply([&](auto&&... CallArgs) {
-            RS->callSpecialized<funcName, void>(
+            RS->callSpecialized<void>(funcName,
               std::forward<decltype(CallArgs)>(CallArgs)...);
         }, specArgs);
     } else {
@@ -504,7 +493,7 @@ namespace clangRuntimeSpecializer {
 
         // Call specialized
         R ResSpec = std::apply([&](auto&&... CallArgs) -> R {
-            return RS->callSpecialized<funcName, R>(
+            return RS->callSpecialized<R>(funcName,
               std::forward<decltype(CallArgs)>(CallArgs)...);
         }, specArgs);
 
@@ -520,11 +509,10 @@ namespace clangRuntimeSpecializer {
     CRS_LOG(Info, (llvm::Twine("Successfully specialized ") + funcName + "! No differences could be observed.").str());
   }
 
-  template <const char* funcName, class Fn, class... ARGS>
+  template <class Fn, class... ARGS>
   __attribute__((always_inline))
-  void compareFunctionInstructionCounts(Fn F, ARGS... Args) {
+  void compareFunctionInstructionCounts(const char* funcName, Fn F, ARGS... Args) {
     auto* RS = ClangRuntimeSpecializer::init();
-    RS->setOptions(ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true));
 
     // Copy arguments for both calls to ensure same initial state
     auto ArgsOrig = std::make_tuple(Args...);
@@ -534,28 +522,36 @@ namespace clangRuntimeSpecializer {
 
     ClangRuntimeSpecializer::InstructionCounts Before, After;
 
-    // Call baseline instrumented
+    // Call baseline instrumented (no optimization)
     RS->resetCounters();
     if constexpr (std::is_void_v<R>) {
         std::apply([&](auto&&... CallArgs) {
-            RS->call_instrumented_baseline<funcName, void>(std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
+            RS->callSpecialized<void>(funcName,
+                ClangRuntimeSpecializer::Options::NoOptimize().withInstructionInstrumentation(true),
+                std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
         }, ArgsOrig);
     } else {
         std::apply([&](auto&&... CallArgs) {
-            RS->call_instrumented_baseline<funcName, R>(std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
+            RS->callSpecialized<R>(funcName,
+                ClangRuntimeSpecializer::Options::NoOptimize().withInstructionInstrumentation(true),
+                std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
         }, ArgsOrig);
     }
     Before = RS->getCurrentCounters();
 
-    // Call specialized instrumented
+    // Call specialized instrumented (with optimization)
     RS->resetCounters();
     if constexpr (std::is_void_v<R>) {
         std::apply([&](auto&&... CallArgs) {
-            RS->call_instrumented<funcName, void>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            RS->callSpecialized<void>(funcName,
+                ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true),
+                std::forward<decltype(CallArgs)>(CallArgs)...);
         }, ArgsSpec);
     } else {
         std::apply([&](auto&&... CallArgs) {
-            RS->call_instrumented<funcName, R>(std::forward<decltype(CallArgs)>(CallArgs)...);
+            RS->callSpecialized<R>(funcName,
+                ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true),
+                std::forward<decltype(CallArgs)>(CallArgs)...);
         }, ArgsSpec);
     }
     After = RS->getCurrentCounters();

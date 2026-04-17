@@ -23,7 +23,7 @@ int main() {
     
     // First call: d.read_only should be inferred as read-only.
     // d.mutable_field is clearly modified.
-    int res = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_process_data>(process_data, &d, 5);
+    int res = clangRuntimeSpecializer::specializeFunctionOrFallback(Fn_process_data, process_data, &d, 5);
     
     std::printf("Result: %d, mutable_field: %d\n", res, d.mutable_field);
     

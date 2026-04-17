@@ -28,6 +28,6 @@ int main() {
     // CHECK: {{4 *0 *other *-4, -100%}}
     // CHECK: {{2 *1 *ret *-1, -50%}}
     // CHECK: {{1 *0 *call *-1, -100%}}
-    clangRuntimeSpecializer::compareFunctionInstructionCounts<Fn_mypow>(mypow, 3, 5);
+    clangRuntimeSpecializer::compareFunctionInstructionCounts(Fn_mypow, mypow, 3, 5);
     return 0;
 }

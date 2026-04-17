@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     std::cout << "Calling loop_function with " << iters << " iterations." << std::endl;
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     RS->setOptions(clangRuntimeSpecializer::ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true));
-    int result = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_loop_function>(loop_function, iters);
+    int result = clangRuntimeSpecializer::specializeFunctionOrFallback(Fn_loop_function, loop_function, iters);
     RS->printCounters();
     std::cout << "Result: " << result << std::endl;
 

@@ -106,6 +106,11 @@ extern "C" void kernel_correlation(int m, int n) {
 inline constexpr char Fn_correlation[] = "kernel_correlation";
 POLYBENCH_IMPL_2(correlation)
 
+static void BM_jit_analysis____correlation(benchmark::State& S) {
+    auto A = std::make_tuple((int)S.range(0), (int)S.range(1));
+    CRS::benchmarkJITAnalysis<Fn_correlation>(S, kernel_correlation, A);
+}
+
 // ── covariance ────────────────────────────────────────────────────────────────
 #define POLYBENCH_KERNEL      covariance
 #define POLYBENCH_KERNEL_PATH "PolyBenchC-4.2.1-master/datamining/covariance/covariance.c"
@@ -804,6 +809,10 @@ BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:spec
 BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE;
 
 
+BENCHMARK(BM_jit_analysis____correlation)
+    ->Name("BM_g:polybench;n:correlation;s:EXTRALARGE;t:jit_analysis;")
+    ->Args({2600, 3000})->Iterations(1)->UseManualTime();
+
 POLYBENCH_BENCHMARK_SPEC(correlation,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
 POLYBENCH_BENCHMARK_SPEC(covariance,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
 POLYBENCH_BENCHMARK_SPEC(2mm,Args({16, 18, 22, 24}),Args({40, 50, 70, 80}),Args({180, 190, 210, 220}),Args({800, 900, 1100, 1200}),Args({1600, 1800, 2200, 2400}))
@@ -843,36 +852,36 @@ volatile bool g_polybench_dummy_trigger = false;
 extern "C" __attribute__((used)) void polybench_dummy_registration() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_polybench_dummy_trigger) {
-        RS->callSpecialized<Fn_correlation, void>(0, 0);
-        RS->callSpecialized<Fn_covariance, void>(0, 0);
-        RS->callSpecialized<Fn_2mm, void>(0, 0, 0, 0);
-        RS->callSpecialized<Fn_3mm, void>(0, 0, 0, 0, 0);
-        RS->callSpecialized<Fn_atax, void>(0, 0);
-        RS->callSpecialized<Fn_bicg, void>(0, 0);
-        RS->callSpecialized<Fn_doitgen, void>(0, 0, 0);
-        RS->callSpecialized<Fn_mvt, void>(0);
-        RS->callSpecialized<Fn_gemm, void>(0, 0, 0);
-        RS->callSpecialized<Fn_gemver, void>(0);
-        RS->callSpecialized<Fn_gesummv, void>(0);
-        RS->callSpecialized<Fn_symm, void>(0, 0);
-        RS->callSpecialized<Fn_syr2k, void>(0, 0);
-        RS->callSpecialized<Fn_syrk, void>(0, 0);
-        RS->callSpecialized<Fn_trmm, void>(0, 0);
-        RS->callSpecialized<Fn_cholesky, void>(0);
-        RS->callSpecialized<Fn_durbin, void>(0);
-        RS->callSpecialized<Fn_gramschmidt, void>(0, 0);
-        RS->callSpecialized<Fn_lu, void>(0);
-        RS->callSpecialized<Fn_ludcmp, void>(0);
-        RS->callSpecialized<Fn_trisolv, void>(0);
-        RS->callSpecialized<Fn_deriche, void>(0, 0);
-        RS->callSpecialized<Fn_floyd_warshall, void>(0);
-        RS->callSpecialized<Fn_nussinov, void>(0);
-        RS->callSpecialized<Fn_adi, void>(0, 0);
-        RS->callSpecialized<Fn_fdtd_2d, void>(0, 0, 0);
-        RS->callSpecialized<Fn_heat_3d, void>(0, 0);
-        RS->callSpecialized<Fn_jacobi_1d, void>(0, 0);
-        RS->callSpecialized<Fn_jacobi_2d, void>(0, 0);
-        RS->callSpecialized<Fn_seidel_2d, void>(0, 0);
+        RS->callSpecialized<void>(Fn_correlation, 0, 0);
+        RS->callSpecialized<void>(Fn_covariance, 0, 0);
+        RS->callSpecialized<void>(Fn_2mm, 0, 0, 0, 0);
+        RS->callSpecialized<void>(Fn_3mm, 0, 0, 0, 0, 0);
+        RS->callSpecialized<void>(Fn_atax, 0, 0);
+        RS->callSpecialized<void>(Fn_bicg, 0, 0);
+        RS->callSpecialized<void>(Fn_doitgen, 0, 0, 0);
+        RS->callSpecialized<void>(Fn_mvt, 0);
+        RS->callSpecialized<void>(Fn_gemm, 0, 0, 0);
+        RS->callSpecialized<void>(Fn_gemver, 0);
+        RS->callSpecialized<void>(Fn_gesummv, 0);
+        RS->callSpecialized<void>(Fn_symm, 0, 0);
+        RS->callSpecialized<void>(Fn_syr2k, 0, 0);
+        RS->callSpecialized<void>(Fn_syrk, 0, 0);
+        RS->callSpecialized<void>(Fn_trmm, 0, 0);
+        RS->callSpecialized<void>(Fn_cholesky, 0);
+        RS->callSpecialized<void>(Fn_durbin, 0);
+        RS->callSpecialized<void>(Fn_gramschmidt, 0, 0);
+        RS->callSpecialized<void>(Fn_lu, 0);
+        RS->callSpecialized<void>(Fn_ludcmp, 0);
+        RS->callSpecialized<void>(Fn_trisolv, 0);
+        RS->callSpecialized<void>(Fn_deriche, 0, 0);
+        RS->callSpecialized<void>(Fn_floyd_warshall, 0);
+        RS->callSpecialized<void>(Fn_nussinov, 0);
+        RS->callSpecialized<void>(Fn_adi, 0, 0);
+        RS->callSpecialized<void>(Fn_fdtd_2d, 0, 0, 0);
+        RS->callSpecialized<void>(Fn_heat_3d, 0, 0);
+        RS->callSpecialized<void>(Fn_jacobi_1d, 0, 0);
+        RS->callSpecialized<void>(Fn_jacobi_2d, 0, 0);
+        RS->callSpecialized<void>(Fn_seidel_2d, 0, 0);
     }
 }
 

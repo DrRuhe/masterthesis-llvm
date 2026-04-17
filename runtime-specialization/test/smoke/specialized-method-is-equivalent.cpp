@@ -40,6 +40,6 @@ int main(int argc, char** argv) {
   auto comp = [&]() {
     if (instance != instance2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
   };
-  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent<Fn_A_addAndSum>(&A::addAndSum, std::tie(instance, x1), std::tie(instance2, x2), comp);
+  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_A_addAndSum, &A::addAndSum, std::tie(instance, x1), std::tie(instance2, x2), comp);
   return 0;
 }

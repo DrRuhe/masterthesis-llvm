@@ -40,7 +40,7 @@ int main() {
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
     Data d = {10, 20};
     
-    int res = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_process_data_robust>(process_data_robust, &d, 5);
+    int res = clangRuntimeSpecializer::specializeFunctionOrFallback(Fn_process_data_robust, process_data_robust, &d, 5);
     
     std::printf("Result: %d\n", res);
     // CHECK: Result: 55

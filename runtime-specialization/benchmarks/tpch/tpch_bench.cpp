@@ -81,14 +81,14 @@ volatile bool g_tpch_dummy_trigger = false;
 extern "C" __attribute__((used)) void tpch_dummy_registration() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_tpch_dummy_trigger)
-        RS->callSpecialized<Fn_sqlite3VdbeExec, int>((Vdbe*)nullptr);
+        RS->callSpecialized<int>(Fn_sqlite3VdbeExec, (Vdbe*)nullptr);
 }
 #else
 volatile bool g_tpch_dummy_trigger_tpch = false;
 extern "C" __attribute__((used)) void tpch_dummy_registration_tpch() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_tpch_dummy_trigger_tpch)
-        RS->callSpecialized<Fn_sqlite3VdbeExec, int>((Vdbe*)nullptr);
+        RS->callSpecialized<int>(Fn_sqlite3VdbeExec, (Vdbe*)nullptr);
 }
 #endif
 
@@ -148,7 +148,7 @@ static void phaseJITOverhead(benchmark::State& state, const char* sql) {
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state)
-        benchmark::DoNotOptimize(RS->specializeOnly<Fn_sqlite3VdbeExec, int>(vdbe));
+        benchmark::DoNotOptimize(RS->specializeOnly(Fn_sqlite3VdbeExec, vdbe));
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
     auto txStats = CRS::ClangRuntimeSpecializer::getLastTransformStats();
 
@@ -174,7 +174,7 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
-    uintptr_t Addr = RS->specializeOnly<Fn_sqlite3VdbeExec, int>(vdbe);
+    uintptr_t Addr = RS->specializeOnly(Fn_sqlite3VdbeExec, vdbe);
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
     // Specialized wrapper takes no args (vdbe is baked in as a constant)
     auto SpecFn = reinterpret_cast<int(*)()>(Addr);

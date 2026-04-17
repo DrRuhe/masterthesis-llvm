@@ -21,7 +21,7 @@ int main() {
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
     Data d = {10, 20};
     
-    int res = clangRuntimeSpecializer::specializeFunctionOrFallback<Fn_test_invariant_load>(test_invariant_load, &d);
+    int res = clangRuntimeSpecializer::specializeFunctionOrFallback(Fn_test_invariant_load, test_invariant_load, &d);
     
     // Check that the specialized IR has been optimized to a single return of constant 10
     // CHECK: Optimized specialized function IR:

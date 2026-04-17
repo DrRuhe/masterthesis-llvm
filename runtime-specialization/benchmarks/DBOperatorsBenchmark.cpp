@@ -68,7 +68,7 @@ extern "C" __attribute__((used)) void dummy_registration_db() {
 #else
     if (g_dummy_trigger_db)
 #endif
-        RS->callSpecialized<Fn_execute_query, int>((Operator*)nullptr);
+        RS->callSpecialized<int>(Fn_execute_query, (Operator*)nullptr);
 }
 
 // ── Operator pipeline instances ───────────────────────────────────────────────
@@ -107,7 +107,7 @@ static void phaseSpecializedExec(benchmark::State& state, Operator* op) {
     auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
         clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::None);
-    uintptr_t Addr = RS->specializeOnly<Fn_execute_query, int>(op);
+    uintptr_t Addr = RS->specializeOnly(Fn_execute_query, op);
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(Prev);
     auto Fn = reinterpret_cast<int(*)()>(Addr);
     for (auto _ : state)

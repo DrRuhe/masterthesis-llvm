@@ -63,9 +63,9 @@ volatile bool g_dummy_trigger = false;
 extern "C" __attribute__((used)) void dummy_registration() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     if (g_dummy_trigger) {
-        RS->callSpecialized<Fn_mypow, int>(0);
-        RS->callSpecialized<Fn_config_count, int>((Config*)nullptr, 0);
-        RS->callSpecialized<Fn_A_add, int>((const A*)nullptr, 0, 0);
+        RS->callSpecialized<int>(Fn_mypow, 0);
+        RS->callSpecialized<int>(Fn_config_count, (Config*)nullptr, 0);
+        RS->callSpecialized<int>(Fn_A_add, (const A*)nullptr, 0, 0);
     }
 }
 
@@ -146,7 +146,7 @@ void BM_specialized_exec_method_add(benchmark::State& state) {
     auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
         clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::None);
-    uintptr_t Addr = RS->specializeOnly<Fn_A_add, int>(&g_a_instance, 7, 11);
+    uintptr_t Addr = RS->specializeOnly(Fn_A_add, &g_a_instance, 7, 11);
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(Prev);
     auto SpecFn = reinterpret_cast<int(*)()>(Addr);
     for (auto _ : state)

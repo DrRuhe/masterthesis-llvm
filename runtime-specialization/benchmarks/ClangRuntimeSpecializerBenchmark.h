@@ -80,7 +80,7 @@ void benchmarkJITOverhead(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnly(funcName, opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
@@ -113,7 +113,7 @@ void benchmarkSpecializedExec(
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     uintptr_t Addr = std::apply([&](auto&&... A) {
-        return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
+        return RS->template specializeOnly(funcName, opts, std::forward<decltype(A)>(A)...);
     }, specArgs);
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
     auto SpecFnPtr = reinterpret_cast<R(*)()>(Addr);
@@ -171,7 +171,7 @@ void benchmarkJITOverheadMethod(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnly(funcName, opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
     auto txStats = ClangRuntimeSpecializer::getLastTransformStats();
@@ -179,12 +179,12 @@ void benchmarkJITOverheadMethod(
     if constexpr (std::is_void_v<R>) {
         std::apply(InvokeNormal, normalArgs);
         std::apply([&](auto&&... A) {
-            RS->template callSpecialized<funcName, void>(std::forward<decltype(A)>(A)...);
+            RS->template callSpecialized<void>(funcName, std::forward<decltype(A)>(A)...);
         }, specArgs);
     } else {
         R ResOrig = std::apply(InvokeNormal, normalArgs);
         R ResSpec = std::apply([&](auto&&... A) -> R {
-            return RS->template callSpecialized<funcName, R>(std::forward<decltype(A)>(A)...);
+            return RS->template callSpecialized<R>(funcName, std::forward<decltype(A)>(A)...);
         }, specArgs);
         if constexpr (HasEqualityOperator<R>::value) {
             if (ResOrig != ResSpec)
@@ -221,7 +221,7 @@ void benchmarkSpecializedExecMethod(
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     uintptr_t Addr = std::apply([&](auto&&... A) {
-        return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
+        return RS->template specializeOnly(funcName, opts, std::forward<decltype(A)>(A)...);
     }, specArgs);
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
     auto SpecFnPtr = reinterpret_cast<R(*)()>(Addr);
@@ -304,7 +304,7 @@ void benchmarkJITAnalysis(
     for (auto _ : state) {
         auto T0 = std::chrono::steady_clock::now();
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnly(funcName, opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
         double Ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - T0).count();
@@ -344,7 +344,7 @@ void benchmarkJITAnalysisMethod(
     for (auto _ : state) {
         auto T0 = std::chrono::steady_clock::now();
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnly(funcName, opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
         double Ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - T0).count();

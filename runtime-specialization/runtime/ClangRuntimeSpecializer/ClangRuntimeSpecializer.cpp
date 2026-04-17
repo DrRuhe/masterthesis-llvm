@@ -35,6 +35,7 @@
 #include "DevirtualizeConstantVtableCalls.h"
 #include "StaticMutabilityAnalysis.h"
 #include "InvariantLoadToConstant.h"
+#include "ConstantArgFunctionSpecializationPass.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/IR/DebugInfo.h"

@@ -3,6 +3,7 @@ add_library(ClangRuntimeSpecializer SHARED
         DevirtualizeConstantVtableCalls.cpp
         StaticMutabilityAnalysis.cpp
         InvariantLoadToConstant.cpp
+        ConstantArgFunctionSpecializationPass.cpp
 )
 
 target_include_directories(ClangRuntimeSpecializer

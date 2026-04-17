@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
   // EXE: entry:
   // EXE:   ret i32 0
   // EXE: }
-  int r1 = clangRuntimeSpecializer::specializeMethodOrFallback<Fn_A_getMod2>(&A::getMod2, instance);
+  int r1 = clangRuntimeSpecializer::specializeMethodOrFallback(Fn_A_getMod2, &A::getMod2, instance);
 
   // EXE: INFO: [callSpecialized] Specializing call to: A::add
   // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
   // EXE: entry:
   // EXE:   ret i32 20
   // EXE: }
-  int r2 = clangRuntimeSpecializer::specializeMethodOrFallback<Fn_A_add>(&A::add, instance,7, 11);
+  int r2 = clangRuntimeSpecializer::specializeMethodOrFallback(Fn_A_add, &A::add, instance,7, 11);
 
 
   int r3 = instance.getMod2();
