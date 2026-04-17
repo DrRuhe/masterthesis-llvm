@@ -39,6 +39,7 @@
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/PassInstrumentation.h"
+#include "llvm/Support/TimeProfiler.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Analysis/InlineCost.h"
 #include "llvm/Config/llvm-config.h"
@@ -292,8 +293,9 @@ namespace clangRuntimeSpecializer {
         llvm::cantFail(llvm::orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(
             Instance->JIT->getDataLayout().getGlobalPrefix())));
 
-    // Explicitly export instrumentation counters to the JIT.
-    if (Instance->isInstructionInstrumentationEnabled()) {
+    // Always export instrumentation counters so they are available when per-call
+    // options enable instrumentation, without requiring re-initialization.
+    {
       auto &JD = Instance->JIT->getMainJITDylib();
       llvm::orc::SymbolMap Symbols;
       Symbols[Instance->JIT->mangleAndIntern("g_inst_count")] = { llvm::orc::ExecutorAddr::fromPtr(&g_inst_count), llvm::JITSymbolFlags::Exported };
@@ -336,6 +338,7 @@ namespace clangRuntimeSpecializer {
             llvm::PassInstrumentationCallbacks PIC;
             PIC.registerBeforeNonSkippedPassCallback(
                 [&](llvm::StringRef ID, llvm::Any IR) {
+                  llvm::timeTraceProfilerBegin(ID, ""); // no-op if profiler not initialized
                   if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
                     PendingName = std::string(ID);
                     auto [F, I, B] = countModule(**MP);
@@ -346,6 +349,7 @@ namespace clangRuntimeSpecializer {
             PIC.registerAfterPassCallback(
                 [&](llvm::StringRef /*ID*/, llvm::Any IR,
                     const llvm::PreservedAnalyses& PA) {
+                  llvm::timeTraceProfilerEnd(); // no-op if profiler not initialized
                   if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
                     auto [FA, IA, BA] = countModule(**MP);
                     double Ms = std::chrono::duration<double, std::milli>(
@@ -356,6 +360,10 @@ namespace clangRuntimeSpecializer {
                         Ms, !PA.areAllPreserved()
                     });
                   }
+                });
+            PIC.registerAfterPassInvalidatedCallback(
+                [](llvm::StringRef, const llvm::PreservedAnalyses&) {
+                  llvm::timeTraceProfilerEnd(); // balance begin for invalidated passes
                 });
 
             llvm::PassBuilder PB(nullptr, {}, std::nullopt, &PIC);
@@ -380,7 +388,7 @@ namespace clangRuntimeSpecializer {
 
             // Strip debug info by default to reduce JIT overhead and code size.
             // Only keep debug info if explicitly requested via setKeepDebugInfo(true).
-            if (!Instance->shouldKeepDebugInfo()) {
+            if (!Instance->CurrentCallOptions.KeepDebugInfo) {
               // llvm::StripDebugInfo removes most debug info, but sometimes leaves
               // some behind in modules that already have it.
               bool DebugInfoStripped = llvm::StripDebugInfo(M);
@@ -422,67 +430,109 @@ namespace clangRuntimeSpecializer {
               }
             }
 
+            bool TraceEnabled = Optimize && !Instance->CurrentCallOptions.TimeTraceOutputPath.empty();
+            if (TraceEnabled)
+                llvm::timeTraceProfilerInitialize(/*TimeTraceGranularity=*/0, "JIT");
+
             if (Optimize) {
+              // ── Diagnostic phase timer (stderr, always flushed) ──────────────
+              auto T0_jit = std::chrono::steady_clock::now();
+              auto phaseLog = [&](const char* phase, size_t instrs = 0) {
+                double sec = std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() - T0_jit).count();
+                if (instrs)
+                  std::fprintf(stderr, "[JIT %.2fs] %s  (%zu instrs)\n", sec, phase, instrs);
+                else
+                  std::fprintf(stderr, "[JIT %.2fs] %s\n", sec, phase);
+                std::fflush(stderr);
+              };
+              // ────────────────────────────────────────────────────────────────
+
               // Snapshot pre-prune stats
               g_lastTransformStats.FunctionCount    = countNonDecl(M);
               g_lastTransformStats.InstructionCount = countInstrs(M);
+              phaseLog("start", g_lastTransformStats.InstructionCount);
 
               // Early pruning: remove definitions unreachable from the wrapper + vtable roots.
               // Safe: prepareModuleForJIT already gave the wrapper ExternalLinkage and vtable
               // functions WeakODRLinkage (both are GlobalDCE roots). AvailableExternally functions
               // that get removed are resolved from the host via DynamicLibrarySearchGenerator.
-              {
+              if (Instance->CurrentCallOptions.EnableEarlyPrune) {
                 CurrentGroup = "prune";
                 llvm::ModulePassManager PruneMPM;
                 PruneMPM.addPass(llvm::GlobalDCEPass());
                 PruneMPM.run(M, MAM);
               }
 
-              // Snapshot post-prune stats
+              // Snapshot post-prune stats (reflects current state whether prune ran or not)
               g_lastTransformStats.FunctionCountAfterPrune    = countNonDecl(M);
               g_lastTransformStats.InstructionCountAfterPrune = countInstrs(M);
+              phaseLog("after prune", g_lastTransformStats.InstructionCountAfterPrune);
 
               // Classify module size after pruning to gate expensive transforms.
               // Large modules (e.g. the sqlite3 amalgamation compiled as a single
               // translation unit) must use conservative inlining and loop-unroll
               // settings to avoid catastrophic IR explosion.
               const bool LargeModule =
-                  g_lastTransformStats.InstructionCountAfterPrune > 10000;
-
-              // Per-function instruction count, used to scope alwaysinline below.
-              auto countFnInstrs = [](const llvm::Function &F) -> size_t {
-                size_t n = 0;
-                for (const auto &BB : F) n += BB.size();
-                return n;
-              };
+                  g_lastTransformStats.InstructionCountAfterPrune > Instance->CurrentCallOptions.LargeModuleInstrThreshold;
 
               // FIXPOINT ITERATION: Runtime specialization requires aggressive devirtualization
               // and inlining. We iterate with a carefully ordered pipeline:
               // 1. IPSCCP -> GlobalOpt -> GlobalDCE (interprocedural constant propagation & devirt)
               // 2. Pre-inlining passes: EarlyCSE, SROA, JumpThreading, CVP, InstCombine
-              // 3. ModuleInliner (aggressive inlining)
+              // 3. ConstantArgAlwaysInlinePass + AlwaysInliner (specialization-aware inlining)
               // 4. Post-inlining passes: GVN (KEY!), EarlyCSE, JumpThreading, CVP, loop opts
               // The CRITICAL insight: GVN must run AFTER inlining to propagate vtable pointer
               // constants through the inlined code, enabling complete devirtualization.
               // This ensures virtual calls like Filter::next and Scan::next are fully devirtualized
               // and inlined, eliminating all vtable lookups.
 
-              // Mark functions for inlining.  Functions already marked by
-              // encourageInlining() (wrapper + target) keep alwaysinline.  On small
-              // modules every function gets it; on large modules only functions with
-              // ≤200 instructions get alwaysinline — larger ones are left for the
-              // ModuleInliner's cost model, preventing unbounded IR expansion on
-              // monolithic translation units like sqlite3.
-              constexpr size_t AlwaysInlineMaxInstrs = 200;
+              // Marks call sites alwaysinline when at least one argument is a compile-time constant.
+              // This restricts inlining to sites where specialization can actually propagate the
+              // constant, avoiding unnecessary IR expansion at non-constant-arg call sites.
+              struct ConstantArgAlwaysInlinePass
+                  : llvm::PassInfoMixin<ConstantArgAlwaysInlinePass> {
+                llvm::PreservedAnalyses run(llvm::Module &M,
+                                            llvm::ModuleAnalysisManager &) {
+                  bool Changed = false;
+                  for (auto &F : M) {
+                    for (auto &BB : F) {
+                      for (auto &I : BB) {
+                        auto *CB = llvm::dyn_cast<llvm::CallBase>(&I);
+                        if (!CB) continue;
+                        auto *Callee = CB->getCalledFunction();
+                        // Only direct calls to non-declaration callees not already
+                        // alwaysinline on the function definition.
+                        if (!Callee || Callee->isDeclaration()) continue;
+                        if (Callee->hasFnAttribute(llvm::Attribute::AlwaysInline))
+                          continue;
+
+                        bool HasConstantArg = llvm::any_of(
+                            CB->args(), [](const llvm::Use &U) {
+                              return llvm::isa<llvm::Constant>(U.get());
+                            });
+
+                        if (HasConstantArg &&
+                            !CB->hasFnAttr(llvm::Attribute::AlwaysInline)) {
+                          CB->addFnAttr(llvm::Attribute::AlwaysInline);
+                          CB->removeFnAttr(llvm::Attribute::NoInline);
+                          Changed = true;
+                        }
+                      }
+                    }
+                  }
+                  return Changed ? llvm::PreservedAnalyses::none()
+                                 : llvm::PreservedAnalyses::all();
+                }
+              };
+
+              // Clear blocking attributes so AlwaysInliner can act on call-site annotations.
+              // Do NOT add alwaysinline globally; ConstantArgAlwaysInlinePass handles that
+              // selectively based on whether call sites have constant arguments.
               for (auto &F : M) {
                 if (!F.isDeclaration()) {
                   F.removeFnAttr(llvm::Attribute::NoInline);
                   F.removeFnAttr(llvm::Attribute::OptimizeNone);
-                  if (!LargeModule ||
-                      F.hasFnAttribute(llvm::Attribute::AlwaysInline) ||
-                      countFnInstrs(F) <= AlwaysInlineMaxInstrs) {
-                    F.addFnAttr(llvm::Attribute::AlwaysInline);
-                  }
                 }
               }
 
@@ -507,12 +557,24 @@ namespace clangRuntimeSpecializer {
                 // 3d. Replace invariant loads with constants from host memory
                 InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
 
-                InitialMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
+                // For large modules (e.g. sqlite3 amalgamation), skip inlining in the
+                // initial phase.  Inlining sqlite3VdbeExec (234K instrs) transitively
+                // expands the module to ~3M instructions, making IPSCCP/GVN in the
+                // fixpoint prohibitively slow.  Instead, let IPSCCP in the first fixpoint
+                // iteration propagate the constant vdbe* pointer interprocedurally;
+                // ConstantArgAlwaysInlinePass then marks call sites with now-constant
+                // arguments for inlining in subsequent iterations.
+                if (!LargeModule) {
+                  // Annotate constant-arg call sites before AlwaysInliner.
+                  InitialMPM.addPass(ConstantArgAlwaysInlinePass());
+                  InitialMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
+                }
                 InitialMPM.run(M, MAM);
               }
+              phaseLog("after initial", countInstrs(M));
 
 
-              if (Instance->printsFixpointIterations())
+              if (Instance->CurrentCallOptions.PrintFixpointIterations)
               {
                 for (auto &F : M) {
                   if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
@@ -525,13 +587,14 @@ namespace clangRuntimeSpecializer {
 
               // Fixpoint iteration: Run until no more changes occur
               // We count instructions to detect convergence
-              constexpr int MaxFixpointIterations = 10;
+              const int MaxFixpointIterations = Instance->CurrentCallOptions.MaxFixpointIterations;
               size_t PrevInstCount = 0;
 
               for (int Iteration = 0; Iteration < MaxFixpointIterations; ++Iteration) {
                 CurrentGroup = "fixpoint";
                 CurrentFixpointIter = Iteration;
-                if (Instance->printsFixpointIterations()) log(LogLevel::Debug, "IRTransform",
+                phaseLog(("fixpoint iter " + std::to_string(Iteration) + " start").c_str(), countInstrs(M));
+                if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug, "IRTransform",
                     llvm::formatv("Fixpoint iteration {0}", Iteration).str());
 
                 llvm::ModulePassManager FixpointMPM;
@@ -560,7 +623,8 @@ namespace clangRuntimeSpecializer {
                 // 1d. Replace invariant loads with constants from host memory
                 FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
 
-                // 1e. Inline devirtualized calls
+                // 1e. Annotate constant-arg call sites, then inline them.
+                FixpointMPM.addPass(ConstantArgAlwaysInlinePass());
                 FixpointMPM.addPass(llvm::AlwaysInlinerPass());
 
                 // 2. Global optimizations - includes devirtualization
@@ -594,27 +658,6 @@ namespace clangRuntimeSpecializer {
                 PreInlineFPM.addPass(llvm::InstCombinePass());
 
                 FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PreInlineFPM)));
-
-                // 5. Aggressive inlining - inline everything possible
-                llvm::InlineParams IP = llvm::getInlineParams();
-                if (!LargeModule) {
-                  // Small module: inline everything regardless of size.
-                  IP.DefaultThreshold            = 500000;
-                  IP.HintThreshold               = 500000;
-                  IP.ColdThreshold               = 500000;
-                  IP.OptSizeThreshold            = 500000;
-                  IP.OptMinSizeThreshold         = 500000;
-                  IP.HotCallSiteThreshold        = 500000;
-                  IP.LocallyHotCallSiteThreshold = 500000;
-                  IP.ColdCallSiteThreshold       = 500000;
-                }
-                // Large module: keep getInlineParams() defaults — still aggressive
-                // but bounded by the cost model, preventing multi-GB IR explosion.
-                IP.ComputeFullInlineCost = false;
-                IP.EnableDeferral = false;
-                IP.AllowRecursiveCall = true;
-
-                FixpointMPM.addPass(llvm::ModuleInlinerPass(IP));
 
                 // 6. CRITICAL: Post-inlining optimizations
                 // GVN can NOW see through inlined code and propagate vtable pointer constants!
@@ -665,7 +708,7 @@ namespace clangRuntimeSpecializer {
                 if (!LargeModule) {
                   UnrollOpts.setRuntime(true);
                   UnrollOpts.setUpperBound(true);
-                  UnrollOpts.setFullUnrollMaxCount(128);
+                  UnrollOpts.setFullUnrollMaxCount(Instance->CurrentCallOptions.LoopUnrollCount);
                 }
                 PostInlineFPM.addPass(llvm::LoopUnrollPass(UnrollOpts));
 
@@ -679,7 +722,7 @@ namespace clangRuntimeSpecializer {
                 // Run the fixpoint iteration pass pipeline
                 FixpointMPM.run(M, MAM);
 
-                if (Instance->printsFixpointIterations())
+                if (Instance->CurrentCallOptions.PrintFixpointIterations)
                 {
                   for (auto &F : M) {
                     if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
@@ -699,11 +742,13 @@ namespace clangRuntimeSpecializer {
                   }
                 }
 
-                if (Instance->printsFixpointIterations()) log(LogLevel::Debug, "IRTransform",
+                phaseLog(("fixpoint iter " + std::to_string(Iteration) + " end").c_str(), InstCount);
+
+                if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug, "IRTransform",
                     llvm::formatv("Instruction count: {0}", InstCount).str());
 
                 if (InstCount == PrevInstCount) {
-                  if (Instance->printsFixpointIterations()) log(LogLevel::Debug, "IRTransform",
+                  if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug, "IRTransform",
                       llvm::formatv("Fixpoint reached after {0} iterations", Iteration + 1).str());
                   break;
                 }
@@ -723,17 +768,19 @@ namespace clangRuntimeSpecializer {
                 PostFixpointMPM.addPass(llvm::GlobalDCEPass());
                 PostFixpointMPM.run(M, MAM);
               }
+              phaseLog("after postfix", countInstrs(M));
 
               // Final O3 pass for cleanup and additional optimizations
-              {
+              if (Instance->CurrentCallOptions.EnableO3Final) {
                 CurrentGroup = "final";
                 llvm::ModulePassManager FinalMPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
                 FinalMPM.run(M, MAM);
+                phaseLog("after final O3", countInstrs(M));
               }
             }
 
             // After optimization, perform dynamic instruction counting instrumentation if enabled.
-            bool Instrument = Instance->isInstructionInstrumentationEnabled();
+            bool Instrument = Instance->CurrentCallOptions.EnableInstructionInstrumentation;
             if (!Instrument) {
                 for (auto &F : M) {
                     if (F.hasFnAttribute("force-instrument")) {
@@ -804,6 +851,15 @@ namespace clangRuntimeSpecializer {
                     return llvm::formatv("Optimized specialized function IR:\n{0}", printLLVM(&F)).str();
                 });
               }
+            }
+
+            if (TraceEnabled) {
+                std::error_code EC;
+                llvm::raw_fd_ostream TraceOS(Instance->CurrentCallOptions.TimeTraceOutputPath, EC);
+                if (!EC)
+                    llvm::timeTraceProfilerWrite(TraceOS);
+                llvm::timeTraceProfilerCleanup();
+                Instance->CurrentCallOptions.TimeTraceOutputPath.clear();
             }
 
             g_lastPassTrace = std::move(TraceRecords);

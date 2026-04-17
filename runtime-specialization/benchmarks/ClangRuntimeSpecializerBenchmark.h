@@ -65,7 +65,8 @@ void benchmarkJITOverhead(
     benchmark::State& state,
     Fn F,
     Tuple normalArgs,
-    Tuple specArgs)
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
 
@@ -79,7 +80,7 @@ void benchmarkJITOverhead(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
@@ -98,7 +99,8 @@ __attribute__((always_inline))
 void benchmarkSpecializedExec(
     benchmark::State& state,
     Fn F,
-    Tuple specArgs)
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
 
@@ -111,7 +113,7 @@ void benchmarkSpecializedExec(
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     uintptr_t Addr = std::apply([&](auto&&... A) {
-        return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+        return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
     }, specArgs);
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
     auto SpecFnPtr = reinterpret_cast<R(*)()>(Addr);
@@ -154,7 +156,8 @@ void benchmarkJITOverheadMethod(
     benchmark::State& state,
     MemFn Mf,
     Tuple normalArgs,
-    Tuple specArgs)
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
 
@@ -168,7 +171,7 @@ void benchmarkJITOverheadMethod(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
     auto txStats = ClangRuntimeSpecializer::getLastTransformStats();
@@ -204,7 +207,8 @@ __attribute__((always_inline))
 void benchmarkSpecializedExecMethod(
     benchmark::State& state,
     MemFn Mf,
-    Tuple specArgs)
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
 
@@ -217,7 +221,7 @@ void benchmarkSpecializedExecMethod(
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     uintptr_t Addr = std::apply([&](auto&&... A) {
-        return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+        return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
     }, specArgs);
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
     auto SpecFnPtr = reinterpret_cast<R(*)()>(Addr);
@@ -277,7 +281,8 @@ __attribute__((always_inline))
 void benchmarkJITAnalysis(
     benchmark::State& state,
     Fn F,
-    Tuple specArgs)
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
 
@@ -286,12 +291,20 @@ void benchmarkJITAnalysis(
     };
     using R = decltype(std::apply(InvokeNormal, specArgs));
 
+    // Auto-derive Chrome trace filename from benchmark name; caller opts control everything else.
+    std::string ChromeTraceFilename = state.name() + "_chrome_trace.json";
+    for (char& C : ChromeTraceFilename)
+        if (C != '.' && C != '-' && C != '_' &&
+            !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
+            C = '_';
+    opts.TimeTraceOutputPath = ChromeTraceFilename;
+
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         auto T0 = std::chrono::steady_clock::now();
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
         double Ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - T0).count();
@@ -308,7 +321,8 @@ __attribute__((always_inline))
 void benchmarkJITAnalysisMethod(
     benchmark::State& state,
     MemFn Mf,
-    Tuple specArgs)
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
 
@@ -317,12 +331,20 @@ void benchmarkJITAnalysisMethod(
     };
     using R = decltype(std::apply(InvokeNormal, specArgs));
 
+    // Auto-derive Chrome trace filename from benchmark name; caller opts control everything else.
+    std::string ChromeTraceFilename = state.name() + "_chrome_trace.json";
+    for (char& C : ChromeTraceFilename)
+        if (C != '.' && C != '-' && C != '_' &&
+            !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
+            C = '_';
+    opts.TimeTraceOutputPath = ChromeTraceFilename;
+
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         auto T0 = std::chrono::steady_clock::now();
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<funcName, R>(std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnlyWithOptions<funcName, R>(opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
         double Ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - T0).count();

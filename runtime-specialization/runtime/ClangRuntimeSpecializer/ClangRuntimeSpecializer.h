@@ -140,44 +140,51 @@ namespace clangRuntimeSpecializer {
 
 
     struct Options {
+      // --- Pipeline configuration ---
+      int MaxFixpointIterations = 10;        // 0 = skip fixpoint loop entirely
+      size_t LargeModuleInstrThreshold = 10000; // instrs after prune; > threshold → conservative unroll
+      int LoopUnrollCount = 128;             // full-unroll max count (small modules only)
+      bool EnableEarlyPrune = true;          // run GlobalDCE before fixpoint
+      bool EnableO3Final = true;             // run O3 as final pass
+
+      // --- Debug / analysis ---
       bool EnableInstructionInstrumentation = false;
       bool KeepDebugInfo = false;
       bool PrintFixpointIterations = false;
+      std::string TimeTraceOutputPath;       // Chrome trace JSON path; "" = disabled
+
+      // --- Preset factories ---
+      static Options Default() { return {}; }
+      static Options O3Only() {
+        Options O; O.MaxFixpointIterations = 0; O.EnableEarlyPrune = false; return O;
+      }
+      static Options Aggressive() {
+        Options O; O.MaxFixpointIterations = 20; O.LoopUnrollCount = 256;
+        O.LargeModuleInstrThreshold = 50000; return O;
+      }
+      static Options Fast() {
+        Options O; O.MaxFixpointIterations = 3;
+        O.LargeModuleInstrThreshold = 0; return O;
+      }
+
+      // --- Fluent builder ---
+      Options& withMaxFixpointIterations(int N)       { MaxFixpointIterations = N; return *this; }
+      Options& withLargeModuleThreshold(size_t N)      { LargeModuleInstrThreshold = N; return *this; }
+      Options& withLoopUnrollCount(int N)             { LoopUnrollCount = N; return *this; }
+      Options& withEarlyPrune(bool V)                 { EnableEarlyPrune = V; return *this; }
+      Options& withO3Final(bool V)                    { EnableO3Final = V; return *this; }
+      Options& withTimeTraceOutput(std::string P)     { TimeTraceOutputPath = std::move(P); return *this; }
+      Options& withKeepDebugInfo(bool V)              { KeepDebugInfo = V; return *this; }
+      Options& withPrintFixpointIterations(bool V)    { PrintFixpointIterations = V; return *this; }
+      Options& withInstructionInstrumentation(bool V) { EnableInstructionInstrumentation = V; return *this; }
     };
 
     static ClangRuntimeSpecializer* init();
-    ClangRuntimeSpecializer* enableInstructionInstrumentation() {
-      CurrentOptions.EnableInstructionInstrumentation = true;
+
+    ClangRuntimeSpecializer* setOptions(Options Opts) {
+      CurrentOptions = std::move(Opts);
       return this;
     }
-
-
-
-
-    bool isInstructionInstrumentationEnabled() const {
-      return CurrentOptions.EnableInstructionInstrumentation;
-    }
-
-    ClangRuntimeSpecializer* setKeepDebugInfo(bool Keep) {
-      CurrentOptions.KeepDebugInfo = Keep;
-      return this;
-    }
-
-    bool shouldKeepDebugInfo() const {
-        return CurrentOptions.KeepDebugInfo;
-    }
-
-    ClangRuntimeSpecializer* printFixpointIterations() {
-        CurrentOptions.PrintFixpointIterations = true;
-        return this;
-    }
-
-    bool printsFixpointIterations() const {
-        return CurrentOptions.PrintFixpointIterations;
-    }
-
-    Options& getOptions() { return CurrentOptions; }
-    const Options& getOptions() const { return CurrentOptions; }
 
 
     template <const char* funcName, class R, class... ARGS>
@@ -205,7 +212,14 @@ namespace clangRuntimeSpecializer {
     [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
     __attribute__((noinline))
     uintptr_t specializeOnly(ARGS&&... Args) {
-      return specializeOnlyImpl<funcName, R, false, true>(__FUNCTION__, std::forward<ARGS>(Args)...);
+      return specializeOnlyImpl<funcName, R, false, true>(__FUNCTION__, CurrentOptions, std::forward<ARGS>(Args)...);
+    }
+
+    template <const char* funcName, class R, class... ARGS>
+    [[clang::annotate(CALL_SPECIALIZED_FUNC_NAME_ANNOTATION_NAME, funcName)]]
+    __attribute__((noinline))
+    uintptr_t specializeOnlyWithOptions(const Options& Opts, ARGS&&... Args) {
+      return specializeOnlyImpl<funcName, R, false, true>(__FUNCTION__, Opts, std::forward<ARGS>(Args)...);
     }
 
     ~ClangRuntimeSpecializer();
@@ -213,7 +227,7 @@ namespace clangRuntimeSpecializer {
   private:
 
     template <const char* funcName, class R, bool Instrument, bool Optimize = true, class... ARGS>
-    uintptr_t specializeOnlyImpl(const char* CallerName, ARGS&&... Args) {
+    uintptr_t specializeOnlyImpl(const char* CallerName, const Options& Opts, ARGS&&... Args) {
       checkInitialization(funcName);
       llvm::Function *TargetFunc = getTargetFunction(funcName);
 
@@ -266,13 +280,14 @@ namespace clangRuntimeSpecializer {
 
       auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), TSCtx);
 
+      CurrentCallOptions = Opts;
       return addModuleAndLookup(std::move(TSM), UniqueWrapperName, std::string(funcName));
     }
 
     template <const char* funcName, class R, bool Instrument, bool Optimize = true, class... ARGS>
     R callImpl(const char* CallerName, ARGS&&... Args) {
       uintptr_t Addr = specializeOnlyImpl<funcName, R, Instrument, Optimize>(
-          CallerName, std::forward<ARGS>(Args)...);
+          CallerName, CurrentOptions, std::forward<ARGS>(Args)...);
       auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
       if constexpr (std::is_void_v<R>) {
           SpecializedFnPtr();
@@ -290,7 +305,8 @@ namespace clangRuntimeSpecializer {
     std::unordered_map<std::string, size_t> FuncToBlobIdx;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
-    Options CurrentOptions;
+    Options CurrentOptions;      // default options used by specializeOnly() / callSpecialized()
+    Options CurrentCallOptions;  // per-invocation options set by specializeOnlyImpl() before JIT
     std::vector<std::unique_ptr<char[]>> SerializationBuffers;
 
     void checkInitialization(const char* funcName) const;
@@ -507,7 +523,8 @@ namespace clangRuntimeSpecializer {
   template <const char* funcName, class Fn, class... ARGS>
   __attribute__((always_inline))
   void compareFunctionInstructionCounts(Fn F, ARGS... Args) {
-    auto* RS = ClangRuntimeSpecializer::init()->enableInstructionInstrumentation();
+    auto* RS = ClangRuntimeSpecializer::init();
+    RS->setOptions(ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true));
 
     // Copy arguments for both calls to ensure same initial state
     auto ArgsOrig = std::make_tuple(Args...);
