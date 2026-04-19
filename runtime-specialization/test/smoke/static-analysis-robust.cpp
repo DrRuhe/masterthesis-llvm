@@ -30,8 +30,8 @@ int process_data_robust(Data* d, int x) {
 
 inline constexpr char Fn_process_data_robust[] = "process_data_robust";
 
-// CHECK: INFO: [callSpecialized] Specializing call to: process_data_robust
-// CHECK: DEBUG: [IRTransform] Optimized specialized function IR:
+// CHECK: INFO: Specializing call to: process_data_robust
+// CHECK: DEBUG: Optimized specialized function IR:
 // CHECK: define {{.*}} i32 @specialized_wrapper_{{.*}}()
 // CHECK: load i32, ptr inttoptr (i64 {{.*}} to ptr), align {{.*}}
 // CHECK-NOT: !invariant.load

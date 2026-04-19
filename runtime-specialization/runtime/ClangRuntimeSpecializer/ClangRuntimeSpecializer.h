@@ -111,15 +111,15 @@ namespace clangRuntimeSpecializer {
     static void resetCounters();
     static InstructionCounts getCurrentCounters();
     static void printCounters();
-    static void printComparisonTable(const char* funcName, const InstructionCounts& Before, const InstructionCounts& After);
+    static void printComparisonTable(const InstructionCounts& Before, const InstructionCounts& After);
 
-    static void log(LogLevel Level, const char* FuncName, const llvm::Twine Message);
-    static void log(LogLevel Level, const char* FuncName, const char* Message);
+    static void log(LogLevel Level, const llvm::Twine Message);
+    static void log(LogLevel Level, const char* Message);
 
     template <typename Callback, typename = std::enable_if_t<std::is_invocable_v<Callback>>>
-    static void log(LogLevel Level, const char* FuncName, Callback&& CB) {
+    static void log(LogLevel Level, Callback&& CB) {
       if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
-          log(Level, FuncName, CB());
+          log(Level, CB());
       }
     }
 
@@ -134,7 +134,7 @@ namespace clangRuntimeSpecializer {
       }
       return S;
     }
-#define CRS_LOG(Level, Msg) clangRuntimeSpecializer::ClangRuntimeSpecializer::log(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Level, __FUNCTION__, Msg)
+#define CRS_LOG(Level, Msg) clangRuntimeSpecializer::ClangRuntimeSpecializer::log(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Level, Msg)
 
 
     struct Options {
@@ -192,29 +192,38 @@ namespace clangRuntimeSpecializer {
       return this;
     }
 
+    // Helper trait: true when the first element of ARGS is not Options.
+    // Used to prevent overload ambiguity when Options is passed as the first arg.
+    template <class...>
+    struct FirstArgIsNotOptions : std::true_type {};
+    template <class A, class... Rest>
+    struct FirstArgIsNotOptions<A, Rest...>
+        : std::bool_constant<!std::is_same_v<std::decay_t<A>, Options>> {};
 
-    template <class R, class... ARGS>
+    template <class R, class... ARGS,
+              std::enable_if_t<FirstArgIsNotOptions<ARGS...>::value, int> = 0>
     __attribute__((noinline))
     R callSpecialized(const char* funcName, ARGS&&... Args) {
-      return callImpl<R>(funcName, __FUNCTION__, CurrentOptions, std::forward<ARGS>(Args)...);
+      return callImpl<R>(funcName, CurrentOptions, std::forward<ARGS>(Args)...);
     }
 
     template <class R, class... ARGS>
     __attribute__((noinline))
     R callSpecialized(const char* funcName, const Options& opts, ARGS&&... Args) {
-      return callImpl<R>(funcName, __FUNCTION__, opts, std::forward<ARGS>(Args)...);
+      return callImpl<R>(funcName, opts, std::forward<ARGS>(Args)...);
     }
 
-    template <class... ARGS>
+    template <class... ARGS,
+              std::enable_if_t<FirstArgIsNotOptions<ARGS...>::value, int> = 0>
     __attribute__((noinline))
     uintptr_t specializeOnly(const char* funcName, ARGS&&... Args) {
-      return specializeOnlyImpl(funcName, __FUNCTION__, CurrentOptions, std::forward<ARGS>(Args)...);
+      return specializeOnlyImpl(funcName, CurrentOptions, std::forward<ARGS>(Args)...);
     }
 
     template <class... ARGS>
     __attribute__((noinline))
     uintptr_t specializeOnly(const char* funcName, const Options& opts, ARGS&&... Args) {
-      return specializeOnlyImpl(funcName, __FUNCTION__, opts, std::forward<ARGS>(Args)...);
+      return specializeOnlyImpl(funcName, opts, std::forward<ARGS>(Args)...);
     }
 
     ~ClangRuntimeSpecializer();
@@ -222,16 +231,16 @@ namespace clangRuntimeSpecializer {
   private:
 
     template <class... ARGS>
-    uintptr_t specializeOnlyImpl(const char* funcName, const char* CallerName, const Options& Opts, ARGS&&... Args) {
+    uintptr_t specializeOnlyImpl(const char* funcName, const Options& Opts, ARGS&&... Args) {
       checkInitialization(funcName);
       llvm::Function *TargetFunc = getTargetFunction(funcName);
 
       validateArgs(TargetFunc, sizeof...(ARGS));
 
       if (Opts.EnableInstructionInstrumentation) {
-          log(LogLevel::Info, CallerName, (llvm::Twine("Instrumenting call to: ") + funcName).str());
+          log(LogLevel::Info,  (llvm::Twine("Instrumenting call to: ") + funcName).str());
       } else {
-          log(LogLevel::Info, CallerName, (llvm::Twine("Specializing call to: ") + funcName).str());
+          log(LogLevel::Info, (llvm::Twine("Specializing call to: ") + funcName).str());
       }
       // Clone only the blob module that contains the target function.
       // This avoids cloning the full merged module when multiple TUs are linked.
@@ -256,7 +265,7 @@ namespace clangRuntimeSpecializer {
       llvm::IRBuilder<> Builder(Entry);
 
       // Serialize the runtime arguments to IR constants and create a call to the target function with them.
-      std::vector<llvm::Value*> ArgValues = serializeArgumentsToIR(Builder, CallerName, std::forward<ARGS>(Args)...);
+      std::vector<llvm::Value*> ArgValues = serializeArgumentsToIR(Builder, std::forward<ARGS>(Args)...);
 
       auto * const CallInst = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(), TargetFuncInNewModule, ArgValues);
       CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
@@ -277,8 +286,8 @@ namespace clangRuntimeSpecializer {
     }
 
     template <class R, class... ARGS>
-    R callImpl(const char* funcName, const char* CallerName, const Options& Opts, ARGS&&... Args) {
-      uintptr_t Addr = specializeOnlyImpl(funcName, CallerName, Opts, std::forward<ARGS>(Args)...);
+    R callImpl(const char* funcName, const Options& Opts, ARGS&&... Args) {
+      uintptr_t Addr = specializeOnlyImpl(funcName, Opts, std::forward<ARGS>(Args)...);
       auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
       if constexpr (std::is_void_v<R>) {
           SpecializedFnPtr();
@@ -345,11 +354,11 @@ namespace clangRuntimeSpecializer {
       }
 
       template <class... Args>
-      std::vector<llvm::Value*> serializeArgumentsToIR(llvm::IRBuilder<>& builder, const char* CallerName, Args&&... args) {
+      std::vector<llvm::Value*> serializeArgumentsToIR(llvm::IRBuilder<>& builder, Args&&... args) {
           std::vector<llvm::Value*> argValues;
           auto serializeAndLog = [&](auto&& arg) {
               auto* v = serializeArgumentToIR(builder, std::forward<decltype(arg)>(arg));
-              log(LogLevel::Debug, CallerName, (llvm::Twine("Arg Serialized to: ") + printLLVM(v)).str());
+              log(LogLevel::Debug (llvm::Twine("Arg Serialized to: ") + printLLVM(v)).str());
               argValues.push_back(v);
           };
           (serializeAndLog(std::forward<Args>(args)), ...);

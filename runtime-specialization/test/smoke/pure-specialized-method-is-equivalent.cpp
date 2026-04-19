@@ -44,14 +44,14 @@ int main(int argc, char** argv) {
 
 
 
-  // EXE: INFO: [callSpecialized] Specializing call to: A::getMod2
-  // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
-  // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+  // EXE: INFO: Specializing call to: A::getMod2
+  // EXE: DEBUG: Serializing value of type pointer or class
+  // EXE: DEBUG: Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
+  // EXE: DEBUG: Optimized specialized function IR:
   // EXE: entry:
   // EXE:   ret i32 0
   // EXE: }
-  // EXE: INFO: [assertSpecializedFunctionIsEquivalent] Successfully specialized A::getMod2! No differences could be observed.
+  // EXE: INFO: Successfully specialized A::getMod2! No differences could be observed.
   A instance(argc);
   A instance2(argc);
   auto comp = [&]() {
@@ -59,18 +59,18 @@ int main(int argc, char** argv) {
   };
   clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_A_getMod2, &A::getMod2, std::tie(instance), std::tie(instance2), comp);
 
-  // EXE: INFO: [callSpecialized] Specializing call to: A::add
-  // EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
-  // EXE: DEBUG: [serializeValueToIR] Serializing value of type i32
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: i32 7
-  // EXE: DEBUG: [serializeValueToIR] Serializing value of type i32
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: i32 11
-  // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+  // EXE: INFO: Specializing call to: A::add
+  // EXE: DEBUG: Serializing value of type pointer or class
+  // EXE: DEBUG: Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
+  // EXE: DEBUG: Serializing value of type i32
+  // EXE: DEBUG: Arg Serialized to: i32 7
+  // EXE: DEBUG: Serializing value of type i32
+  // EXE: DEBUG: Arg Serialized to: i32 11
+  // EXE: DEBUG: Optimized specialized function IR:
   // EXE: entry:
   // EXE:   ret i32 20
   // EXE: }
-  // EXE: INFO: [assertSpecializedFunctionIsEquivalent] Successfully specialized A::add! No differences could be observed.
+  // EXE: INFO: Successfully specialized A::add! No differences could be observed.
 
   A instance3(argc);
   A instance4(argc);

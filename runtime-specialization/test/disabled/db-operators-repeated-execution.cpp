@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-// EXE: INFO: [callSpecialized] Specializing call to: execute_query
+// EXE: INFO: Specializing call to: execute_query
 // EXE: Operators returned 95 
 // EXE: Operators returned 96 
 // EXE: Operators returned 97 

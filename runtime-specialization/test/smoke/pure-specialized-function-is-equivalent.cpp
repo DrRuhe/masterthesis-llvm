@@ -25,15 +25,15 @@ int main(int argc, char** argv)
 {
   clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
 
-  // EXE: INFO: [callSpecialized] Specializing call to: mypow
-  // EXE: DEBUG: [serializeValueToIR] Serializing value of type i32
-  // EXE: DEBUG: [callSpecialized] Arg Serialized to: i32 2
-  // EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+  // EXE: INFO: Specializing call to: mypow
+  // EXE: DEBUG: Serializing value of type i32
+  // EXE: DEBUG: Arg Serialized to: i32 2
+  // EXE: DEBUG: Optimized specialized function IR:
   // EXE: define noundef i32 @specialized_wrapper
   // EXE: entry:
   // EXE:   ret i32 9
   // EXE: }
-  // EXE: INFO: [assertSpecializedFunctionIsEquivalent] Successfully specialized mypow! No differences could be observed.
+  // EXE: INFO: Successfully specialized mypow! No differences could be observed.
   int argc_copy = argc;
   auto comp = [&]() {
       if (argc != argc_copy) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Arguments differ");

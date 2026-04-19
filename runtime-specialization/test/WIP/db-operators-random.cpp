@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-// EXE: INFO: [callSpecialized] Specializing call to: execute_query
-// EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
-// EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+// EXE: INFO: Specializing call to: execute_query
+// EXE: DEBUG: Serializing value of type pointer or class
+// EXE: DEBUG: Optimized specialized function IR:
 // EXE-NOT: load ptr, ptr %vtable

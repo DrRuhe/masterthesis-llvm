@@ -109,8 +109,8 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-// EXE: DEBUG: [serializeValueToIR] Serializing value of type pointer or class
-// EXE: DEBUG: [callSpecialized] Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
-// EXE: DEBUG: [IRTransform] Optimized specialized function IR:
+// EXE: DEBUG: Serializing value of type pointer or class
+// EXE: DEBUG: Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
+// EXE: DEBUG: Optimized specialized function IR:
 // EXE-NOT: load ptr, ptr
 // EXE: ret i32
