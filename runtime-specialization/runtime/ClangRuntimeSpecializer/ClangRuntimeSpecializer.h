@@ -58,12 +58,6 @@ namespace clangRuntimeSpecializer {
 
   class ClangRuntimeSpecializer {
   public:
-    struct WriteBack {
-        llvm::Value* Source; // Changed from GlobalVariable* GV
-        void* OriginalPtr;
-        uint64_t Size;
-    };
-
     enum class LogLevel {
       None,
       Error,
@@ -219,8 +213,7 @@ namespace clangRuntimeSpecializer {
       return this;
     }
 
-    // Helper trait: true when the first element of ARGS is not Options.
-    // Used to prevent overload ambiguity when Options is passed as the first arg.
+    // Implementation detail: overload disambiguation trait (not for external use).
     template <class...>
     struct FirstArgIsNotOptions : std::true_type {};
     template <class A, class... Rest>
@@ -240,17 +233,17 @@ namespace clangRuntimeSpecializer {
       return callImpl<R>(funcName, opts, std::forward<ARGS>(Args)...);
     }
 
-    template <class... ARGS,
+    template <class R, class... ARGS,
               std::enable_if_t<FirstArgIsNotOptions<ARGS...>::value, int> = 0>
     __attribute__((noinline))
-    uintptr_t specializeOnly(const char* funcName, ARGS&&... Args) {
-      return specializeOnlyImpl(funcName, CurrentOptions, std::forward<ARGS>(Args)...);
+    auto specializeOnly(const char* funcName, ARGS&&... Args) -> R(*)() {
+      return reinterpret_cast<R(*)()>(specializeOnlyImpl(funcName, CurrentOptions, std::forward<ARGS>(Args)...));
     }
 
-    template <class... ARGS>
+    template <class R, class... ARGS>
     __attribute__((noinline))
-    uintptr_t specializeOnly(const char* funcName, const Options& opts, ARGS&&... Args) {
-      return specializeOnlyImpl(funcName, opts, std::forward<ARGS>(Args)...);
+    auto specializeOnly(const char* funcName, const Options& opts, ARGS&&... Args) -> R(*)() {
+      return reinterpret_cast<R(*)()>(specializeOnlyImpl(funcName, opts, std::forward<ARGS>(Args)...));
     }
 
     ~ClangRuntimeSpecializer();
@@ -395,43 +388,12 @@ namespace clangRuntimeSpecializer {
 
   };
 
-  template <class MemFn, class OBJ, class... ARGS>
+  template <class Callable, class... ARGS>
   __attribute__((always_inline))
-  decltype(auto) specializeMethodOrFallback(const char* funcName, MemFn MF, OBJ&& Obj, ARGS&&... Args) {
+  decltype(auto) specializeOrFallback(const char* funcName, Callable C, ARGS&&... Args) {
     auto Invoke = [&]() -> decltype(auto) {
-      return (std::forward<OBJ>(Obj).*MF)(std::forward<ARGS>(Args)...);
+      return std::invoke(C, std::forward<ARGS>(Args)...);
     };
-    try {
-      if (auto* RS = ClangRuntimeSpecializer::init()) {
-        using R = decltype(Invoke());
-        if constexpr (std::is_void_v<R>) {
-          RS->callSpecialized<void>(funcName, std::forward<OBJ>(Obj), std::forward<ARGS>(Args)...);
-          return;
-        } else {
-          return RS->callSpecialized<R>(funcName, std::forward<OBJ>(Obj), std::forward<ARGS>(Args)...);
-        }
-      }
-    } catch (const std::exception& E) {
-      CRS_LOG(Error, (llvm::Twine("Specialization failed: ") + E.what()).str());
-    } catch (...) {
-      CRS_LOG(Error, "Specialization failed with an unknown error.");
-    }
-
-    if constexpr (std::is_void_v<decltype(Invoke())>) {
-      Invoke();
-      return;
-    } else {
-      return Invoke();
-    }
-  }
-
-  template <class Fn, class... ARGS>
-  __attribute__((always_inline))
-  decltype(auto) specializeFunctionOrFallback(const char* funcName, Fn F, ARGS&&... Args) {
-    auto Invoke = [&]() -> decltype(auto) {
-      return F(std::forward<ARGS>(Args)...);
-    };
-
     try {
       if (auto* RS = ClangRuntimeSpecializer::init()) {
         using R = decltype(Invoke());
@@ -441,14 +403,12 @@ namespace clangRuntimeSpecializer {
         } else {
           return RS->callSpecialized<R>(funcName, std::forward<ARGS>(Args)...);
         }
-
       }
     } catch (const std::exception& E) {
       CRS_LOG(Error, (llvm::Twine("Specialization failed: ") + E.what()).str());
     } catch (...) {
       CRS_LOG(Error, "Specialization failed with an unknown error.");
     }
-
     if constexpr (std::is_void_v<decltype(Invoke())>) {
       Invoke();
       return;
@@ -459,7 +419,7 @@ namespace clangRuntimeSpecializer {
 
   template <class Fn, class Tuple, class Comparator>
   __attribute__((always_inline))
-  void assertSpecializedFunctionIsEquivalent(const char* funcName, Fn F, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
+  void assertSpecializedIsEquivalent(const char* funcName, Fn F, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
     auto* RS = ClangRuntimeSpecializer::init();
 
     auto InvokeNormal = [&](auto&&... args) {
@@ -499,51 +459,6 @@ namespace clangRuntimeSpecializer {
     CRS_LOG(Info, (llvm::Twine("Successfully specialized ") + funcName + "! No differences could be observed.").str());
   }
 
-
-  // TODO this does NOT work with deep objects.
-  //
-
-  template <class MemFn, class Tuple, class Comparator>
-  __attribute__((always_inline))
-  void assertSpecializedMethodIsEquivalent(const char* funcName, MemFn Mf, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
-    auto* RS = ClangRuntimeSpecializer::init();
-
-    auto InvokeNormal = [&](auto&&... args) {
-        return std::invoke(Mf, std::forward<decltype(args)>(args)...);
-    };
-
-    using R = decltype(std::apply(InvokeNormal, normalArgs));
-
-    if constexpr (std::is_void_v<R>) {
-        // Call original
-        std::apply(InvokeNormal, normalArgs);
-
-        // Call specialized
-        std::apply([&](auto&&... CallArgs) {
-            RS->callSpecialized<void>(funcName,
-              std::forward<decltype(CallArgs)>(CallArgs)...);
-        }, specArgs);
-    } else {
-        // Call original
-        R ResOrig = std::apply(InvokeNormal, normalArgs);
-
-        // Call specialized
-        R ResSpec = std::apply([&](auto&&... CallArgs) -> R {
-            return RS->callSpecialized<R>(funcName,
-              std::forward<decltype(CallArgs)>(CallArgs)...);
-        }, specArgs);
-
-        if constexpr (HasEqualityOperator<R>::value) {
-            if (ResOrig != ResSpec) {
-                throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: return values differ for ") + funcName).str());
-            }
-        }
-    }
-
-    comp();
-
-    CRS_LOG(Info, (llvm::Twine("Successfully specialized ") + funcName + "! No differences could be observed.").str());
-  }
 
   template <class Fn, class... ARGS>
   __attribute__((always_inline))

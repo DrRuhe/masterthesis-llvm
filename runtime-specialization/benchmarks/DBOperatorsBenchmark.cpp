@@ -107,9 +107,8 @@ static void phaseSpecializedExec(benchmark::State& state, Operator* op) {
     auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
         clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::None);
-    uintptr_t Addr = RS->specializeOnly(Fn_execute_query, op);
+    auto Fn = RS->specializeOnly<int>(Fn_execute_query, op);
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(Prev);
-    auto Fn = reinterpret_cast<int(*)()>(Addr);
     for (auto _ : state)
         benchmark::DoNotOptimize(Fn());
 }

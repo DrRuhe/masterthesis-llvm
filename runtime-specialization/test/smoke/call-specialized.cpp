@@ -32,7 +32,7 @@ int main(int argc, char** argv)
 {
   clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
 
-  int r1 = clangRuntimeSpecializer::specializeFunctionOrFallback(Fn_mypow, mypow, argc);
+  int r1 = clangRuntimeSpecializer::specializeOrFallback(Fn_mypow, mypow, argc);
 
 
   if (r1 != 1 || r1 == 27)

@@ -148,7 +148,7 @@ static void phaseJITOverhead(benchmark::State& state, const char* sql) {
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state)
-        benchmark::DoNotOptimize(RS->specializeOnly(Fn_sqlite3VdbeExec, vdbe));
+        benchmark::DoNotOptimize(RS->specializeOnly<int>(Fn_sqlite3VdbeExec, vdbe));
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
     auto txStats = CRS::ClangRuntimeSpecializer::getLastTransformStats();
 
@@ -174,10 +174,8 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
-    uintptr_t Addr = RS->specializeOnly(Fn_sqlite3VdbeExec, vdbe);
+    auto SpecFn = RS->specializeOnly<int>(Fn_sqlite3VdbeExec, vdbe);
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
-    // Specialized wrapper takes no args (vdbe is baked in as a constant)
-    auto SpecFn = reinterpret_cast<int(*)()>(Addr);
 
     for (auto _ : state) {
         sqlite3_reset(stmt);

@@ -36,7 +36,7 @@ int main(int argc, char** argv) {
     // EXE: entry:
     // EXE:   ret i32 102
     auto comp = [&]() {}; // no comparison needed, as no changes done anyways.
-    clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_process_struct, process_struct, std::tie(*hidden_a), std::tie(*hidden_b), comp);
+    clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_process_struct, process_struct, std::tie(*hidden_a), std::tie(*hidden_b), comp);
     return 0;
 }
 

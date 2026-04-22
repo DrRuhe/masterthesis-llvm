@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
   auto comp = [&]() {
     if (instance.value != instance2.value) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
   };
-  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_A_getMod2, &A::getMod2, std::tie(instance), std::tie(instance2), comp);
+  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_A_getMod2, &A::getMod2, std::tie(instance), std::tie(instance2), comp);
 
   // EXE: INFO: Specializing call to: A::add
   // EXE: DEBUG: Serializing value of type pointer or class
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
   auto comp2 = [&]() {
     if (instance3.value != instance4.value || a1 != a2 || b1 != b2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
   };
-  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_A_add, &A::add, std::tie(instance3, a1, b1), std::tie(instance4, a2, b2), comp2);
+  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_A_add, &A::add, std::tie(instance3, a1, b1), std::tie(instance4, a2, b2), comp2);
 
   return 0;
 }

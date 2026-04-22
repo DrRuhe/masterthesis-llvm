@@ -44,7 +44,7 @@ int main(int argc, char** argv)
   };
   int* p1 = &result1;
   int* p2 = &result2;
-  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_mypow, mypow, std::tie(p1, x1), std::tie(p2, x2), comp);
+  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_mypow, mypow, std::tie(p1, x1), std::tie(p2, x2), comp);
 
   return 0;
 }

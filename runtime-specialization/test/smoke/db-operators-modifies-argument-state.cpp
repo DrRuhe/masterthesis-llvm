@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 
     Operator* query_plan2 = SqlParser::parse(sql_query);
     auto comp = [&]() {};
-    clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_execute_query, execute_query, std::tie(query_plan), std::tie(query_plan2), comp);
+    clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_execute_query, execute_query, std::tie(query_plan), std::tie(query_plan2), comp);
 
     return 0;
 }

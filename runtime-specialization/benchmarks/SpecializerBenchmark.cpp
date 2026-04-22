@@ -133,7 +133,7 @@ void BM_unspecialized____method_add(benchmark::State& state) {
 BENCHMARK(BM_unspecialized____method_add)->Name("BM_g:synthetic;n:method_add;t:unspecialized;");
 
 void BM_jit_overhead_____method_add(benchmark::State& state) {
-    clangRuntimeSpecializer::benchmarkJITOverheadMethod<Fn_A_add>(
+    clangRuntimeSpecializer::benchmarkJITOverhead<Fn_A_add>(
         state,
         &A::add,
         std::make_tuple(&g_a_instance, 7, 11),
@@ -146,9 +146,8 @@ void BM_specialized_exec_method_add(benchmark::State& state) {
     auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
         clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::None);
-    uintptr_t Addr = RS->specializeOnly(Fn_A_add, &g_a_instance, 7, 11);
+    auto SpecFn = RS->specializeOnly<int>(Fn_A_add, &g_a_instance, 7, 11);
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(Prev);
-    auto SpecFn = reinterpret_cast<int(*)()>(Addr);
     for (auto _ : state)
         benchmark::DoNotOptimize(SpecFn());
 }

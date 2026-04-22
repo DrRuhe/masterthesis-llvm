@@ -38,7 +38,7 @@ int main(int argc, char** argv)
   auto comp = [&]() {
       if (argc != argc_copy) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Arguments differ");
   };
-  clangRuntimeSpecializer::assertSpecializedFunctionIsEquivalent(Fn_mypow, mypow, std::tie(argc), std::tie(argc_copy), comp);
+  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_mypow, mypow, std::tie(argc), std::tie(argc_copy), comp);
 
   return 0;
 }

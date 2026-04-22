@@ -46,8 +46,8 @@ int main(int argc, char** argv) {
 
   A instance(argc);
 
-  int r1 = clangRuntimeSpecializer::specializeMethodOrFallback(Fn_A_getMod2, &A::getMod2, instance);
-  int r2 = clangRuntimeSpecializer::specializeMethodOrFallback(Fn_A_add, &A::add, instance, 7, 11);
+  int r1 = clangRuntimeSpecializer::specializeOrFallback(Fn_A_getMod2, &A::getMod2, instance);
+  int r2 = clangRuntimeSpecializer::specializeOrFallback(Fn_A_add, &A::add, instance, 7, 11);
 
   if (r1 != 1)
   {
