@@ -153,6 +153,15 @@ void BM_specialized_exec_method_add(benchmark::State& state) {
 }
 BENCHMARK(BM_specialized_exec_method_add)->Name("BM_g:synthetic;n:method_add;t:specialized_exec;");
 
+static int kRegisterMypowBudget = [] {
+    clangRuntimeSpecializer::registerBudgetBenchmarks<Fn_mypow>(
+        "synthetic", "mypow",
+        mypow_bench,
+        std::make_tuple(32),
+        std::make_tuple(32));
+    return 0;
+}();
+
 #ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
     static RSSMemoryManager g_rss_mgr;

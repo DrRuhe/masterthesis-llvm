@@ -123,6 +123,18 @@ FROM v_parsed
 WHERE phase = 'jit_overhead' AND run_type = 'iteration';
 """
 
+# Budget sweep Pareto view: (scale_bp, kernel) → (JIT overhead, speedup vs unspecialized).
+_SCHEMA_V_BUDGET_SWEEP = """
+CREATE OR REPLACE VIEW v_budget_sweep AS
+SELECT run_id, kernel, "group", git_sha, run_ts,
+       kv_raw_params,
+       CAST(SPLIT_PART(kv_raw_params, '/', 2) AS INTEGER) AS scale_bp,
+       real_time_ns, phase,
+       expected_call_ns, budget_scale, budget_fixpoint, budget_unroll
+FROM v_ns
+WHERE phase IN ('jit_budget_sweep', 'exec_budget_sweep');
+"""
+
 # Per-pass records from PassInstrumentationCallbacks (written by benchmarkJITAnalysis).
 _SCHEMA_PASS_TRACES = """
 CREATE TABLE IF NOT EXISTS pass_traces (
@@ -314,6 +326,10 @@ def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
         con.execute(_SCHEMA_V_JIT_STATS)
     except Exception:
         pass  # JIT counter columns not yet present in this DB
+    try:
+        con.execute(_SCHEMA_V_BUDGET_SWEEP)
+    except Exception:
+        pass  # budget counter columns not yet present in this DB
     return con
 
 

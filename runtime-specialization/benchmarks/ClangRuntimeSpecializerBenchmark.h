@@ -1,9 +1,12 @@
 #pragma once
 #include "ClangRuntimeSpecializer.h"
+#include <algorithm>
+#include <atomic>
 #include <benchmark/benchmark.h>
 #include <chrono>
 #include <cstdio>
 #include <fstream>
+#include <memory>
 #include <string>
 
 // Tracks process RSS growth across each benchmark run using Google Benchmark's
@@ -80,7 +83,7 @@ void benchmarkJITOverhead(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly(funcName, opts, std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnly<R>(funcName, opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
@@ -206,10 +209,93 @@ void benchmarkJITAnalysis(
     writePassTraceJSON(state.name(), ClangRuntimeSpecializer::getLastPassTrace());
 }
 
+// ---------------------------------------------------------------------------
+// Budget-aware sweep infrastructure
+// ---------------------------------------------------------------------------
 
+// Fallback measurement: median of 7 warm calls.
+// Used by JIT/exec sweep lambdas if the unspecialized benchmark hasn't run yet.
+template <class Fn, class Tuple>
+inline int64_t measureMedianCallNs(Fn F, Tuple args) {
+    constexpr int N = 7;
+    double samples[N];
+    for (int i = 0; i < N; ++i) {
+        auto t0 = std::chrono::steady_clock::now();
+        benchmark::DoNotOptimize(std::apply([&](auto&&... a) {
+            return std::invoke(F, std::forward<decltype(a)>(a)...);
+        }, args));
+        samples[i] = std::chrono::duration<double, std::nano>(
+            std::chrono::steady_clock::now() - t0).count();
+    }
+    std::nth_element(samples, samples + N/2, samples + N);
+    return static_cast<int64_t>(samples[N/2]);
+}
 
+// Register three benchmark lambdas for a single function:
+//   1. unspecialized baseline (also measures expectedNs)
+//   2. JIT overhead sweep over budget scale factors
+//   3. specialized exec sweep over budget scale factors
+//
+// Scale factors are expressed in basis points (100 = 1.0x, 316 ≈ 3.16x, 1000 = 10x).
+// The ->Ranges({{10, 5000}}) produces a geometric sweep: 10, 31, 100, 316, 1000, 3162, 5000.
+template <const char* funcName, class Fn, class Tuple>
+void registerBudgetBenchmarks(
+    const std::string& group,
+    const std::string& name,
+    Fn F,
+    Tuple normalArgs,
+    Tuple specArgs)
+{
+    using CRS = ClangRuntimeSpecializer;
+    auto sharedNs = std::make_shared<std::atomic<int64_t>>(0);
 
+    // 1. Unspecialized baseline: timing is collected inside the state loop via UseManualTime().
+    //    Each iteration time is recorded into sharedNs so sweep benchmarks can read it.
+    benchmark::RegisterBenchmark(
+        ("BM_g:" + group + ";n:" + name + ";t:unspecialized;").c_str(),
+        [F, normalArgs, sharedNs](benchmark::State& state) mutable {
+            for (auto _ : state) {
+                auto t0 = std::chrono::steady_clock::now();
+                benchmark::DoNotOptimize(std::apply([&](auto&&... a) {
+                    return std::invoke(F, std::forward<decltype(a)>(a)...);
+                }, normalArgs));
+                double elapsedNs = std::chrono::duration<double, std::nano>(
+                    std::chrono::steady_clock::now() - t0).count();
+                state.SetIterationTime(elapsedNs * 1e-9);
+                sharedNs->store(static_cast<int64_t>(elapsedNs));
+            }
+            state.counters["expected_call_ns"] = static_cast<double>(sharedNs->load());
+        })->UseManualTime();
 
+    // 2. JIT overhead budget sweep (state.range(0) = scale in basis points)
+    benchmark::RegisterBenchmark(
+        ("BM_g:" + group + ";n:" + name + ";t:jit_budget_sweep;").c_str(),
+        [F, normalArgs, specArgs, sharedNs](benchmark::State& state) mutable {
+            int64_t ns = sharedNs->load();
+            if (ns == 0) ns = measureMedianCallNs(F, normalArgs);
+            double scale = state.range(0) / 100.0;
+            auto opts = CRS::Options::FromExpectedRuntime(static_cast<double>(ns), scale);
+            benchmarkJITOverhead<funcName>(state, F, normalArgs, specArgs, opts);
+            state.counters["expected_call_ns"] = static_cast<double>(ns);
+            state.counters["budget_scale"]     = scale;
+            state.counters["budget_fixpoint"]  = static_cast<double>(opts.MaxFixpointIterations);
+            state.counters["budget_unroll"]    = static_cast<double>(opts.LoopUnrollCount);
+        })->Ranges({{10, 5000}});
+
+    // 3. Specialized exec budget sweep
+    benchmark::RegisterBenchmark(
+        ("BM_g:" + group + ";n:" + name + ";t:exec_budget_sweep;").c_str(),
+        [F, specArgs, sharedNs](benchmark::State& state) mutable {
+            int64_t ns = sharedNs->load();
+            if (ns == 0) ns = measureMedianCallNs(F, specArgs);
+            double scale = state.range(0) / 100.0;
+            auto opts = CRS::Options::FromExpectedRuntime(static_cast<double>(ns), scale);
+            benchmarkSpecializedExec<funcName>(state, F, specArgs, opts);
+            state.counters["expected_call_ns"] = static_cast<double>(ns);
+            state.counters["budget_scale"]     = scale;
+            state.counters["budget_fixpoint"]  = static_cast<double>(opts.MaxFixpointIterations);
+            state.counters["budget_unroll"]    = static_cast<double>(opts.LoopUnrollCount);
+        })->Ranges({{10, 5000}});
 }
 
 } // namespace clangRuntimeSpecializer

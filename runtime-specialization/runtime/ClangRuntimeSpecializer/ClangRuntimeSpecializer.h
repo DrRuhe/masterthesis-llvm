@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdarg>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <string>
@@ -229,20 +230,27 @@ namespace clangRuntimeSpecializer {
         O.EnableO3Final = false; O.Optimize = false; return O;
       }
       static Options FromExpectedRuntime(double callDurationNs, double budgetScale = 1.0) {
+        // ENV-var-overridable magic numbers (read once per process on first call).
+        // Optimizer trials run as fresh subprocesses, so static init is correct.
+        static const double kLog2Min     = _envOr("CRS_LOG2_MIN",         10.0);
+        static const double kLog2Max     = _envOr("CRS_LOG2_MAX",         30.0);
+        static const double kFixpointMax = _envOr("CRS_FIXPOINT_MAX",     20.0);
+        static const double kUnrollMax   = _envOr("CRS_UNROLL_MAX",      256.0);
+        static const double kLargeModMax = _envOr("CRS_LARGE_MODULE_MAX", 50000.0);
+        static const double kO3CutoffNs  = _envOr("CRS_O3_CUTOFF_NS",    1000.0);
+
         const double scaledNs = std::max(callDurationNs, 1.0) * std::max(budgetScale, 0.01);
-        // log2 range: kMinNs=1e3 (log2≈10), kMaxNs=1e9 (log2≈30) → t in [0,1]
-        constexpr double kLog2Min = 10.0, kLog2Max = 30.0;
         const double t = std::clamp((std::log2(scaledNs) - kLog2Min) / (kLog2Max - kLog2Min),
                                      0.0, 1.0);
-        if (scaledNs < 1e3) {
+        if (scaledNs < kO3CutoffNs) {
           Options O = Options::O3Only();
           O.ExpectedCallDurationNs = callDurationNs; O.BudgetScale = budgetScale; return O;
         }
         auto lerp = [](double a, double b, double tt) { return a + tt * (b - a); };
         Options O;
-        O.MaxFixpointIterations     = static_cast<int>(std::round(lerp(0.0, 20.0,    t)));
-        O.LoopUnrollCount           = static_cast<int>(std::round(lerp(1.0, 256.0,   t)));
-        O.LargeModuleInstrThreshold = static_cast<size_t>(std::round(lerp(0.0, 50000.0, t)));
+        O.MaxFixpointIterations     = static_cast<int>(std::round(lerp(0.0, kFixpointMax, t)));
+        O.LoopUnrollCount           = static_cast<int>(std::round(lerp(1.0, kUnrollMax,   t)));
+        O.LargeModuleInstrThreshold = static_cast<size_t>(std::round(lerp(0.0, kLargeModMax, t)));
         O.EnableEarlyPrune = true; O.EnableO3Final = true;
         O.ExpectedCallDurationNs = callDurationNs; O.BudgetScale = budgetScale;
         return O;
@@ -262,6 +270,13 @@ namespace clangRuntimeSpecializer {
       Options& withFuncSpecMaxGroups(unsigned N)      { FuncSpecMaxGroups = N; return *this; }
       Options& withExpectedCallDurationNs(double V)   { ExpectedCallDurationNs = V; return *this; }
       Options& withBudgetScale(double V)              { BudgetScale = V; return *this; }
+
+    private:
+      static double _envOr(const char* name, double def) noexcept {
+        const char* v = std::getenv(name);
+        if (!v) return def;
+        try { return std::stod(v); } catch (...) { return def; }
+      }
     };
 
     static ClangRuntimeSpecializer* init();
