@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdarg>
 #include <cstring>
 #include <memory>
@@ -111,7 +113,7 @@ namespace clangRuntimeSpecializer {
     static void resetCounters();
     static InstructionCounts getCurrentCounters();
     static void printCounters();
-    static void printComparisonTable(const InstructionCounts& Before, const InstructionCounts& After);
+    static void printComparisonTable(const char* funcName, const InstructionCounts& Before, const InstructionCounts& After);
 
     static void log(LogLevel Level, const llvm::Twine Message);
     static void log(LogLevel Level, const char* Message);
@@ -146,6 +148,10 @@ namespace clangRuntimeSpecializer {
       bool EnableO3Final = true;             // run O3 as final pass
       unsigned FuncSpecMaxGroups = 0;        // 0 = unlimited; skip function if it has more distinct constant-arg groups
 
+      // --- Budget metadata (set by FromExpectedRuntime; stored for logging/counter export) ---
+      double ExpectedCallDurationNs = 0.0;  // 0 = not set
+      double BudgetScale            = 1.0;
+
       // --- Debug / analysis ---
       bool Optimize = true;                          // when false → skips all JIT optimization passes
       bool EnableInstructionInstrumentation = false;
@@ -170,6 +176,25 @@ namespace clangRuntimeSpecializer {
         Options O; O.MaxFixpointIterations = 0; O.EnableEarlyPrune = false;
         O.EnableO3Final = false; O.Optimize = false; return O;
       }
+      static Options FromExpectedRuntime(double callDurationNs, double budgetScale = 1.0) {
+        const double scaledNs = std::max(callDurationNs, 1.0) * std::max(budgetScale, 0.01);
+        // log2 range: kMinNs=1e3 (log2≈10), kMaxNs=1e9 (log2≈30) → t in [0,1]
+        constexpr double kLog2Min = 10.0, kLog2Max = 30.0;
+        const double t = std::clamp((std::log2(scaledNs) - kLog2Min) / (kLog2Max - kLog2Min),
+                                     0.0, 1.0);
+        if (scaledNs < 1e3) {
+          Options O = Options::O3Only();
+          O.ExpectedCallDurationNs = callDurationNs; O.BudgetScale = budgetScale; return O;
+        }
+        auto lerp = [](double a, double b, double tt) { return a + tt * (b - a); };
+        Options O;
+        O.MaxFixpointIterations     = static_cast<int>(std::round(lerp(0.0, 20.0,    t)));
+        O.LoopUnrollCount           = static_cast<int>(std::round(lerp(1.0, 256.0,   t)));
+        O.LargeModuleInstrThreshold = static_cast<size_t>(std::round(lerp(0.0, 50000.0, t)));
+        O.EnableEarlyPrune = true; O.EnableO3Final = true;
+        O.ExpectedCallDurationNs = callDurationNs; O.BudgetScale = budgetScale;
+        return O;
+      }
 
       // --- Fluent builder ---
       Options& withMaxFixpointIterations(int N)       { MaxFixpointIterations = N; return *this; }
@@ -183,6 +208,8 @@ namespace clangRuntimeSpecializer {
       Options& withInstructionInstrumentation(bool V) { EnableInstructionInstrumentation = V; return *this; }
       Options& withOptimize(bool V)                   { Optimize = V; return *this; }
       Options& withFuncSpecMaxGroups(unsigned N)      { FuncSpecMaxGroups = N; return *this; }
+      Options& withExpectedCallDurationNs(double V)   { ExpectedCallDurationNs = V; return *this; }
+      Options& withBudgetScale(double V)              { BudgetScale = V; return *this; }
     };
 
     static ClangRuntimeSpecializer* init();
@@ -326,19 +353,19 @@ namespace clangRuntimeSpecializer {
           using Decayed = std::decay_t<T>;
           // TODO implement proper serialization logic for all sorts of types.
           if constexpr (std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>) {
-              log(LogLevel::Debug, "serializeValueToIR", (llvm::Twine("Serializing value of type i") + llvm::Twine(sizeof(Decayed) * 8)).str());
+              log(LogLevel::Debug, (llvm::Twine("Serializing value of type i") + llvm::Twine(sizeof(Decayed) * 8)).str());
               llvm::Type* Ty = llvm::Type::getIntNTy(builder.getContext(),
                                                     static_cast<unsigned>(sizeof(Decayed) * 8));
               return llvm::ConstantInt::get(Ty, static_cast<std::uint64_t>(value));
           } else if constexpr (std::is_floating_point_v<Decayed>) {
-              log(LogLevel::Debug, "serializeValueToIR", "Serializing value of floating point type");
+              log(LogLevel::Debug, "Serializing value of floating point type");
               if constexpr (std::is_same_v<Decayed, float>) {
                   return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(value));
               } else {
                   return llvm::ConstantFP::get(builder.getContext(), llvm::APFloat(static_cast<double>(value)));
               }
           } else if constexpr (std::is_pointer_v<Decayed> || std::is_class_v<Decayed>) {
-              log(LogLevel::Debug, "serializeValueToIR", "Serializing value of type pointer or class");
+              log(LogLevel::Debug, "Serializing value of type pointer or class");
               llvm::Type* Ty = llvm::Type::getInt64Ty(builder.getContext());
               std::uintptr_t addr;
               if constexpr (std::is_pointer_v<Decayed>) {
@@ -358,7 +385,7 @@ namespace clangRuntimeSpecializer {
           std::vector<llvm::Value*> argValues;
           auto serializeAndLog = [&](auto&& arg) {
               auto* v = serializeArgumentToIR(builder, std::forward<decltype(arg)>(arg));
-              log(LogLevel::Debug (llvm::Twine("Arg Serialized to: ") + printLLVM(v)).str());
+              log(LogLevel::Debug, (llvm::Twine("Arg Serialized to: ") + printLLVM(v)).str());
               argValues.push_back(v);
           };
           (serializeAndLog(std::forward<Args>(args)), ...);

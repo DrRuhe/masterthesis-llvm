@@ -123,16 +123,14 @@ namespace clangRuntimeSpecializer {
       return CurrentLogLevel;
   }
 
-  __attribute__((always_inline))
-  void ClangRuntimeSpecializer::log(const LogLevel Level, const char* const FuncName, const llvm::Twine Message)
+  void ClangRuntimeSpecializer::log(const LogLevel Level, const llvm::Twine Message)
   {
     if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
-        log(Level, FuncName, Message.str().c_str());
+        log(Level, Message.str().c_str());
     }
   }
 
-  __attribute__((always_inline))
-  void ClangRuntimeSpecializer::log(const LogLevel Level, const char* const FuncName, const char* const Message) {
+  void ClangRuntimeSpecializer::log(const LogLevel Level, const char* const Message) {
       if (static_cast<int>(getLogLevel()) >= static_cast<int>(Level)) {
         const char* LevelStr = "UNKNOWN";
         switch (Level) {
@@ -141,7 +139,7 @@ namespace clangRuntimeSpecializer {
           case LogLevel::Info: LevelStr = "INFO"; break;
           case LogLevel::Debug: LevelStr = "DEBUG"; break;
         }
-        std::fprintf(stdout, "%s: [%s] %s\n", LevelStr, FuncName, Message);
+        std::fprintf(stdout, "%s: %s\n", LevelStr, Message);
       }
   }
 
@@ -427,7 +425,7 @@ namespace clangRuntimeSpecializer {
               }
               
               if (DebugInfoStripped) {
-                log(LogLevel::Debug, "IRTransform", "Debug info stripped from JIT module");
+                log(LogLevel::Debug, "Debug info stripped from JIT module");
               }
             }
 
@@ -579,7 +577,7 @@ namespace clangRuntimeSpecializer {
               {
                 for (auto &F : M) {
                   if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
-                    log(LogLevel::Debug, "IRTransform", [&] {
+                    log(LogLevel::Debug, [&] {
                         return llvm::formatv("Initial specialized function IR:\n{0}", printLLVM(&F)).str();
                     });
                   }
@@ -595,7 +593,7 @@ namespace clangRuntimeSpecializer {
                 CurrentGroup = "fixpoint";
                 CurrentFixpointIter = Iteration;
                 phaseLog(("fixpoint iter " + std::to_string(Iteration) + " start").c_str(), countInstrs(M));
-                if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug, "IRTransform",
+                if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug,
                     llvm::formatv("Fixpoint iteration {0}", Iteration).str());
 
                 llvm::ModulePassManager FixpointMPM;
@@ -727,7 +725,7 @@ namespace clangRuntimeSpecializer {
                 {
                   for (auto &F : M) {
                     if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
-                      log(LogLevel::Debug, "IRTransform", [&] {
+                      log(LogLevel::Debug, [&] {
                           return llvm::formatv("Specialized function IR after iteration {0}:\n{1}", Iteration, printLLVM(&F)).str();
                       });
                     }
@@ -745,11 +743,11 @@ namespace clangRuntimeSpecializer {
 
                 phaseLog(("fixpoint iter " + std::to_string(Iteration) + " end").c_str(), InstCount);
 
-                if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug, "IRTransform",
+                if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug,
                     llvm::formatv("Instruction count: {0}", InstCount).str());
 
                 if (InstCount == PrevInstCount) {
-                  if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug, "IRTransform",
+                  if (Instance->CurrentCallOptions.PrintFixpointIterations) log(LogLevel::Debug,
                       llvm::formatv("Fixpoint reached after {0} iterations", Iteration + 1).str());
                   break;
                 }
@@ -848,7 +846,7 @@ namespace clangRuntimeSpecializer {
 
             for (auto &F : M) {
               if (!F.isDeclaration() && F.getName().starts_with("specialized_wrapper_")) {
-                log(LogLevel::Debug, "IRTransform", [&] {
+                log(LogLevel::Debug, [&] {
                     return llvm::formatv("Optimized specialized function IR:\n{0}", printLLVM(&F)).str();
                 });
               }
