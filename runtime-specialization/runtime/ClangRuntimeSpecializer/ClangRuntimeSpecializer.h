@@ -56,6 +56,64 @@ namespace clangRuntimeSpecializer {
     return (HasEqualityOperator<std::decay_t<Args>>::value && ...);
   }
 
+  // Forward declaration for SpecializedFunction friendship.
+  class ClangRuntimeSpecializer;
+
+  namespace detail {
+    // Defined in ClangRuntimeSpecializer.cpp; calls consumeError(ES->removeJITDylib(*Dylib)).
+    // Lives outside the header to avoid pulling LLVM RTTI symbols into user translation units.
+    void removeJITDylibNoexcept(llvm::orc::ExecutionSession* ES,
+                                llvm::orc::JITDylib* Dylib) noexcept;
+  }
+
+  /// RAII wrapper for a JIT-compiled specialization.
+  /// Owns the associated JITDylib — frees compiled machine code on destruction.
+  template <class R>
+  class SpecializedFunction {
+    friend class ClangRuntimeSpecializer;
+
+    SpecializedFunction(R(*fp)(), llvm::orc::JITDylib& dylib,
+                        llvm::orc::ExecutionSession& es) noexcept
+        : FnPtr(fp), Dylib(&dylib), ES(&es) {}
+
+  public:
+    SpecializedFunction() noexcept = default;
+
+    SpecializedFunction(SpecializedFunction&& o) noexcept
+        : FnPtr(o.FnPtr), Dylib(o.Dylib), ES(o.ES)
+    { o.FnPtr = nullptr; o.Dylib = nullptr; o.ES = nullptr; }
+
+    SpecializedFunction& operator=(SpecializedFunction&& o) noexcept {
+        if (this != &o) {
+            cleanup();
+            FnPtr = o.FnPtr; Dylib = o.Dylib; ES = o.ES;
+            o.FnPtr = nullptr; o.Dylib = nullptr; o.ES = nullptr;
+        }
+        return *this;
+    }
+
+    SpecializedFunction(const SpecializedFunction&) = delete;
+    SpecializedFunction& operator=(const SpecializedFunction&) = delete;
+
+    ~SpecializedFunction() { cleanup(); }
+
+    R operator()() const { return FnPtr(); }
+    R call()       const { return FnPtr(); }
+
+    explicit operator bool() const noexcept { return FnPtr != nullptr; }
+
+  private:
+    void cleanup() noexcept {
+        if (Dylib && ES)
+            detail::removeJITDylibNoexcept(ES, Dylib);
+        FnPtr = nullptr; Dylib = nullptr; ES = nullptr;
+    }
+
+    R(*FnPtr)()                   = nullptr;
+    llvm::orc::JITDylib*          Dylib = nullptr;
+    llvm::orc::ExecutionSession*  ES    = nullptr;
+  };
+
   class ClangRuntimeSpecializer {
   public:
     enum class LogLevel {
@@ -236,22 +294,29 @@ namespace clangRuntimeSpecializer {
     template <class R, class... ARGS,
               std::enable_if_t<FirstArgIsNotOptions<ARGS...>::value, int> = 0>
     __attribute__((noinline))
-    auto specializeOnly(const char* funcName, ARGS&&... Args) -> R(*)() {
-      return reinterpret_cast<R(*)()>(specializeOnlyImpl(funcName, CurrentOptions, std::forward<ARGS>(Args)...));
+    auto specializeOnly(const char* funcName, ARGS&&... Args) -> SpecializedFunction<R> {
+      auto Res = specializeOnlyImpl(funcName, CurrentOptions, std::forward<ARGS>(Args)...);
+      return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
     }
 
     template <class R, class... ARGS>
     __attribute__((noinline))
-    auto specializeOnly(const char* funcName, const Options& opts, ARGS&&... Args) -> R(*)() {
-      return reinterpret_cast<R(*)()>(specializeOnlyImpl(funcName, opts, std::forward<ARGS>(Args)...));
+    auto specializeOnly(const char* funcName, const Options& opts, ARGS&&... Args) -> SpecializedFunction<R> {
+      auto Res = specializeOnlyImpl(funcName, opts, std::forward<ARGS>(Args)...);
+      return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
     }
 
     ~ClangRuntimeSpecializer();
 
   private:
 
+    struct JITResult {
+      uintptr_t            Addr;
+      llvm::orc::JITDylib* Dylib;
+    };
+
     template <class... ARGS>
-    uintptr_t specializeOnlyImpl(const char* funcName, const Options& Opts, ARGS&&... Args) {
+    JITResult specializeOnlyImpl(const char* funcName, const Options& Opts, ARGS&&... Args) {
       checkInitialization(funcName);
       llvm::Function *TargetFunc = getTargetFunction(funcName);
 
@@ -307,13 +372,13 @@ namespace clangRuntimeSpecializer {
 
     template <class R, class... ARGS>
     R callImpl(const char* funcName, const Options& Opts, ARGS&&... Args) {
-      uintptr_t Addr = specializeOnlyImpl(funcName, Opts, std::forward<ARGS>(Args)...);
-      auto SpecializedFnPtr = reinterpret_cast<R(*)()>(Addr);
+      auto Res = specializeOnlyImpl(funcName, Opts, std::forward<ARGS>(Args)...);
+      SpecializedFunction<R> Fn(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
       if constexpr (std::is_void_v<R>) {
-          SpecializedFnPtr();
+          Fn();
           return;
       } else {
-          return SpecializedFnPtr();
+          return Fn();
       }
     }
 
@@ -334,7 +399,7 @@ namespace clangRuntimeSpecializer {
     void validateArgs(llvm::Function* TargetFunc, size_t NumArgs) const;
     std::string createUniqueWrapperName() const;
     void prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const;
-    uintptr_t addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName,
+    JITResult addModuleAndLookup(llvm::orc::ThreadSafeModule TSM, const std::string& WrapperName,
                                   const std::string& OrigFuncName = {});
     uint64_t dumpJITAssembly(const std::string& OrigFuncName, uintptr_t Addr);
     static void encourageInlining(llvm::Function* F);

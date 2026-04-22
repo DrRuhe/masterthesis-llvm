@@ -99,6 +99,13 @@ extern "C" {
 
 namespace clangRuntimeSpecializer {
 
+  namespace detail {
+    void removeJITDylibNoexcept(llvm::orc::ExecutionSession* ES,
+                                llvm::orc::JITDylib* Dylib) noexcept {
+      llvm::consumeError(ES->removeJITDylib(*Dylib));
+    }
+  }
+
   static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Debug;
   static ClangRuntimeSpecializer::JITModuleStats g_lastTransformStats;
   static std::vector<ClangRuntimeSpecializer::PassRecord> g_lastPassTrace;
@@ -1075,7 +1082,7 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  uintptr_t ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM,
+  ClangRuntimeSpecializer::JITResult ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM,
                                                          const std::string& WrapperName,
                                                          const std::string& OrigFuncName) {
     // Create a fresh JITDylib for this specialization.  Each specialization gets
@@ -1125,7 +1132,7 @@ namespace clangRuntimeSpecializer {
     }
 #endif
 
-    return Addr;
+    return {Addr, &Dylib};
   }
 
   uint64_t ClangRuntimeSpecializer::dumpJITAssembly(const std::string& OrigFuncName, uintptr_t Addr) {
