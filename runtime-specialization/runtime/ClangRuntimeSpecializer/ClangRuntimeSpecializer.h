@@ -200,6 +200,7 @@ namespace clangRuntimeSpecializer {
       bool EnableEarlyPrune = true;          // run GlobalDCE before fixpoint
       bool EnableO3Final = true;             // run O3 as final pass
       unsigned FuncSpecMaxGroups = 0;        // 0 = unlimited; skip function if it has more distinct constant-arg groups
+      int OptimizationPipelineToUse = 0;    // 0 = inlining pipeline, 1 = function-specialization pipeline
 
       // --- Budget metadata (set by FromExpectedRuntime; stored for logging/counter export) ---
       double ExpectedCallDurationNs = 0.0;  // 0 = not set
@@ -213,7 +214,23 @@ namespace clangRuntimeSpecializer {
       std::string TimeTraceOutputPath;       // Chrome trace JSON path; "" = disabled
 
       // --- Preset factories ---
-      static Options Default() { return {}; }
+      static Options Default() {
+        // ENV-var overrides (read once per process — each optimizer trial is a fresh subprocess).
+        static const int    kFixpoint   = (int)_envOr("CRS_DEFAULT_FIXPOINT",    10.0);
+        static const int    kUnroll     = (int)_envOr("CRS_DEFAULT_UNROLL",     128.0);
+        static const size_t kLargeMod   = (size_t)_envOr("CRS_DEFAULT_LARGE_MOD", 10000.0);
+        static const bool   kEarlyPrune = _envOr("CRS_DEFAULT_EARLY_PRUNE", 1.0) != 0.0;
+        static const bool   kO3Final    = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
+        static const int    kPipeline   = (int)_envOr("CRS_DEFAULT_PIPELINE",   0.0);
+        Options O;
+        O.MaxFixpointIterations     = kFixpoint;
+        O.LoopUnrollCount           = kUnroll;
+        O.LargeModuleInstrThreshold = kLargeMod;
+        O.EnableEarlyPrune          = kEarlyPrune;
+        O.EnableO3Final             = kO3Final;
+        O.OptimizationPipelineToUse = kPipeline;
+        return O;
+      }
       static Options O3Only() {
         Options O; O.MaxFixpointIterations = 0; O.EnableEarlyPrune = false; return O;
       }
@@ -268,6 +285,7 @@ namespace clangRuntimeSpecializer {
       Options& withInstructionInstrumentation(bool V) { EnableInstructionInstrumentation = V; return *this; }
       Options& withOptimize(bool V)                   { Optimize = V; return *this; }
       Options& withFuncSpecMaxGroups(unsigned N)      { FuncSpecMaxGroups = N; return *this; }
+      Options& withOptimizationPipeline(int P)        { OptimizationPipelineToUse = P; return *this; }
       Options& withExpectedCallDurationNs(double V)   { ExpectedCallDurationNs = V; return *this; }
       Options& withBudgetScale(double V)              { BudgetScale = V; return *this; }
 
@@ -405,7 +423,7 @@ namespace clangRuntimeSpecializer {
     std::unordered_map<std::string, size_t> FuncToBlobIdx;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     uint64_t GlobalSpecializationCount = 0;
-    Options CurrentOptions;      // default options used by specializeOnly() / callSpecialized()
+    Options CurrentOptions = Options::Default();  // default options used by specializeOnly() / callSpecialized()
     Options CurrentCallOptions;  // per-invocation options set by specializeOnlyImpl() before JIT
     std::vector<std::unique_ptr<char[]>> SerializationBuffers;
 

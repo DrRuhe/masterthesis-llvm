@@ -65,7 +65,7 @@ LIMIT 10
 
 // ── Database path ─────────────────────────────────────────────────────────────
 
-static std::string g_db_path = "tpch.db";
+static std::string g_db_path = "tpch/data/tpch.db";
 
 #ifdef ALL_BENCHMARKS_BUILD
 // Called by AllBenchmarks_main.cpp to forward --db=<path> from the command line.
@@ -166,7 +166,8 @@ static void phaseJITOverhead(benchmark::State& state, const char* sql) {
 // Specializing sqlite3VdbeExec for a known Vdbe* makes the entire opcode
 // dispatch switch constant-foldable: IPSCCP sees p->aOp[pc].opcode as known
 // constants and eliminates the switch, inlining only relevant handlers.
-static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
+static void phaseSpecializedExec(benchmark::State& state, const char* sql,
+                                  CRS::ClangRuntimeSpecializer::Options opts = CRS::ClangRuntimeSpecializer::Options::Default()) {
     sqlite3* db = openDB();
     sqlite3_stmt* stmt = prepareQuery(db, sql);
     auto* vdbe = reinterpret_cast<Vdbe*>(stmt);
@@ -174,7 +175,7 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
-    auto SpecFn = RS->specializeOnly<int>(Fn_sqlite3VdbeExec, vdbe);
+    auto SpecFn = RS->specializeOnly<int>(Fn_sqlite3VdbeExec, opts, vdbe);
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
 
     for (auto _ : state) {
@@ -184,6 +185,10 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
 
     sqlite3_finalize(stmt);
     sqlite3_close(db);
+}
+
+static CRS::ClangRuntimeSpecializer::Options Pipeline1Opts() {
+    return CRS::ClangRuntimeSpecializer::Options::Default().withOptimizationPipeline(1);
 }
 
 // ── Q1: Pricing Summary Report ────────────────────────────────────────────────
@@ -196,6 +201,9 @@ BENCHMARK(BM_jit_overhead_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:jit_overhead;")-
 
 void BM_specialized_exec_tpch_q1(benchmark::State& state) { phaseSpecializedExec(state, TPCH_Q1); }
 BENCHMARK(BM_specialized_exec_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:specialized_exec;")->MinTime(1.0);
+
+void BM_p1_specialized_exec_tpch_q1(benchmark::State& state) { phaseSpecializedExec(state, TPCH_Q1, Pipeline1Opts()); }
+BENCHMARK(BM_p1_specialized_exec_tpch_q1)->Name("BM_g:tpch;n:tpch_q1;t:p1_specialized_exec;")->MinTime(1.0);
 
 void BM_jit_analysis_tpch_q1(benchmark::State& state) {
     sqlite3* db = openDB();

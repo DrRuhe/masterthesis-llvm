@@ -277,6 +277,11 @@ namespace clangRuntimeSpecializer {
       throw ClangRuntimeSpecializerError("Failed to detect host for JIT: " + ErrMsg);
     }
     JTMBOrErr->getOptions().TrapUnreachable = true;
+    // Use the Large code model so JIT-compiled functions can reference host
+    // process globals (e.g. sqlite3_temp_directory) that may be >2 GB away from
+    // the JIT allocation.  Small/medium models generate RIP+32 fixups that
+    // overflow when JIT memory is allocated in the upper address space.
+    JTMBOrErr->setCodeModel(llvm::CodeModel::Large);
 
     auto JITExp = llvm::orc::LLJITBuilder()
         .setJITTargetMachineBuilder(std::move(*JTMBOrErr))
@@ -481,6 +486,7 @@ namespace clangRuntimeSpecializer {
               // settings to avoid catastrophic IR explosion.
               const bool LargeModule =
                   g_lastTransformStats.InstructionCountAfterPrune > Instance->CurrentCallOptions.LargeModuleInstrThreshold;
+              const int Pipeline = Instance->CurrentCallOptions.OptimizationPipelineToUse;
 
               // FIXPOINT ITERATION: Runtime specialization requires aggressive devirtualization
               // and inlining. We iterate with a carefully ordered pipeline:
