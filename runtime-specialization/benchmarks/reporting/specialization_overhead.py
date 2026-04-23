@@ -3,36 +3,26 @@
 
 Usage:
     reporting/specialization_overhead.py [--db=PATH] [--run-id=ID]
-                                          [--filter=REGEX] [--output=FILE]
-                                          [--time-unit=ns|us|ms|s]
+                                          [--filter=REGEX] [--time-unit=ns|us|ms|s]
 """
 
 import argparse
-import re
+import os
 import sys
 
-import duckdb
 import numpy as np
 import pandas as pd
 import ultraplot as uplt
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from report_utils import (
+    add_common_args, apply_kernel_filter, auto_time_unit, make_report_dir,
+    open_db, query_df, resolve_db_path, resolve_run_id, save_csv, save_plot,
+)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-TIME_UNITS = {"ns": 1e-9, "us": 1e-6, "ms": 1e-3, "s": 1.0}
-
-
-def auto_unit(median_ns: float) -> str:
-    """Pick a human-friendly time unit based on median time in nanoseconds."""
-    if median_ns >= 1e9:
-        return "s"
-    if median_ns >= 1e6:
-        return "ms"
-    if median_ns >= 1e3:
-        return "us"
-    return "ns"
-
 
 def compute_bars(df: pd.DataFrame):
     """Return group labels and arrays of bar heights (ratios relative to unspecialized)."""
@@ -103,43 +93,27 @@ def plot_on_ax(ax, groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title
     ax.legend(loc="b")
 
 
-def plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title, output_path):
+def plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title):
     n = len(groups)
     width = max(8, n * 1.4)
     fig, ax = uplt.subplots(figsize=(width, 4))
     plot_on_ax(ax, groups, h_unspec, h_spec, h_jit, h_spec_jit, time_unit, title)
-    fig.save(output_path)
-    print(f"Saved chart to {output_path}")
+    return fig
 
 
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
 
-def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
-              kernel_filter: str | None = None) -> pd.DataFrame:
+def load_data(con, run_id: str, kernel_filter: str | None = None) -> pd.DataFrame:
     """Load real_time pivot from v_ratios; returns df with t_unspec_ns/t_spec_ns/t_jit_ns."""
-    df = con.execute(
+    df = query_df(
+        con,
         "SELECT kernel, raw_params, t_unspec_ns, t_spec_ns, t_jit_ns "
         "FROM v_ratios WHERE run_id = ? ORDER BY kernel, raw_params",
         [run_id],
-    ).df()
-
-    if kernel_filter:
-        pat = re.compile(kernel_filter, re.IGNORECASE)
-        df = df[df["kernel"].apply(lambda k: bool(pat.search(k)))]
-
-    return df
-
-
-def get_latest_run_id(con: duckdb.DuckDBPyConnection) -> str:
-    row = con.execute(
-        "SELECT run_id FROM context ORDER BY run_ts DESC LIMIT 1"
-    ).fetchone()
-    if row is None:
-        print("No runs found in database.", file=sys.stderr)
-        sys.exit(1)
-    return row[0]
+    )
+    return apply_kernel_filter(df, kernel_filter)
 
 
 # ---------------------------------------------------------------------------
@@ -150,38 +124,30 @@ def main():
     parser = argparse.ArgumentParser(
         description="Plot specialization overhead from DuckDB."
     )
-    parser.add_argument("--db", default="benchmarks.duckdb", help="DuckDB file path.")
-    parser.add_argument("--run-id", help="Specific run_id to plot (default: most recent).")
-    parser.add_argument("--filter", dest="kernel_filter", help="Regex filter on kernel name.")
-    parser.add_argument("--output", default="benchmarks.pdf", help="Output chart path.")
-    parser.add_argument(
-        "--time-unit", choices=["ns", "us", "ms", "s"], help="Time unit override."
-    )
+    add_common_args(parser)
     args = parser.parse_args()
 
-    con = duckdb.connect(args.db, read_only=True)
-    run_id = args.run_id or get_latest_run_id(con)
+    con    = open_db(resolve_db_path(args.db))
+    run_id = resolve_run_id(con, args.run_id)
+
+    report_dir = make_report_dir(__file__, parser, args)
 
     df = load_data(con, run_id, args.kernel_filter)
     if df.empty:
-        print("No benchmarks match the filter.", file=sys.stderr)
-        sys.exit(1)
+        sys.exit("No benchmarks match the filter.")
 
-    if args.time_unit:
-        target_unit = args.time_unit
-    else:
-        median_ns = df["t_unspec_ns"].median()
-        target_unit = auto_unit(median_ns)
-
+    target_unit = args.time_unit or auto_time_unit(df["t_unspec_ns"].median())
     groups, h_unspec, h_spec, h_jit, h_spec_jit = compute_bars(df)
 
     if not groups:
-        print("No valid benchmark groups (missing unspecialized baseline).", file=sys.stderr)
-        sys.exit(1)
+        sys.exit("No valid benchmark groups (missing unspecialized baseline).")
 
     filter_label = args.kernel_filter or "All Kernels"
-    title = f"Specialization Overhead — {filter_label}"
-    plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, target_unit, title, args.output)
+    title = args.title or f"Specialization Overhead — {filter_label}"
+    fig = plot(groups, h_unspec, h_spec, h_jit, h_spec_jit, target_unit, title)
+
+    save_plot(fig, report_dir / "plot.pdf")
+    save_csv(df, report_dir / "data.csv")
 
 
 if __name__ == "__main__":

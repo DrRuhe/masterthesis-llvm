@@ -9,23 +9,26 @@ start, labelled F0 … Fn.
 
 Usage:
     reporting/pass_trace_plot.py [--db PATH] [--run-id ID]
-                                  [--benchmark PATTERN] [--output FILE]
-                                  [--title TITLE]
+                                  [--benchmark PATTERN] [--title TITLE]
 """
 
 import argparse
 import os
 import re
 import sys
-from pathlib import Path
 
-import duckdb
 import matplotlib.patches as mpatches
 import matplotlib.ticker as mticker
 from matplotlib.lines import Line2D
 import numpy as np
 import pandas as pd
 import ultraplot as uplt
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from report_utils import (
+    add_common_args, make_report_dir, open_db, query_df,
+    resolve_db_path, resolve_run_id, save_csv, save_plot,
+)
 
 # ---------------------------------------------------------------------------
 # Styling constants
@@ -45,13 +48,13 @@ GROUP_LABELS = {
     "postfix":  "Post-fix",
     "final":    "Final O3",
 }
-FIXPOINT_COLOR   = "#c0392b"
-STEP_LINE_COLOR  = "#2c3e50"
-CHANGE_COLOR     = "#c0392b"
-NOCHANGE_COLOR   = "#7f8c8d"
+FIXPOINT_COLOR  = "#c0392b"
+STEP_LINE_COLOR = "#2c3e50"
+CHANGE_COLOR    = "#c0392b"
+NOCHANGE_COLOR  = "#7f8c8d"
 
 # ---------------------------------------------------------------------------
-# SQL queries (all derived columns computed in SQL)
+# SQL queries
 # ---------------------------------------------------------------------------
 
 _SQL_MAIN = """
@@ -71,7 +74,6 @@ WHERE run_id = ?
 ORDER BY pass_idx
 """
 
-# Gap-and-island: consecutive runs of (group, fixpoint_iter)
 _SQL_SPANS = """
 SELECT pass_group, fixpoint_iter,
        MIN(pass_idx) AS span_start,
@@ -99,8 +101,6 @@ GROUP BY fixpoint_iter
 ORDER BY fixpoint_iter
 """
 
-_SQL_LATEST_RUN = "SELECT run_id FROM context ORDER BY run_ts DESC LIMIT 1"
-
 # ---------------------------------------------------------------------------
 # Pass-name abbreviation
 # ---------------------------------------------------------------------------
@@ -123,15 +123,14 @@ def _abbrev(name: str, maxlen: int = 22) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Shared decorators (bands + fixpoint lines)
+# Shared decorators
 # ---------------------------------------------------------------------------
 
 def _decorate(ax, spans_df: pd.DataFrame, fixpts_df: pd.DataFrame,
               label_fixpoints: bool = False):
-    """Draw background group bands and fixpoint-iteration dashed lines."""
     for _, row in spans_df.iterrows():
-        g   = row["pass_group"]
-        fi  = int(row["fixpoint_iter"])
+        g  = row["pass_group"]
+        fi = int(row["fixpoint_iter"])
         alpha = 0.55 if fi < 0 else max(0.28, 0.60 - fi * 0.08)
         ax.axvspan(
             row["span_start"] - 0.5, row["span_end"] + 0.5,
@@ -158,7 +157,7 @@ def _set_xlim(ax, xs):
 def _setup_xticks(ax, df: pd.DataFrame, show_labels: bool):
     n    = len(df)
     step = max(1, n // 30)
-    ticks  = list(range(0, n, step))
+    ticks = list(range(0, n, step))
     if show_labels:
         labels = [_abbrev(df.iloc[t]["pass_name"]) for t in ticks]
         ax.set_xticks(ticks)
@@ -171,33 +170,24 @@ def _setup_xticks(ax, df: pd.DataFrame, show_labels: bool):
 
 
 # ---------------------------------------------------------------------------
-# Subplot: count metric (instructions / functions / basic blocks)
+# Subplots
 # ---------------------------------------------------------------------------
 
-def _plot_count(ax, df: pd.DataFrame,
-                col_after: str, col_before: str,
-                ylabel: str, title: str,
-                spans_df: pd.DataFrame, fixpts_df: pd.DataFrame,
-                label_fixpoints: bool = False):
+def _plot_count(ax, df, col_after, col_before, ylabel, title,
+                spans_df, fixpts_df, label_fixpoints=False):
     xs     = df["pass_idx"].to_numpy()
     after  = df[col_after].to_numpy(dtype=float)
     before = df[col_before].to_numpy(dtype=float)
-
     changed = before != after
 
     _decorate(ax, spans_df, fixpts_df, label_fixpoints=label_fixpoints)
     _set_xlim(ax, xs)
 
-    # Draw one horizontal segment per pass coloured by whether that pass
-    # changed the metric: red = changed, grey = unchanged.
-    # Y-limits are derived from "after" values only so post-prune detail
-    # fills the full axis height (the large pre-prune drop is not shown).
     for i in range(len(xs)):
-        color  = CHANGE_COLOR if changed[i] else STEP_LINE_COLOR
-        x0     = xs[i]
-        x1     = xs[i + 1] if i + 1 < len(xs) else xs[i] + 1
+        color = CHANGE_COLOR if changed[i] else STEP_LINE_COLOR
+        x0 = xs[i]
+        x1 = xs[i + 1] if i + 1 < len(xs) else xs[i] + 1
         ax.hlines(after[i], x0, x1, color=color, linewidth=2.0, zorder=5)
-        # Thin vertical connector between consecutive segments when they differ
         if i + 1 < len(xs):
             y0, y1 = after[i], after[i + 1]
             if y0 != y1:
@@ -212,12 +202,7 @@ def _plot_count(ax, df: pd.DataFrame,
     ax.tick_params(labelsize=7)
 
 
-# ---------------------------------------------------------------------------
-# Subplot: wall time per pass
-# ---------------------------------------------------------------------------
-
-def _plot_wall_time(ax, df: pd.DataFrame,
-                    spans_df: pd.DataFrame, fixpts_df: pd.DataFrame):
+def _plot_wall_time(ax, df, spans_df, fixpts_df):
     xs = df["pass_idx"].to_numpy()
     wt = df["wall_time_ms"].to_numpy(dtype=float)
 
@@ -231,12 +216,7 @@ def _plot_wall_time(ax, df: pd.DataFrame,
     ax.tick_params(labelsize=7)
 
 
-# ---------------------------------------------------------------------------
-# Subplot: IR-changed flag (compact rug)
-# ---------------------------------------------------------------------------
-
-def _plot_ir_changed(ax, df: pd.DataFrame,
-                     spans_df: pd.DataFrame, fixpts_df: pd.DataFrame):
+def _plot_ir_changed(ax, df, spans_df, fixpts_df):
     xs  = df["pass_idx"].to_numpy()
     chg = df["ir_changed_int"].to_numpy(dtype=int)
 
@@ -246,14 +226,10 @@ def _plot_ir_changed(ax, df: pd.DataFrame,
     _decorate(ax, spans_df, fixpts_df)
     _set_xlim(ax, xs)
 
-    # Rug-style: short grey ticks where IR was NOT changed, tall red ticks
-    # where IR WAS changed.  One mark per pass — purely boolean, no numeric axis.
     if len(unchanged_xs):
-        ax.vlines(unchanged_xs, 0, 0.35, color="#bdc3c7",
-                  linewidth=0.9, zorder=5)
+        ax.vlines(unchanged_xs, 0, 0.35, color="#bdc3c7", linewidth=0.9, zorder=5)
     if len(changed_xs):
-        ax.vlines(changed_xs, 0, 1.0, color=CHANGE_COLOR,
-                  linewidth=1.3, zorder=6)
+        ax.vlines(changed_xs, 0, 1.0, color=CHANGE_COLOR, linewidth=1.3, zorder=6)
 
     ax.set_ylim(-0.05, 1.25)
     ax.set_yticks([0, 1])
@@ -263,11 +239,7 @@ def _plot_ir_changed(ax, df: pd.DataFrame,
     ax.tick_params(labelsize=7)
 
 
-# ---------------------------------------------------------------------------
-# Legend
-# ---------------------------------------------------------------------------
-
-def _make_legend(fig, spans_df: pd.DataFrame, fixpts_df: pd.DataFrame):
+def _make_legend(fig, spans_df, fixpts_df):
     seen = set(spans_df["pass_group"].unique())
     handles = [
         mpatches.Patch(facecolor=GROUP_COLORS[g], alpha=0.65,
@@ -290,27 +262,6 @@ def _make_legend(fig, spans_df: pd.DataFrame, fixpts_df: pd.DataFrame):
 
 
 # ---------------------------------------------------------------------------
-# DB helpers
-# ---------------------------------------------------------------------------
-
-def _resolve_db(flag: str | None) -> Path:
-    if flag:
-        return Path(flag)
-    env = os.environ.get("BENCHPLOT_DB_PATH")
-    if env:
-        return Path(env)
-    return Path.cwd() / "benchmarks.duckdb"
-
-
-def _latest_run_id(con) -> str:
-    row = con.execute(_SQL_LATEST_RUN).fetchone()
-    if row is None:
-        print("Error: no runs found in database.", file=sys.stderr)
-        sys.exit(1)
-    return row[0]
-
-
-# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -318,42 +269,28 @@ def main():
     parser = argparse.ArgumentParser(
         description="Plot per-pass JIT pipeline metrics from DuckDB pass_traces."
     )
-    parser.add_argument("--db",        default=None, metavar="PATH",
-                        help="DuckDB file (overrides BENCHPLOT_DB_PATH).")
-    parser.add_argument("--run-id",    default=None, metavar="ID",
-                        help="run_id to plot. Defaults to most recent run.")
+    add_common_args(parser)
     parser.add_argument("--benchmark", default="%", metavar="PATTERN",
                         help="SQL LIKE pattern for benchmark_name (default: '%%').")
-    parser.add_argument("--output",    default=None, metavar="FILE",
-                        help="Output file (PDF/PNG/SVG).")
-    parser.add_argument("--title",     default=None,
-                        help="Figure suptitle.")
     args = parser.parse_args()
 
-    db_path = _resolve_db(args.db)
-    if not db_path.exists():
-        print(f"Error: DB not found: {db_path}", file=sys.stderr)
-        sys.exit(1)
+    con    = open_db(resolve_db_path(args.db))
+    run_id = resolve_run_id(con, args.run_id)
 
-    con     = duckdb.connect(str(db_path), read_only=True)
-    run_id  = args.run_id or _latest_run_id(con)
-    pattern = args.benchmark if "%" in args.benchmark else f"%{args.benchmark}%"
+    report_dir = make_report_dir(__file__, parser, args)
 
-    df        = con.execute(_SQL_MAIN,      [run_id, pattern]).df()
-    spans_df  = con.execute(_SQL_SPANS,     [run_id, pattern]).df()
-    fixpts_df = con.execute(_SQL_FIXPOINTS, [run_id, pattern]).df()
+    pattern   = args.benchmark if "%" in args.benchmark else f"%{args.benchmark}%"
+    df        = query_df(con, _SQL_MAIN,      [run_id, pattern])
+    spans_df  = query_df(con, _SQL_SPANS,     [run_id, pattern])
+    fixpts_df = query_df(con, _SQL_FIXPOINTS, [run_id, pattern])
     con.close()
 
     if df.empty:
-        print(f"Error: no rows for run_id={run_id} LIKE '{pattern}'.",
-              file=sys.stderr)
-        sys.exit(1)
+        sys.exit(f"No rows for run_id={run_id} LIKE '{pattern}'.")
 
     n     = len(df)
     width = max(14, n * 0.22)
 
-    # IR-changed subplot is compact (boolean rug); the four metric subplots
-    # get equal heights.  hratios in ultraplot are in inches.
     fig, axes = uplt.subplots(
         nrows=5, ncols=1,
         figsize=(width, 20),
@@ -362,22 +299,16 @@ def main():
         hspace=1.2,
     )
 
-    title_str = (args.title or
-                 f"JIT Pipeline Trace — {pattern.strip('%').replace('_', ' ')}")
+    title_str = args.title or f"JIT Pipeline Trace — {pattern.strip('%').replace('_', ' ')}"
     fig.suptitle(title_str, fontsize=12, fontweight="bold", y=1.002)
 
     _plot_count(axes[0], df, "instrs_after", "instrs_before",
                 "Instructions", "Instruction count",
                 spans_df, fixpts_df, label_fixpoints=True)
-
     _plot_count(axes[1], df, "fns_after", "fns_before",
-                "Functions", "Function count",
-                spans_df, fixpts_df)
-
+                "Functions", "Function count", spans_df, fixpts_df)
     _plot_count(axes[2], df, "bbs_after", "bbs_before",
-                "Basic blocks", "Basic block count",
-                spans_df, fixpts_df)
-
+                "Basic blocks", "Basic block count", spans_df, fixpts_df)
     _plot_wall_time(axes[3], df, spans_df, fixpts_df)
     _plot_ir_changed(axes[4], df, spans_df, fixpts_df)
 
@@ -386,10 +317,8 @@ def main():
 
     _make_legend(fig, spans_df, fixpts_df)
 
-    safe = re.sub(r'[^a-zA-Z0-9_-]', '_', pattern.strip("%"))
-    out  = args.output or f"pass_trace_{safe}.pdf"
-    fig.save(out, bbox_inches="tight", dpi=150)
-    print(f"Saved: {out}")
+    save_plot(fig, report_dir / "plot.pdf")
+    save_csv(df, report_dir / "data.csv")
 
 
 if __name__ == "__main__":

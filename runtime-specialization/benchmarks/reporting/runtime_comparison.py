@@ -3,12 +3,11 @@
 
 Usage:
     reporting/runtime_comparison.py [--db=PATH] [--run-id=ID]
-                                    [--filter=REGEX] [--output=FILE]
-                                    [--time-unit=ns|us|ms|s]
+                                    [--filter=REGEX] [--time-unit=ns|us|ms|s]
 """
 
 import argparse
-import re
+import os
 import sys
 
 import duckdb
@@ -16,27 +15,18 @@ import numpy as np
 import pandas as pd
 import ultraplot as uplt
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from report_utils import (
+    TIME_UNITS, add_common_args, apply_kernel_filter, auto_time_unit,
+    make_report_dir, open_db, query_df, resolve_db_path, resolve_run_id,
+    save_csv, save_plot,
+)
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-# Maps unit name -> how many nanoseconds one unit equals (used to convert ns → unit)
-TIME_UNITS = {"ns": 1.0, "us": 1e3, "ms": 1e6, "s": 1e9}
-
-
-def auto_unit(median_ns: float) -> str:
-    """Pick a human-friendly time unit based on median time in nanoseconds."""
-    if median_ns >= 1e9:
-        return "s"
-    if median_ns >= 1e6:
-        return "ms"
-    if median_ns >= 1e3:
-        return "us"
-    return "ns"
-
-
 def fmt_time(val_ns: float) -> str:
-    """Format a nanosecond value as a concise human-friendly string."""
     if np.isnan(val_ns) or val_ns <= 0:
         return ""
     if val_ns >= 1e9:
@@ -93,7 +83,7 @@ def plot_on_ax(ax, groups, t_unspec, t_spec, t_jit, t_spec_jit, time_unit, title
     n = len(groups)
     x = np.arange(n)
     w = 0.18
-    div = TIME_UNITS[time_unit]  # divide ns by this to get values in target unit
+    div = TIME_UNITS[time_unit]
 
     def sc(arr):
         return arr / div
@@ -103,7 +93,6 @@ def plot_on_ax(ax, groups, t_unspec, t_spec, t_jit, t_spec_jit, time_unit, title
     ax.bar(x + 0.5 * w, sc(t_jit),      w, label="JIT Overhead",      color="orange7")
     ax.bar(x + 1.5 * w, sc(t_spec_jit), w, label="Specialized + JIT", color="blue7")
 
-    # Annotate each bar with human-friendly time (independent of y-axis unit)
     for i, (u, s, j, sj) in enumerate(zip(t_unspec, t_spec, t_jit, t_spec_jit)):
         for x_off, h_ns in [(-1.5 * w, u), (-0.5 * w, s), (0.5 * w, j), (1.5 * w, sj)]:
             if not (np.isnan(h_ns) or h_ns <= 0):
@@ -124,13 +113,12 @@ def plot_on_ax(ax, groups, t_unspec, t_spec, t_jit, t_spec_jit, time_unit, title
     ax.legend(loc="b")
 
 
-def plot(groups, t_unspec, t_spec, t_jit, t_spec_jit, time_unit, title, output_path):
+def plot(groups, t_unspec, t_spec, t_jit, t_spec_jit, time_unit, title):
     n = len(groups)
     width = max(8, n * 1.4)
     fig, ax = uplt.subplots(figsize=(width, 4))
     plot_on_ax(ax, groups, t_unspec, t_spec, t_jit, t_spec_jit, time_unit, title)
-    fig.save(output_path)
-    print(f"Saved chart to {output_path}")
+    return fig
 
 
 # ---------------------------------------------------------------------------
@@ -140,8 +128,7 @@ def plot(groups, t_unspec, t_spec, t_jit, t_spec_jit, time_unit, title, output_p
 def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
               kernel_filter: str | None = None) -> pd.DataFrame:
     """Pivot cpu_time per phase into t_unspec_ns / t_spec_ns / t_jit_ns columns."""
-    df = con.execute(
-        """
+    df = query_df(con, """
         SELECT
             kernel,
             raw_params,
@@ -169,23 +156,8 @@ def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
         ORDER BY kernel, raw_params
         """,
         [run_id],
-    ).df()
-
-    if kernel_filter:
-        pat = re.compile(kernel_filter, re.IGNORECASE)
-        df = df[df["kernel"].apply(lambda k: bool(pat.search(k)))]
-
-    return df
-
-
-def get_latest_run_id(con: duckdb.DuckDBPyConnection) -> str:
-    row = con.execute(
-        "SELECT run_id FROM context ORDER BY run_ts DESC LIMIT 1"
-    ).fetchone()
-    if row is None:
-        print("No runs found in database.", file=sys.stderr)
-        sys.exit(1)
-    return row[0]
+    )
+    return apply_kernel_filter(df, kernel_filter)
 
 
 # ---------------------------------------------------------------------------
@@ -196,33 +168,30 @@ def main():
     parser = argparse.ArgumentParser(
         description="Plot absolute cpu_time comparison from DuckDB."
     )
-    parser.add_argument("--db", default="benchmarks.duckdb", help="DuckDB file path.")
-    parser.add_argument("--run-id", help="Specific run_id to plot (default: most recent).")
-    parser.add_argument("--filter", dest="kernel_filter", help="Regex filter on kernel name.")
-    parser.add_argument("--output", default="runtime_comparison.pdf", help="Output chart path.")
-    parser.add_argument(
-        "--time-unit", choices=["ns", "us", "ms", "s"], help="Y-axis time unit override."
-    )
+    add_common_args(parser)
     args = parser.parse_args()
 
-    con = duckdb.connect(args.db, read_only=True)
-    run_id = args.run_id or get_latest_run_id(con)
+    con    = open_db(resolve_db_path(args.db))
+    run_id = resolve_run_id(con, args.run_id)
+
+    report_dir = make_report_dir(__file__, parser, args)
 
     df = load_data(con, run_id, args.kernel_filter)
     if df.empty:
-        print("No benchmarks match the filter.", file=sys.stderr)
-        sys.exit(1)
+        sys.exit("No benchmarks match the filter.")
 
-    target_unit = args.time_unit or auto_unit(df["t_unspec_ns"].median())
+    target_unit = args.time_unit or auto_time_unit(df["t_unspec_ns"].median())
     groups, t_unspec, t_spec, t_jit, t_spec_jit = compute_bars(df)
 
     if not groups:
-        print("No valid benchmark groups (missing unspecialized baseline).", file=sys.stderr)
-        sys.exit(1)
+        sys.exit("No valid benchmark groups (missing unspecialized baseline).")
 
     filter_label = args.kernel_filter or "All Kernels"
-    plot(groups, t_unspec, t_spec, t_jit, t_spec_jit, target_unit,
-         f"Runtime Comparison — {filter_label}", args.output)
+    title = args.title or f"Runtime Comparison — {filter_label}"
+    fig = plot(groups, t_unspec, t_spec, t_jit, t_spec_jit, target_unit, title)
+
+    save_plot(fig, report_dir / "plot.pdf")
+    save_csv(df, report_dir / "data.csv")
 
 
 if __name__ == "__main__":
