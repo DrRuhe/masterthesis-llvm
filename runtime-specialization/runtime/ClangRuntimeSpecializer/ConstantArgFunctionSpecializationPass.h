@@ -1,6 +1,7 @@
 #pragma once
 #include "llvm/IR/PassManager.h"
 #include "llvm/IR/Module.h"
+#include <string>
 
 namespace clangRuntimeSpecializer {
 
@@ -18,11 +19,14 @@ class ConstantArgFunctionSpecializationPass
 public:
     // maxGroups: max distinct constant-arg patterns per function before skipping.
     // 0 = unlimited.
-    explicit ConstantArgFunctionSpecializationPass(unsigned maxGroups = 0)
-        : MaxGroups(maxGroups) {}
+    // targetName: when non-empty, only specialize the function with this name.
+    explicit ConstantArgFunctionSpecializationPass(unsigned maxGroups = 0,
+                                                   std::string targetName = "")
+        : MaxGroups(maxGroups), TargetName(std::move(targetName)) {}
     llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM);
 private:
     unsigned MaxGroups;
+    std::string TargetName;
 };
 
 } // namespace clangRuntimeSpecializer

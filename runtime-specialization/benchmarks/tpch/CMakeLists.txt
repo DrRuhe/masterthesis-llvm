@@ -21,6 +21,8 @@ add_custom_command(
             -x c -O2
             -DSQLITE_THREADSAFE=0
             -DSQLITE_OMIT_LOAD_EXTENSION=1
+            "-DSQLITE_PRIVATE="
+            -fvisibility=default
             -I${sqlite3_src_SOURCE_DIR}
             -fpass-plugin=${PLUGIN_LIB}
             -c ${sqlite3_src_SOURCE_DIR}/sqlite3.c

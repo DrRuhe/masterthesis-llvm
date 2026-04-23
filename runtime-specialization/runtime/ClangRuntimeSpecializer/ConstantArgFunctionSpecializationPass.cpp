@@ -17,9 +17,11 @@ namespace {
 // LLVM uniques constants within a context, so pointer equality is value equality.
 using SpecKey = std::vector<std::pair<unsigned, llvm::Constant *>>;
 
-SpecKey buildSpecKey(llvm::CallBase *CB) {
+// Only inspect formal parameters (up to F->arg_size()); vararg extras are skipped.
+SpecKey buildSpecKey(llvm::CallBase *CB, unsigned NumFormalParams) {
     SpecKey Key;
-    for (unsigned I = 0, E = CB->arg_size(); I < E; ++I) {
+    unsigned Limit = std::min(CB->arg_size(), NumFormalParams);
+    for (unsigned I = 0; I < Limit; ++I) {
         if (auto *C = llvm::dyn_cast<llvm::Constant>(CB->getArgOperand(I)))
             Key.emplace_back(I, C);
     }
@@ -45,9 +47,12 @@ ConstantArgFunctionSpecializationPass::run(llvm::Module &M,
     for (llvm::Function &F : M) {
         if (F.isDeclaration() || F.arg_empty())
             continue;
+        if (!TargetName.empty() && F.getName() != TargetName)
+            continue;
 
         WorkItem Item;
         Item.F = &F;
+        const unsigned NumFormals = F.arg_size();
 
         for (llvm::User *U : F.users()) {
             auto *CB = llvm::dyn_cast<llvm::CallBase>(U);
@@ -57,7 +62,7 @@ ConstantArgFunctionSpecializationPass::run(llvm::Module &M,
             if (!CB->getParent() || !CB->getParent()->getParent())
                 continue;
 
-            SpecKey Key = buildSpecKey(CB);
+            SpecKey Key = buildSpecKey(CB, NumFormals);
             if (Key.empty())
                 Item.UnspecializedSites.push_back(CB);
             else

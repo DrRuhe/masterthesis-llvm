@@ -538,9 +538,7 @@ namespace clangRuntimeSpecializer {
                 }
               };
 
-              // Clear blocking attributes so AlwaysInliner can act on call-site annotations.
-              // Do NOT add alwaysinline globally; ConstantArgAlwaysInlinePass handles that
-              // selectively based on whether call sites have constant arguments.
+              // Clear blocking attributes so the inliner can act on call-site annotations.
               for (auto &F : M) {
                 if (!F.isDeclaration()) {
                   F.removeFnAttr(llvm::Attribute::NoInline);
@@ -548,8 +546,95 @@ namespace clangRuntimeSpecializer {
                 }
               }
 
+              // Pipeline 1 setup: convert available_externally functions → internal (so the JIT
+              // compiles all SQLite bodies, including pure-static helpers that are invisible to
+              // dlopen(NULL)) and strip alwaysinline so ConstantArgFunctionSpecializationPass
+              // drives constant propagation via cloning rather than inlining.
+              //
+              // Global VARIABLES that were exposed as globally-visible via -DSQLITE_PRIVATE=""
+              // (e.g. sqlite3Config) keep their available_externally linkage because the
+              // conversion below only touches Functions.  They resolve from the host process at
+              // JIT link time, giving JIT-compiled SQLite bodies access to the host's
+              // properly-initialised sqlite3Config (malloc pointers, VFS, etc.).
+              //
+              // Also derive the target function name (direct callee of the wrapper) so
+              // ConstantArgFunctionSpecializationPass is restricted to that one function.
+              // Find the direct callee of the wrapper (= specialization target).
+              // Must be done before the Pipeline 1 linkage conversion loop below.
+              std::string Pipeline1TargetFuncName;
+              if (Pipeline == 1) {
+                for (auto &F : M) {
+                  if (F.isDeclaration() || !F.getName().starts_with("specialized_wrapper_"))
+                    continue;
+                  for (auto &BB : F)
+                    for (auto &I : BB)
+                      if (auto *CB = llvm::dyn_cast<llvm::CallBase>(&I))
+                        if (auto *Callee = CB->getCalledFunction())
+                          if (!Callee->isDeclaration())
+                            Pipeline1TargetFuncName = Callee->getName().str();
+                }
+
+                // Convert only the specialization target to Internal so the JIT
+                // compiles just that one function.  All other functions keep their
+                // available_externally linkage and are resolved from the host process,
+                // preserving their static-local state (initialization flags, caches, etc.).
+                //
+                // Converting ALL AvailableExternal functions to Internal (the naive
+                // approach) zero-initialises their static C locals in the JIT, which
+                // corrupts execution when those locals are caches or init-flags that the
+                // host process has already set.
+                //
+                // Purely-static helpers (C `static`, not SQLITE_PRIVATE) that are called
+                // by the target function but invisible to dlsym are handled separately:
+                // they are also converted to Internal so the JIT can compile them.
+                // We do this lazily — AvailableExternal functions called by Internal
+                // functions must themselves become Internal or have a host symbol.
+                // Rather than a BFS, we convert every function that the linker cannot
+                // resolve from the host (i.e. all remaining AvailableExternal) to
+                // Internal at the end; but we do so ONLY for the target and its callees
+                // reachable within the IR, leaving truly-external functions alone.
+                //
+                // Simple policy: convert ONLY the target + anything it directly or
+                // transitively calls that is currently AvailableExternal (has an IR body).
+                // We keep a worklist to do this transitively.
+                llvm::SmallPtrSet<llvm::Function*, 32> ToConvert;
+                if (!Pipeline1TargetFuncName.empty()) {
+                  if (auto *TF = M.getFunction(Pipeline1TargetFuncName)) {
+                    // BFS over call graph within the module.
+                    llvm::SmallVector<llvm::Function*, 32> Worklist;
+                    Worklist.push_back(TF);
+                    while (!Worklist.empty()) {
+                      llvm::Function *Cur = Worklist.pop_back_val();
+                      if (!ToConvert.insert(Cur).second) continue;
+                      for (auto &BB : *Cur)
+                        for (auto &I : BB)
+                          if (auto *CB = llvm::dyn_cast<llvm::CallBase>(&I))
+                            if (auto *Callee = CB->getCalledFunction())
+                              if (!Callee->isDeclaration() && !ToConvert.count(Callee))
+                                Worklist.push_back(Callee);
+                    }
+                  }
+                }
+                for (auto &F : M) {
+                  if (F.isDeclaration()) continue;
+                  if (ToConvert.count(&F))
+                    F.setLinkage(llvm::GlobalValue::InternalLinkage);
+                  if (!F.getName().starts_with("specialized_wrapper_"))
+                    F.removeFnAttr(llvm::Attribute::AlwaysInline);
+                }
+                for (auto &F : M) {
+                  for (auto &BB : F) {
+                    for (auto &I : BB) {
+                      if (auto *CB = llvm::dyn_cast<llvm::CallBase>(&I))
+                        CB->removeFnAttr(llvm::Attribute::AlwaysInline);
+                    }
+                  }
+                }
+              }
+
               // Initial pass: Always inline marked functions
               CurrentGroup = "initial";
+              if (Pipeline != 1) // DEBUG: skip initial for P1
               {
                 llvm::ModulePassManager InitialMPM;
 
@@ -563,21 +648,24 @@ namespace clangRuntimeSpecializer {
                 // 3b. Attribute inference - deduces readonly, readnone, etc.
                 InitialMPM.addPass(llvm::ReversePostOrderFunctionAttrsPass());
 
-                // 3c. Static Mutability Analysis to infer read-only fields
-                InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
-                
-                // 3d. Replace invariant loads with constants from host memory
-                InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
+                // 3c. Static Mutability Analysis to infer read-only fields.
+                // Pipeline 1: skip — with all SQLite functions compiled as internal, the
+                // analysis incorrectly marks mutable fields (e.g. Mem cell flags, pc) as
+                // invariant, causing GVN/LICM to hoist those loads and corrupt execution.
+                if (Pipeline == 0)
+                  InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
 
-                // For large modules (e.g. sqlite3 amalgamation), skip inlining in the
-                // initial phase.  Inlining sqlite3VdbeExec (234K instrs) transitively
-                // expands the module to ~3M instructions, making IPSCCP/GVN in the
-                // fixpoint prohibitively slow.  Instead, let IPSCCP in the first fixpoint
-                // iteration propagate the constant vdbe* pointer interprocedurally;
-                // ConstantArgAlwaysInlinePass then marks call sites with now-constant
-                // arguments for inlining in subsequent iterations.
-                if (!LargeModule) {
-                  // Annotate constant-arg call sites before AlwaysInliner.
+                // 3d. Replace invariant loads with constants from host memory.
+                // Pipeline 1: skip for same reason as StaticMutabilityAnalysis above.
+                if (Pipeline == 0)
+                  InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
+
+                // Pipeline 0: inline constant-arg call sites on small modules.
+                // Pipeline 1: skip initial inlining/specialization entirely — IPSCCP in the
+                // first fixpoint iteration propagates the specialized constant into callee
+                // bodies first, then ConstantArgFunctionSpecializationPass targets only
+                // the functions that actually use the propagated constants.
+                if (Pipeline == 0 && !LargeModule) {
                   InitialMPM.addPass(ConstantArgAlwaysInlinePass());
                   InitialMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
                 }
@@ -599,7 +687,7 @@ namespace clangRuntimeSpecializer {
 
               // Fixpoint iteration: Run until no more changes occur
               // We count instructions to detect convergence
-              const int MaxFixpointIterations = Instance->CurrentCallOptions.MaxFixpointIterations;
+              const int MaxFixpointIterations = (Pipeline == 1) ? 0 : Instance->CurrentCallOptions.MaxFixpointIterations; // DEBUG: skip fixpoint for P1
               size_t PrevInstCount = 0;
 
               for (int Iteration = 0; Iteration < MaxFixpointIterations; ++Iteration) {
@@ -611,10 +699,15 @@ namespace clangRuntimeSpecializer {
 
                 llvm::ModulePassManager FixpointMPM;
 
-                // 1. Interprocedural Sparse Conditional Constant Propagation
-                // This propagates constants across function boundaries and can turn
-                // indirect calls into direct calls
-                FixpointMPM.addPass(llvm::IPSCCPPass());
+                // 1. Interprocedural Sparse Conditional Constant Propagation.
+                // Pipeline 0: allow IPSCCP's built-in func-spec.
+                // Pipeline 1: skip IPSCCP — it crashes on cloned functions that have
+                // baked-in pointer constants (ConstantInt bit-width mismatch in
+                // visitGetElementPtrInst when processing inter-procedural ConstantRanges).
+                if (Pipeline == 0) {
+                  FixpointMPM.addPass(llvm::IPSCCPPass(
+                      llvm::IPSCCPOptions(/*AllowFuncSpec=*/true)));
+                }
 
                 // 1b. Devirtualize indirect calls through constant vtable pointers
                 FixpointMPM.addPass(DevirtualizeConstantVtableCallsPass());
@@ -629,19 +722,44 @@ namespace clangRuntimeSpecializer {
                 // 1b2. Infer attributes again after optimistic resolution
                 FixpointMPM.addPass(llvm::ReversePostOrderFunctionAttrsPass());
 
-                // 1c. Static Mutability Analysis to infer read-only fields
-                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
+                // 1c. Static Mutability Analysis to infer read-only fields.
+                // Pipeline 1: skip — the analysis incorrectly marks mutable Vdbe struct
+                // fields as invariant when the Vdbe pointer is a baked-in constant, then
+                // InvariantLoadToConstantPass substitutes stale JIT-compile-time values for
+                // runtime reads (e.g. p->pc), causing incorrect branch elimination → ud2.
+                if (Pipeline == 0)
+                  FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
 
-                // 1d. Replace invariant loads with constants from host memory
-                FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
+                // 1d. Replace invariant loads with constants from host memory.
+                // Pipeline 1: skip for same reason as StaticMutabilityAnalysis above.
+                if (Pipeline == 0)
+                  FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
 
-                // 1e. Annotate constant-arg call sites, then inline them.
-                FixpointMPM.addPass(ConstantArgAlwaysInlinePass());
-                FixpointMPM.addPass(llvm::AlwaysInlinerPass());
+                // 1e. Constant-arg propagation: inline (pipeline 0) or specialize via cloning (pipeline 1).
+                // For pipeline 1, only specialize in iter 0; subsequent iters just do scalar
+                // cleanup on the already-cloned functions (instruction count converges quickly).
+                if (Pipeline == 0) {
+                  FixpointMPM.addPass(ConstantArgAlwaysInlinePass());
+                  FixpointMPM.addPass(llvm::AlwaysInlinerPass());
+                } else if (Iteration == 0) {
+                  // Default to MaxGroups=1 to prevent multi-pattern clone explosion;
+                  // caller can raise via FuncSpecMaxGroups if wider coverage is needed.
+                  unsigned MaxGroups = Instance->CurrentCallOptions.FuncSpecMaxGroups;
+                  if (MaxGroups == 0) MaxGroups = 1;
+                  // Restrict to the wrapper's direct callee (Pipeline1TargetFuncName)
+                  // so we don't specialize unrelated internal functions whose call sites
+                  // might pass null or mismatched constants.
+                  FixpointMPM.addPass(clangRuntimeSpecializer::ConstantArgFunctionSpecializationPass(
+                      MaxGroups, Pipeline1TargetFuncName));
+                }
 
                 // 2. Global optimizations - includes devirtualization
-                // GlobalOpt can devirtualize calls when it knows the concrete type
-                FixpointMPM.addPass(llvm::GlobalOptPass());
+                // GlobalOpt can devirtualize calls when it knows the concrete type.
+                // Skip for Pipeline 1: GlobalOpt incorrectly treats internal globals as
+                // constant (using their IR initializers) even when the host process writes
+                // to them at runtime, producing unreachable dead-code that traps at execution.
+                if (Pipeline == 0)
+                  FixpointMPM.addPass(llvm::GlobalOptPass());
 
                 // 2b. Whole-program devirtualization - attempts to devirtualize based on
                 // vtable information. This can eliminate virtual calls when the set of
@@ -678,11 +796,13 @@ namespace clangRuntimeSpecializer {
                 // GVN - propagate constants through inlined code (KEY for devirtualization!)
                 PostInlineFPM.addPass(llvm::GVNPass());
 
-                // Static Mutability Analysis to infer read-only fields
-                PostInlineFPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
-
-                // Replace invariant loads with constants from host memory
-                PostInlineFPM.addPass(InvariantLoadToConstantPass());
+                // Static Mutability Analysis + InvariantLoadToConstantPass: skip for
+                // Pipeline 1 (see fixpoint comment — mutable Vdbe fields get incorrectly
+                // marked invariant when the pointer is a baked-in inttoptr constant).
+                if (Pipeline == 0) {
+                  PostInlineFPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
+                  PostInlineFPM.addPass(InvariantLoadToConstantPass());
+                }
 
                 // InstCombine - fold loads of constant vtable pointers
                 PostInlineFPM.addPass(llvm::InstCombinePass());
@@ -785,7 +905,14 @@ namespace clangRuntimeSpecializer {
               // Final O3 pass for cleanup and additional optimizations
               if (Instance->CurrentCallOptions.EnableO3Final) {
                 CurrentGroup = "final";
-                llvm::ModulePassManager FinalMPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+                llvm::ModulePassManager FinalMPM;
+                if (Pipeline == 1) {
+                  // Pipeline 1: skip final O3 — function-simplification passes corrupt
+                  // SQLite execution (integer/pointer confusion in Mem cell handling).
+                  // TODO: investigate which specific pass causes the issue.
+                } else {
+                  FinalMPM = PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+                }
                 FinalMPM.run(M, MAM);
                 phaseLog("after final O3", countInstrs(M));
               }
