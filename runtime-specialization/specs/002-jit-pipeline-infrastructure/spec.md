@@ -55,7 +55,7 @@ Example descriptor:
 }
 ```
 
-**DB schema for parameters**: Rather than extending `optim_trial_params` with a new fixed column for every new option (which requires schema migrations and breaks historical queries), the chosen approach is a **hybrid schema**: fixed columns exist only for the original 5 parameters (maintained for backwards-compatible queries), while a `params_json` column stores the complete parameter set as a JSON object for every trial. New parameters appear only in `params_json` — no migration required. The descriptor itself is stored in `optimization_sessions.search_space_json` so the exact search space for any historical study is always queryable.
+**DB schema for parameters**: All trial parameters are stored exclusively in a `params_json` VARCHAR column in `optim_trial_params` — a JSON object keyed by parameter name. There are no separate fixed columns for individual parameters. This means adding a new parameter to the search space requires no schema change: it simply appears as a new key in `params_json`. The descriptor used for each study is stored in `optimization_sessions.search_space_json`, making the exact search space permanently queryable.
 
 **Why this priority**: Pipeline comparison is the central research question; automating the sweep across strategies is the direct empirical method for answering it.
 
@@ -66,7 +66,7 @@ Example descriptor:
 1. **Given** a search space descriptor that includes `pipeline` as a categorical parameter, **When** `optimize_benchmarks.py` runs, **Then** trials are sampled across all listed pipeline choices and the winning pipeline is identified.
 2. **Given** a search space descriptor that omits `pipeline`, **When** `optimize_benchmarks.py` runs, **Then** the optimizer behaves as before (single pipeline, fixed by whatever ENV var is set in the environment).
 3. **Given** no `--search-space` flag, **When** `optimize_benchmarks.py` runs, **Then** it uses a built-in default descriptor that covers all standardized ENV-var-exposed options.
-4. **Given** a descriptor that includes a new parameter not in the current fixed `optim_trial_params` columns, **When** a trial is written, **Then** all parameters appear in `params_json`; no schema migration is required.
+4. **Given** a descriptor that includes a parameter not currently in the search space, **When** a trial is written, **Then** all parameters appear in `params_json`; no schema change is required.
 5. **Given** a study completes, **When** the researcher queries `optimization_sessions`, **Then** the `search_space_json` column contains the exact descriptor used for that study, so the optimization setup is fully reproducible from the database alone.
 
 ---
@@ -93,11 +93,11 @@ A researcher reviewing optimization history has trials from different studies �
 
 **Why this priority**: Long-term data integrity matters for thesis repeatability; this is a prerequisite before schema-breaking parameter additions are made.
 
-**Independent Test**: Insert trials from two studies with different search spaces into the same DuckDB file; query `SELECT * FROM optim_trial_params` and confirm all rows are present; query `params_json` column; verify rows without certain fixed columns have NULL in those columns but valid JSON in `params_json`.
+**Independent Test**: Insert trials from two studies with different search spaces into the same DuckDB file; query `SELECT * FROM optim_trial_params` and confirm all rows are present; verify that `params_json` is non-NULL for every row and contains the complete parameter set for that trial as valid JSON.
 
 **Acceptance Scenarios**:
 
-1. **Given** trials from two studies with different parameter sets exist in the same DB, **When** the researcher queries `optim_trial_params`, **Then** all rows are returned; fixed columns are NULL for parameters absent from that study's search space; `params_json` is non-NULL and contains the complete parameter set for every row.
+1. **Given** trials from two studies with different parameter sets exist in the same DB, **When** the researcher queries `optim_trial_params`, **Then** all rows are returned and `params_json` is non-NULL and contains the complete parameter set for every row.
 2. **Given** a new parameter is added to a search space descriptor, **When** a new study is run and stored, **Then** the new parameter appears in `params_json` of new rows; existing rows are not modified; no migration script is required.
 3. **Given** a researcher wants to filter by the new parameter, **When** they query `params_json::json->'new_param'`, **Then** they retrieve valid values from all studies that included it.
 
@@ -107,7 +107,6 @@ A researcher reviewing optimization history has trials from different studies �
 
 - What happens when `CRS_DEFAULT_PIPELINE` is set to a valid index but pipeline-specific ENV vars are missing? → Pipeline-specific options use their in-Options defaults; no error.
 - What happens when two search space descriptors define the same parameter with conflicting ranges? → The descriptor loaded last (the file on disk) takes precedence; the built-in default is overridden entirely.
-- What happens when `params_json` is queried for a trial written before the column was added? → The column is NULL for those rows (pre-migration rows); this is acceptable and documented.
 - What happens when a pipeline source file fails to compile? → Standard build error; no silent degradation. The pipeline cannot be registered if its translation unit doesn't compile.
 - What happens when MaxFixpointIterations is set to a value not supported by the selected pipeline (e.g., the cloning pipeline doesn't use a fixpoint loop)? → The JIT logs a WARNING and ignores the option; the pipeline runs with its own fixed behavior.
 
@@ -147,8 +146,6 @@ A researcher reviewing optimization history has trials from different studies �
 **DB Schema — Parameter Storage**
 
 - **FR-014**: The `optim_trial_params` table MUST include a `params_json` VARCHAR column. On every trial write, this column MUST be populated with a JSON object containing the complete set of parameters for that trial (keyed by their `name` from the search space descriptor).
-- **FR-015**: The existing fixed parameter columns in `optim_trial_params` (`fixpoint_max`, `unroll_max`, `large_module_max`, `early_prune`, `o3_final`) MUST be populated when the corresponding parameter appears in the active search space, and MUST be NULL when it does not appear (i.e., the search space did not include that parameter).
-- **FR-016**: When a trial is written with parameters that have no corresponding fixed column (e.g., a future `func_spec_max_groups` parameter), those parameters MUST appear in `params_json` without requiring a schema migration. A fixed column MAY be added later via an explicit migration.
 - **FR-017**: The `optimization_sessions` table MUST include a `search_space_json` VARCHAR column. When a study starts, the complete serialized descriptor (the JSON document, whether loaded from `--search-space` or the built-in default) MUST be written to this column so the exact search space definition is permanently associated with the study.
 
 ### Key Entities *(include if feature involves data)*
@@ -174,7 +171,6 @@ A researcher reviewing optimization history has trials from different studies �
 - The search space descriptor JSON format is versioned (a `version` field) to support future evolution; the initial version is `1`.
 - `CRS_DEFAULT_PIPELINE` uses the integer index; human-readable pipeline names are for documentation only.
 - The built-in default descriptor covers all ENV-var-exposed Options fields present at the time this feature is implemented; new fields added later require updating the default descriptor.
-- Backwards compatibility of the `optim_trial_params` table: the existing 5 fixed columns are preserved; `params_json` is added as a new additive column. Fixed columns exist for fast equality-filter queries; `params_json` is the authoritative complete record.
 - `float` and `log_float` parameter types (FR-010) are included for completeness and future pipeline-specific options; no current Options field requires them.
 - `optimization_sessions.search_space_json` is a new additive column; rows written before this feature (without a search space) will have NULL in that column.
 - The `FuncSpecMaxGroups` field (pipeline 1 specific, currently without an ENV var) MUST be given a standard ENV var (`CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS`) as part of this infrastructure work; it is not part of the pipeline-specific specs 003/004.

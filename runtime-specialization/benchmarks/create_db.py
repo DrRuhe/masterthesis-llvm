@@ -91,11 +91,7 @@ CREATE TABLE IF NOT EXISTS optim_trial_params (
     study_name            VARCHAR NOT NULL,
     trial_id              INTEGER NOT NULL,
     run_id                VARCHAR REFERENCES context(run_id),
-    fixpoint_max          INTEGER,
-    unroll_max            INTEGER,
-    large_module_max      INTEGER,
-    early_prune           BOOLEAN,
-    o3_final              BOOLEAN,
+    params_json           VARCHAR NOT NULL,
     used_timeout_fallback BOOLEAN,
     obj_jit_ns            DOUBLE,
     obj_exec_ns           DOUBLE,
@@ -115,12 +111,13 @@ CREATE TABLE IF NOT EXISTS unspec_baselines (
 
 _SCHEMA_OPTIM_SESSIONS = """
 CREATE TABLE IF NOT EXISTS optimization_sessions (
-    study_name    VARCHAR PRIMARY KEY,
-    binary        VARCHAR,
-    n_trials      INTEGER,
-    started_at    TIMESTAMP,
-    completed_at  TIMESTAMP,
-    status        VARCHAR
+    study_name        VARCHAR PRIMARY KEY,
+    binary            VARCHAR,
+    n_trials          INTEGER,
+    started_at        TIMESTAMP,
+    completed_at      TIMESTAMP,
+    status            VARCHAR,
+    search_space_json VARCHAR
 );
 """
 
@@ -208,8 +205,7 @@ _SCHEMA_V_OPTIM_RESULTS = """
 CREATE OR REPLACE VIEW v_optim_results AS
 SELECT
     otp.study_name, otp.trial_id,
-    otp.fixpoint_max, otp.unroll_max, otp.large_module_max,
-    otp.early_prune, otp.o3_final, otp.used_timeout_fallback,
+    otp.params_json, otp.used_timeout_fallback,
     r.kernel, r."group",
     r.t_jit_ns, r.t_spec_ns,
     u.unspec_ns
@@ -238,8 +234,7 @@ _SCHEMA_V_OPTIM_BEST_PER_KERNEL = """
 CREATE OR REPLACE VIEW v_optim_best_per_kernel AS
 SELECT DISTINCT ON (ob.study_name, ob.kernel)
     ob.study_name, ob.trial_id, ob.kernel,
-    ob.fixpoint_max, ob.unroll_max, ob.large_module_max,
-    ob.early_prune, ob.o3_final,
+    ob.params_json,
     ob.t_jit_ns, ob.t_spec_ns, ob.unspec_ns,
     (ob.t_jit_ns + ob.t_spec_ns) AS total_ns,
     ob.break_even_calls

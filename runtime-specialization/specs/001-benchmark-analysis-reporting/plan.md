@@ -132,7 +132,8 @@ CREATE TABLE IF NOT EXISTS optimization_sessions (
     n_trials      INTEGER,
     started_at    TIMESTAMP,
     completed_at  TIMESTAMP,   -- NULL until status = 'complete'
-    status        VARCHAR      -- 'incomplete' | 'complete'
+    status           VARCHAR,     -- 'incomplete' | 'complete'
+    search_space_json VARCHAR      -- serialized SearchSpaceDescriptor JSON; NULL for pre-spec-002 rows
 );
 ```
 
@@ -146,11 +147,7 @@ CREATE TABLE IF NOT EXISTS optim_trial_params (
                               REFERENCES optimization_sessions(study_name),
     trial_id              INTEGER NOT NULL,
     run_id                VARCHAR REFERENCES context(run_id),
-    fixpoint_max          INTEGER,
-    unroll_max            INTEGER,
-    large_module_max      INTEGER,
-    early_prune           BOOLEAN,
-    o3_final              BOOLEAN,
+    params_json           VARCHAR NOT NULL,
     used_timeout_fallback BOOLEAN,
     obj_jit_ns            DOUBLE,
     obj_exec_ns           DOUBLE,
@@ -264,8 +261,7 @@ and `unspec_baselines`.
 CREATE OR REPLACE VIEW v_optim_results AS
 SELECT
     otp.study_name, otp.trial_id,
-    otp.fixpoint_max, otp.unroll_max, otp.large_module_max,
-    otp.early_prune, otp.o3_final, otp.used_timeout_fallback,
+    otp.params_json, otp.used_timeout_fallback,
     r.kernel, r."group",
     r.t_jit_ns, r.t_spec_ns,
     u.unspec_ns
@@ -299,8 +295,7 @@ Best trial per `(study_name, kernel)`. **Filters `status = 'complete'`** via joi
 CREATE OR REPLACE VIEW v_optim_best_per_kernel AS
 SELECT DISTINCT ON (ob.study_name, ob.kernel)
     ob.study_name, ob.trial_id, ob.kernel,
-    ob.fixpoint_max, ob.unroll_max, ob.large_module_max,
-    ob.early_prune, ob.o3_final,
+    ob.params_json,
     ob.t_jit_ns, ob.t_spec_ns, ob.unspec_ns,
     (ob.t_jit_ns + ob.t_spec_ns) AS total_ns,
     ob.break_even_calls

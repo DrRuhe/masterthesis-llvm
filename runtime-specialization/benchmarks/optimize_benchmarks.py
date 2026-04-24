@@ -56,11 +56,7 @@ CREATE TABLE IF NOT EXISTS optim_trial_params (
     study_name            VARCHAR NOT NULL,
     trial_id              INTEGER NOT NULL,
     run_id                VARCHAR REFERENCES context(run_id),
-    fixpoint_max          INTEGER,
-    unroll_max            INTEGER,
-    large_module_max      INTEGER,
-    early_prune           BOOLEAN,
-    o3_final              BOOLEAN,
+    params_json           VARCHAR NOT NULL,
     used_timeout_fallback BOOLEAN,
     obj_jit_ns            DOUBLE,
     obj_exec_ns           DOUBLE,
@@ -80,12 +76,13 @@ CREATE TABLE IF NOT EXISTS unspec_baselines (
 
 _SCHEMA_OPTIM_SESSIONS = """
 CREATE TABLE IF NOT EXISTS optimization_sessions (
-    study_name    VARCHAR PRIMARY KEY,
-    binary        VARCHAR,
-    n_trials      INTEGER,
-    started_at    TIMESTAMP,
-    completed_at  TIMESTAMP,
-    status        VARCHAR
+    study_name        VARCHAR PRIMARY KEY,
+    binary            VARCHAR,
+    n_trials          INTEGER,
+    started_at        TIMESTAMP,
+    completed_at      TIMESTAMP,
+    status            VARCHAR,
+    search_space_json VARCHAR
 );
 """
 
@@ -95,8 +92,7 @@ _SCHEMA_V_OPTIM_RESULTS = """
 CREATE OR REPLACE VIEW v_optim_results AS
 SELECT
     otp.study_name, otp.trial_id,
-    otp.fixpoint_max, otp.unroll_max, otp.large_module_max,
-    otp.early_prune, otp.o3_final, otp.used_timeout_fallback,
+    otp.params_json, otp.used_timeout_fallback,
     r.kernel, r."group",
     r.t_jit_ns, r.t_spec_ns,
     u.unspec_ns
@@ -124,8 +120,7 @@ _SCHEMA_V_OPTIM_BEST_PER_KERNEL = """
 CREATE OR REPLACE VIEW v_optim_best_per_kernel AS
 SELECT DISTINCT ON (ob.study_name, ob.kernel)
     ob.study_name, ob.trial_id, ob.kernel,
-    ob.fixpoint_max, ob.unroll_max, ob.large_module_max,
-    ob.early_prune, ob.o3_final,
+    ob.params_json,
     ob.t_jit_ns, ob.t_spec_ns, ob.unspec_ns,
     (ob.t_jit_ns + ob.t_spec_ns) AS total_ns,
     ob.break_even_calls
@@ -184,13 +179,12 @@ def store_trial_params(
 ) -> None:
     con.execute(
         "INSERT INTO optim_trial_params "
-        "(study_name, trial_id, run_id, fixpoint_max, unroll_max, large_module_max, "
-        " early_prune, o3_final, used_timeout_fallback, obj_jit_ns, obj_exec_ns, obj_combined_ns) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "(study_name, trial_id, run_id, params_json, used_timeout_fallback, "
+        " obj_jit_ns, obj_exec_ns, obj_combined_ns) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         [
             study_name, trial_id, run_id,
-            int(magic["fixpoint"]), int(magic["unroll"]), int(magic["large_mod"]),
-            bool(magic["early_prune"]), bool(magic["o3_final"]),
+            json.dumps(magic),
             used_timeout_fallback,
             obj_jit, obj_exec, obj_combined,
         ],
@@ -632,8 +626,7 @@ def main():
     try:
         best_row = con.execute(
             """
-            SELECT trial_id, fixpoint_max, unroll_max, large_module_max,
-                   early_prune, o3_final,
+            SELECT trial_id, params_json,
                    obj_jit_ns, obj_exec_ns, obj_combined_ns
             FROM optim_trial_params
             WHERE study_name = ?
@@ -663,25 +656,24 @@ def main():
         print("\nNo successful trials recorded.")
         return
 
-    cols = ["trial_id", "fixpoint_max", "unroll_max", "large_module_max",
-            "early_prune", "o3_final", "obj_jit_ns", "obj_exec_ns", "obj_combined_ns"]
+    cols = ["trial_id", "params_json", "obj_jit_ns", "obj_exec_ns", "obj_combined_ns"]
     best = dict(zip(cols, best_row))
+    params = json.loads(best["params_json"])
 
     with open(output_best, "w") as f:
-        json.dump(best, f, indent=2)
+        json.dump({"trial_id": best["trial_id"], "params": params,
+                   "obj_jit_ns": best["obj_jit_ns"], "obj_exec_ns": best["obj_exec_ns"],
+                   "obj_combined_ns": best["obj_combined_ns"]}, f, indent=2)
 
     print(f"\nStudy '{study_name}' complete: {args.n_trials} trials.")
     print(f"Best config written to: {output_best}")
     print()
-    print(f"  trial:       {best['trial_id']}")
-    print(f"  fixpoint:    {best['fixpoint_max']}")
-    print(f"  unroll:      {best['unroll_max']}")
-    print(f"  large_mod:   {best['large_module_max']}")
-    print(f"  early_prune: {best['early_prune']}")
-    print(f"  o3_final:    {best['o3_final']}")
-    print(f"  jit:         {best['obj_jit_ns']/1e6:.2f} ms  (geomean)")
-    print(f"  exec:        {best['obj_exec_ns']/1e6:.2f} ms  (geomean)")
-    print(f"  combined:    {best['obj_combined_ns']/1e6:.2f} ms  (geomean)")
+    print(f"  trial: {best['trial_id']}")
+    for k, v in params.items():
+        print(f"  {k}: {v}")
+    print(f"  jit:      {best['obj_jit_ns']/1e6:.2f} ms  (geomean)")
+    print(f"  exec:     {best['obj_exec_ns']/1e6:.2f} ms  (geomean)")
+    print(f"  combined: {best['obj_combined_ns']/1e6:.2f} ms  (geomean)")
 
     if breakeven_rows:
         print()
