@@ -78,6 +78,17 @@ CREATE TABLE IF NOT EXISTS unspec_baselines (
 );
 """
 
+_SCHEMA_OPTIM_SESSIONS = """
+CREATE TABLE IF NOT EXISTS optimization_sessions (
+    study_name    VARCHAR PRIMARY KEY,
+    binary        VARCHAR,
+    n_trials      INTEGER,
+    started_at    TIMESTAMP,
+    completed_at  TIMESTAMP,
+    status        VARCHAR
+);
+"""
+
 # Per-kernel (jit, exec, unspec) per trial — basis for per-kernel best-config analysis
 # and for fitting the expected_runtime → optimal_Options prediction model.
 _SCHEMA_V_OPTIM_RESULTS = """
@@ -137,6 +148,7 @@ def open_optim_db(db_path: Path) -> duckdb.DuckDBPyConnection:
     con.execute(_SCHEMA_V_OPTIM_RESULTS)
     con.execute(_SCHEMA_V_OPTIM_BREAKEVEN)
     con.execute(_SCHEMA_V_OPTIM_BEST_PER_KERNEL)
+    con.execute(_SCHEMA_OPTIM_SESSIONS)
     return con
 
 
