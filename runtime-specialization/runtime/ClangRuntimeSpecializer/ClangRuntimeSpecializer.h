@@ -120,6 +120,7 @@ namespace clangRuntimeSpecializer {
     enum class LogLevel {
       None,
       Error,
+      Warning,
       Info,
       Debug
     };
