@@ -75,7 +75,7 @@ One row per `optimize_benchmarks.py` invocation. Written at start as `incomplete
 | started_at | TIMESTAMP | Start timestamp |
 | completed_at | TIMESTAMP | Completion timestamp (NULL until complete) |
 | status | VARCHAR | 'incomplete' or 'complete' |
-| search_space_json | VARCHAR | Serialized search space descriptor JSON; NULL for pre-spec-002 rows |
+| search_space_json | JSON | SearchSpaceDescriptor; NULL for pre-spec-002 rows |
 
 ### `optim_trial_params`
 One row per Optuna trial.
@@ -85,7 +85,7 @@ One row per Optuna trial.
 | study_name | VARCHAR FK | References optimization_sessions.study_name |
 | trial_id | INTEGER | Optuna trial number |
 | run_id | VARCHAR FK (nullable) | References context.run_id |
-| params_json | VARCHAR | Complete parameter set as JSON object keyed by parameter name |
+| params_json | JSON | Complete parameter set keyed by parameter name |
 | used_timeout_fallback | BOOLEAN | True if any benchmark timed out |
 | obj_jit_ns | DOUBLE | Geomean JIT overhead across kernels |
 | obj_exec_ns | DOUBLE | Geomean exec time across kernels |

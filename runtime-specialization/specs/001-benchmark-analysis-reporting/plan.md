@@ -133,7 +133,7 @@ CREATE TABLE IF NOT EXISTS optimization_sessions (
     started_at    TIMESTAMP,
     completed_at  TIMESTAMP,   -- NULL until status = 'complete'
     status           VARCHAR,     -- 'incomplete' | 'complete'
-    search_space_json VARCHAR      -- serialized SearchSpaceDescriptor JSON; NULL for pre-spec-002 rows
+    search_space_json JSON         -- SearchSpaceDescriptor; NULL for pre-spec-002 rows
 );
 ```
 
@@ -147,7 +147,7 @@ CREATE TABLE IF NOT EXISTS optim_trial_params (
                               REFERENCES optimization_sessions(study_name),
     trial_id              INTEGER NOT NULL,
     run_id                VARCHAR REFERENCES context(run_id),
-    params_json           VARCHAR NOT NULL,
+    params_json           JSON    NOT NULL,
     used_timeout_fallback BOOLEAN,
     obj_jit_ns            DOUBLE,
     obj_exec_ns           DOUBLE,

@@ -55,7 +55,7 @@ Example descriptor:
 }
 ```
 
-**DB schema for parameters**: All trial parameters are stored exclusively in a `params_json` VARCHAR column in `optim_trial_params` â€” a JSON object keyed by parameter name. There are no separate fixed columns for individual parameters. This means adding a new parameter to the search space requires no schema change: it simply appears as a new key in `params_json`. The descriptor used for each study is stored in `optimization_sessions.search_space_json`, making the exact search space permanently queryable.
+**DB schema for parameters**: All trial parameters are stored exclusively in a `params_json JSON` column in `optim_trial_params`. There are no separate fixed columns for individual parameters. Adding a new parameter to the search space requires no schema change: it simply appears as a new key in `params_json`. The descriptor used for each study is stored in `optimization_sessions.search_space_json JSON`, making the exact search space queryable with standard DuckDB JSON operators (`->>`, `->`).
 
 **Why this priority**: Pipeline comparison is the central research question; automating the sweep across strategies is the direct empirical method for answering it.
 
@@ -99,7 +99,7 @@ A researcher reviewing optimization history has trials from different studies â€
 
 1. **Given** trials from two studies with different parameter sets exist in the same DB, **When** the researcher queries `optim_trial_params`, **Then** all rows are returned and `params_json` is non-NULL and contains the complete parameter set for every row.
 2. **Given** a new parameter is added to a search space descriptor, **When** a new study is run and stored, **Then** the new parameter appears in `params_json` of new rows; existing rows are not modified; no migration script is required.
-3. **Given** a researcher wants to filter by the new parameter, **When** they query `params_json::json->'new_param'`, **Then** they retrieve valid values from all studies that included it.
+3. **Given** a researcher wants to filter by the new parameter, **When** they query `params_json->>'new_param'`, **Then** they retrieve valid values from all studies that included it.
 
 ---
 
@@ -130,7 +130,7 @@ A researcher reviewing optimization history has trials from different studies â€
 
 **Optimizer â€” Search Space Descriptor**
 
-- **FR-009**: `optimize_benchmarks.py` MUST support a `--search-space PATH` argument. When supplied, the set of parameters to optimize, their types, ranges, and ENV var bindings MUST be loaded from a JSON file at `PATH` rather than from hardcoded values. When a study starts, the serialized descriptor JSON MUST be written to `optimization_sessions.search_space_json` so the exact search space is permanently queryable for that study.
+- **FR-009**: `optimize_benchmarks.py` MUST support a `--search-space PATH` argument. When supplied, the set of parameters to optimize, their types, ranges, and ENV var bindings MUST be loaded from a JSON file at `PATH` rather than from hardcoded values. When a study starts, the descriptor MUST be written to `optimization_sessions.search_space_json` so the exact search space is permanently queryable for that study.
 - **FR-010**: The JSON search space descriptor MUST support at minimum these parameter types (each maps directly to an Optuna `suggest_*` call):
   - `int`: linear integer range (`min`, `max`) â†’ `suggest_int(min, max)`
   - `log_int`: log-scaled integer range (`min`, `max`) â†’ `suggest_int(min, max, log=True)`
@@ -145,8 +145,8 @@ A researcher reviewing optimization history has trials from different studies â€
 
 **DB Schema â€” Parameter Storage**
 
-- **FR-014**: The `optim_trial_params` table MUST include a `params_json` VARCHAR column. On every trial write, this column MUST be populated with a JSON object containing the complete set of parameters for that trial (keyed by their `name` from the search space descriptor).
-- **FR-017**: The `optimization_sessions` table MUST include a `search_space_json` VARCHAR column. When a study starts, the complete serialized descriptor (the JSON document, whether loaded from `--search-space` or the built-in default) MUST be written to this column so the exact search space definition is permanently associated with the study.
+- **FR-014**: The `optim_trial_params` table MUST include a `params_json JSON` column. On every trial write, this column MUST be populated with a JSON object containing the complete set of parameters for that trial (keyed by their `name` from the search space descriptor).
+- **FR-017**: The `optimization_sessions` table MUST include a `search_space_json JSON` column. When a study starts, the descriptor (whether loaded from `--search-space` or the built-in default) MUST be written to this column so the exact search space definition is permanently associated with the study.
 
 ### Key Entities *(include if feature involves data)*
 

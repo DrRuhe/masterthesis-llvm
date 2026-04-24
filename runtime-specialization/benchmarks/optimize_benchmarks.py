@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS optim_trial_params (
     study_name            VARCHAR NOT NULL,
     trial_id              INTEGER NOT NULL,
     run_id                VARCHAR REFERENCES context(run_id),
-    params_json           VARCHAR NOT NULL,
+    params_json           JSON    NOT NULL,
     used_timeout_fallback BOOLEAN,
     obj_jit_ns            DOUBLE,
     obj_exec_ns           DOUBLE,
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS optimization_sessions (
     started_at        TIMESTAMP,
     completed_at      TIMESTAMP,
     status            VARCHAR,
-    search_space_json VARCHAR
+    search_space_json JSON
 );
 """
 
