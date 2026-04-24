@@ -36,6 +36,23 @@ except ImportError:
     sys.exit(1)
 
 sys.path.insert(0, str(Path(__file__).parent))
+
+# ---------------------------------------------------------------------------
+# Built-in default search-space descriptor (version 1)
+# ---------------------------------------------------------------------------
+
+DEFAULT_SEARCH_SPACE = {
+    "version": 1,
+    "parameters": [
+        {"name": "fixpoint_max",     "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 0,    "max": 30     },
+        {"name": "unroll_max",       "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,    "max": 512    },
+        {"name": "large_module_max", "env_var": "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1,    "max": 100000 },
+        {"name": "early_prune",      "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"                                   },
+        {"name": "o3_final",         "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"                                   },
+        {"name": "pipeline",         "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "categorical","choices": [0, 1]           },
+    ],
+}
+
 from record_benchmark import (
     open_db as _rb_open_db,
     ensure_columns,
@@ -44,6 +61,61 @@ from record_benchmark import (
     _parse_bm_name,
     get_git_sha,
 )
+
+
+# ---------------------------------------------------------------------------
+# Descriptor helpers
+# ---------------------------------------------------------------------------
+
+def _load_descriptor(path: "Path | None") -> dict:
+    """Load and validate a search-space descriptor JSON file, or return the built-in default."""
+    if path is None:
+        return DEFAULT_SEARCH_SPACE
+    with open(path) as f:
+        d = json.load(f)
+    if d.get("version") != 1:
+        raise SystemExit(f"Unsupported search-space descriptor version: {d.get('version')!r}")
+    seen_names, seen_envvars = set(), set()
+    valid_types = {"int", "log_int", "float", "log_float", "bool", "categorical", "int_or_zero"}
+    for p in d.get("parameters", []):
+        if p["name"] in seen_names:
+            raise SystemExit(f"Duplicate parameter name in descriptor: {p['name']!r}")
+        if p["env_var"] in seen_envvars:
+            raise SystemExit(f"Duplicate env_var in descriptor: {p['env_var']!r}")
+        if p["type"] not in valid_types:
+            raise SystemExit(f"Unknown parameter type {p['type']!r} for parameter {p['name']!r}")
+        seen_names.add(p["name"])
+        seen_envvars.add(p["env_var"])
+    return d
+
+
+def _sample_params(trial: "optuna.Trial", descriptor: dict) -> dict:
+    """Sample one set of parameters from an Optuna trial using the descriptor."""
+    params = {}
+    for p in descriptor["parameters"]:
+        name, typ = p["name"], p["type"]
+        if typ == "int":
+            params[name] = trial.suggest_int(name, p["min"], p["max"])
+        elif typ == "log_int":
+            params[name] = trial.suggest_int(name, p["min"], p["max"], log=True)
+        elif typ == "float":
+            params[name] = trial.suggest_float(name, p["min"], p["max"])
+        elif typ == "log_float":
+            params[name] = trial.suggest_float(name, p["min"], p["max"], log=True)
+        elif typ == "bool":
+            params[name] = trial.suggest_categorical(name, [0, 1])
+        elif typ == "categorical":
+            params[name] = trial.suggest_categorical(name, p["choices"])
+        elif typ == "int_or_zero":
+            off = trial.suggest_categorical(f"{name}_off", [True, False])
+            params[name] = 0 if off else trial.suggest_int(f"{name}_val", p["min"], p["max"], log=True)
+    return params
+
+
+def _params_to_env(params: dict, descriptor: dict) -> dict:
+    """Build {env_var: str(value)} for subprocess injection from sampled params."""
+    env_map = {p["name"]: p["env_var"] for p in descriptor["parameters"]}
+    return {env_map[name]: str(value) for name, value in params.items() if name in env_map}
 
 # ---------------------------------------------------------------------------
 # Schema
@@ -264,17 +336,6 @@ def measure_unspecialized(binary: str, timeout: float) -> dict[str, float]:
 # Per-benchmark subprocess execution
 # ---------------------------------------------------------------------------
 
-def _make_env(magic: dict) -> dict:
-    return {
-        **os.environ,
-        "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS":      str(magic["fixpoint"]),
-        "CRS_DEFAULT_LOOP_UNROLL_COUNT":            str(magic["unroll"]),
-        "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": str(magic["large_mod"]),
-        "CRS_DEFAULT_EARLY_PRUNE": str(magic["early_prune"]),
-        "CRS_DEFAULT_O3_FINAL":    str(magic["o3_final"]),
-    }
-
-
 def run_single_benchmark(
     binary: str, name: str, env: dict, timeout: float
 ) -> dict | None:
@@ -331,6 +392,7 @@ def _geomean_from_dicts(
 def run_trial(
     binary: str,
     magic: dict,
+    descriptor: dict,
     benchmark_names: list[str],
     unspec_by_kernel: dict[str, float],
     timeout: float,
@@ -340,7 +402,7 @@ def run_trial(
     Returns (jit_by_kernel, exc_by_kernel, merged_json, used_fallback).
     Timed-out benchmarks fall back to: jit → timeout_ns, exec → unspec_ns[kernel].
     """
-    env = _make_env(magic)
+    env = {**os.environ, **_params_to_env(magic, descriptor)}
     mult_map = {"ns": 1.0, "us": 1e3, "ms": 1e6, "s": 1e9}
     timeout_ns = timeout * 1e9
 
@@ -396,6 +458,7 @@ def make_objective(
     binary: str,
     db_path: Path,
     study_name: str,
+    descriptor: dict,
     args,
     benchmark_names: list[str],
     unspec_by_kernel: dict[str, float],
@@ -403,23 +466,10 @@ def make_objective(
     git_sha: str,
 ):
     def objective(trial: optuna.Trial) -> float:
-        # large_mod=0 is a meaningful special value (treat all modules as large →
-        # conservative unroll always). Handle it separately from the log-scale range.
-        large_mod_off = trial.suggest_categorical("large_mod_off", [True, False])
-        large_mod_val = (
-            0 if large_mod_off
-            else trial.suggest_int("large_mod_val", 1, args.large_mod_hi, log=True)
-        )
-        magic = {
-            "fixpoint":    trial.suggest_int(        "fixpoint",    0,  args.fixpoint_hi),
-            "unroll":      trial.suggest_int(        "unroll",      1,  args.unroll_hi, log=True),
-            "large_mod":   large_mod_val,
-            "early_prune": trial.suggest_categorical("early_prune", [0, 1]),
-            "o3_final":    trial.suggest_categorical("o3_final",    [0, 1]),
-        }
+        magic = _sample_params(trial, descriptor)
 
         jit_by_kernel, exc_by_kernel, merged_json, used_fallback = run_trial(
-            binary, magic, benchmark_names, unspec_by_kernel, args.timeout,
+            binary, magic, descriptor, benchmark_names, unspec_by_kernel, args.timeout,
         )
         obj_jit, obj_exec, obj_combined = _geomean_from_dicts(jit_by_kernel, exc_by_kernel)
 
@@ -450,11 +500,9 @@ def make_objective(
                       f"jit={obj_jit/1e6:.1f}ms  exec={obj_exec/1e6:.1f}ms{fallback_marker}")
         else:
             status = "NO_DATA"
+        param_summary = "  ".join(f"{k}={v}" for k, v in magic.items())
         print(
-            f"  Trial {trial.number:3d}: {status} | "
-            f"fixpoint={magic['fixpoint']:2d} unroll={magic['unroll']:4d} "
-            f"large_mod={magic['large_mod']:6d} "
-            f"early_prune={magic['early_prune']} o3_final={magic['o3_final']}",
+            f"  Trial {trial.number:3d}: {status} | {param_summary}",
             flush=True,
         )
         return float(obj_combined)
@@ -487,29 +535,15 @@ def parse_args():
                              "(default: 'jit_overhead|specialized_exec').")
     parser.add_argument("--output-best", default=None, metavar="PATH",
                         help="Write best config to JSON (default: best_<study_name>.json).")
-    parser.add_argument("--fixpoint-hi",  type=int, default=30,     metavar="N",
-                        help="Upper bound for MaxFixpointIterations (default: 30).")
-    parser.add_argument("--unroll-hi",    type=int, default=512,    metavar="N",
-                        help="Upper bound for LoopUnrollCount (default: 512).")
-    parser.add_argument("--large-mod-hi", type=int, default=100000, metavar="N",
-                        help="Upper bound for LargeModuleInstrThreshold (default: 100000).")
+    parser.add_argument("--search-space", type=Path, default=None, metavar="PATH",
+                        help="JSON search-space descriptor; defaults to built-in.")
     parser.add_argument("--seed", type=int, default=None, metavar="INT",
                         help="Random seed for TPE sampler (default: no seed — non-deterministic).")
     return parser.parse_args()
 
 
 def validate_args(args) -> None:
-    errors = []
-    if args.fixpoint_hi < 0:
-        errors.append("--fixpoint-hi must be >= 0")
-    if args.unroll_hi < 1:
-        errors.append("--unroll-hi must be >= 1")
-    if args.large_mod_hi < 1:
-        errors.append("--large-mod-hi must be >= 1")
-    if errors:
-        for e in errors:
-            print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +563,7 @@ def main():
     study_name = args.study_name or f"direct_opts_{datetime.now():%Y%m%d_%H%M%S}"
     output_best = args.output_best or f"best_{study_name}.json"
     git_sha = get_git_sha()
+    descriptor = _load_descriptor(args.search_space)
 
     # Enumerate benchmarks to run (once per study)
     print("Listing benchmarks...", flush=True)
@@ -565,9 +600,9 @@ def main():
         with duckdb.connect(str(db_path)) as _sess:
             _sess.execute(
                 "INSERT INTO optimization_sessions "
-                "(study_name, binary, n_trials, started_at, status) "
-                "VALUES (?, ?, ?, ?, 'incomplete')",
-                [study_name, binary, args.n_trials, datetime.now()],
+                "(study_name, binary, n_trials, started_at, status, search_space_json) "
+                "VALUES (?, ?, ?, ?, 'incomplete', ?)",
+                [study_name, binary, args.n_trials, datetime.now(), json.dumps(descriptor)],
             )
     except Exception as e:
         print(f"Warning: could not write session record: {e}", file=sys.stderr)
@@ -587,14 +622,15 @@ def main():
     print(f"Trials:  {args.n_trials}  Parallel: {args.n_parallel}  "
           f"Timeout/benchmark: {args.timeout}s")
     print(f"Filter:  {args.benchmark_filter}")
-    print(f"Bounds:  fixpoint=[0,{args.fixpoint_hi}]  unroll=[1,{args.unroll_hi}] (log)  "
-          f"large_mod=[0,{args.large_mod_hi}] (log+zero)")
+    desc_source = str(args.search_space) if args.search_space else "built-in"
+    print(f"Search space: {desc_source} ({len(descriptor['parameters'])} parameters)")
     print()
 
     objective = make_objective(
         binary=binary,
         db_path=db_path,
         study_name=study_name,
+        descriptor=descriptor,
         args=args,
         benchmark_names=benchmark_names,
         unspec_by_kernel=unspec_by_kernel,
