@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS unspec_baselines (
 _SCHEMA_OPTIM_SESSIONS = """
 CREATE TABLE IF NOT EXISTS optimization_sessions (
     study_name        VARCHAR PRIMARY KEY,
-    binary            VARCHAR,
+    "binary"          VARCHAR,
     n_trials          INTEGER,
     started_at        TIMESTAMP,
     completed_at      TIMESTAMP,
@@ -211,10 +211,10 @@ def open_optim_db(db_path: Path) -> duckdb.DuckDBPyConnection:
     con = _rb_open_db(db_path, create=not db_path.exists())
     con.execute(_SCHEMA_OPTIM_TRIAL_PARAMS)
     con.execute(_SCHEMA_UNSPEC_BASELINES)
+    con.execute(_SCHEMA_OPTIM_SESSIONS)
     con.execute(_SCHEMA_V_OPTIM_RESULTS)
     con.execute(_SCHEMA_V_OPTIM_BREAKEVEN)
     con.execute(_SCHEMA_V_OPTIM_BEST_PER_KERNEL)
-    con.execute(_SCHEMA_OPTIM_SESSIONS)
     return con
 
 
@@ -600,7 +600,7 @@ def main():
         with duckdb.connect(str(db_path)) as _sess:
             _sess.execute(
                 "INSERT INTO optimization_sessions "
-                "(study_name, binary, n_trials, started_at, status, search_space_json) "
+                '(study_name, "binary", n_trials, started_at, status, search_space_json) '
                 "VALUES (?, ?, ?, ?, 'incomplete', ?)",
                 [study_name, binary, args.n_trials, datetime.now(), json.dumps(descriptor)],
             )
