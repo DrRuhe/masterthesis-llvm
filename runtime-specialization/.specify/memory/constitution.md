@@ -1,9 +1,14 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 2.0.0 → 2.1.0
+Version change: 2.1.0 → 2.2.0
 Added sections:
   - Claude Interaction Protocol (AskUserQuestion tool requirement; clarify during spec/plan)
+
+---
+Previous: 2.1.0 → 2.2.0
+Added sections:
+  - Specialization Scope Constraint (single-threaded programs only; no concurrent mutation of specialized arguments)
 Templates requiring updates: None.
 Follow-up TODOs: None.
 
@@ -44,6 +49,31 @@ be documented in the relevant specification under `.specify/specs/` before or al
 implementation — not reconstructed after the fact. Decisions that exist purely for
 engineering convenience and cannot be tied back to the research questions are candidates
 for removal.
+
+## Specialization Scope Constraint
+
+Runtime specialization in this project is **exclusively evaluated on single-threaded programs**
+(or on code paths where no concurrent thread can observe or mutate the arguments being
+specialized during the specialization call).
+
+**Non-negotiable consequence**: the JIT bakes runtime argument values in as IR constants at
+the moment `callSpecialized` / `specializeOnly` is called. If another thread can concurrently
+modify the memory those arguments point to, the baked-in constant is stale and the specialization
+is semantically incorrect. Because the thesis studies the *performance benefit* of specialization,
+not its thread-safety properties, this scenario is out of scope and MUST NOT be used as a
+benchmark or correctness test case.
+
+Concretely:
+- Benchmark workloads MUST NOT share specialized-function arguments across threads while a
+  specialization is in progress.
+- The `init()` singleton MUST be initialized from a single thread before any concurrent
+  `callSpecialized` / `specializeOnly` calls are made (see also the single-thread `init()`
+  assumption in spec 003).
+- Any future multi-threaded workload MUST document why concurrent argument mutation is
+  impossible before it is admitted as a valid specialization target.
+
+**Rationale**: Correctness is the prerequisite for all performance claims. Specializing under
+concurrent mutation would produce results that cannot be trusted, undermining the thesis argument.
 
 ## Core Principles
 
@@ -310,4 +340,4 @@ no external documents are required to understand the rules.
 **Compliance review**: every feature plan (`/speckit-plan`) MUST include a Constitution
 Check section that gates Phase 0 research on principle compliance.
 
-**Version**: 2.1.0 | **Ratified**: 2026-04-23 | **Last Amended**: 2026-04-24
+**Version**: 2.2.0 | **Ratified**: 2026-04-23 | **Last Amended**: 2026-04-24
