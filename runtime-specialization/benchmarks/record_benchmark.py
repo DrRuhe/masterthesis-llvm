@@ -310,7 +310,7 @@ def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
         sys.exit(1)
     if not create and not db_path.exists():
         print(f"Error: DB file not found: {db_path}", file=sys.stderr)
-        print("Pass --create-db to initialise a new database.", file=sys.stderr)
+        print("Run create_db.py to initialise a new database.", file=sys.stderr)
         sys.exit(1)
     con = duckdb.connect(str(db_path))
     for stmt in [
