@@ -169,6 +169,7 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **FR-043**: The `optim_trial_params` table MUST include a `params_json` VARCHAR column. On every trial write, this column MUST be populated with a JSON object containing the complete parameter set for that trial (keyed by parameter name), regardless of whether those parameters have dedicated fixed columns.
 - **FR-044**: Introducing a new optimizable option MUST NOT require code changes to `optimize_benchmarks.py`; the new parameter MUST be expressible solely by adding an entry to a JSON descriptor file.
 - **FR-045**: Trial records with parameters that have no corresponding fixed column in `optim_trial_params` MUST appear in `params_json` without requiring a schema migration; fixed columns remain NULL for those rows.
+- **FR-046**: The `optimization_sessions` table MUST include a `search_space_json` VARCHAR column. When a study starts, the complete serialized descriptor JSON (whether loaded from `--search-space` or the built-in default) MUST be written to this column so the exact search space definition is permanently associated with every study.
 
 **Reporting scripts**
 

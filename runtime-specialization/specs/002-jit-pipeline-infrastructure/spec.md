@@ -9,11 +9,11 @@
 
 ### User Story 1 - Compare Pipeline Strategies (Priority: P1)
 
-A researcher wants to measure whether an inlining-based or a function-cloning-based JIT compilation strategy yields better execution performance on a given workload. They run the same benchmark suite twice — once per strategy — by changing a single option value, while all measurement, recording, and reporting infrastructure works identically in both cases.
+A researcher wants to compare any number of registered JIT compilation strategies to determine which yields better execution performance on a given workload. They run the same benchmark suite once per strategy — selecting a strategy by changing a single option value — while all measurement, recording, and reporting infrastructure works identically for every run.
 
 **Why this priority**: Comparing strategies is the primary research goal; without the ability to switch cleanly, no meaningful comparison is possible.
 
-**Independent Test**: Build and run any existing benchmark binary twice with `CRS_DEFAULT_PIPELINE=0` and `CRS_DEFAULT_PIPELINE=1` respectively; verify that both runs complete, produce valid DuckDB records, and that the recorded `kv_g` / `kv_t` phase rows differ in timing as expected for each strategy.
+**Independent Test**: Build and run any existing benchmark binary with `CRS_DEFAULT_PIPELINE=0` and then again with `CRS_DEFAULT_PIPELINE=1` (or any other registered index); verify that each run completes, produces valid DuckDB records, and that the recorded `kv_g` / `kv_t` phase rows differ in timing as expected for each strategy.
 
 **Acceptance Scenarios**:
 
@@ -26,7 +26,36 @@ A researcher wants to measure whether an inlining-based or a function-cloning-ba
 
 ### User Story 2 - Optimize Across Pipeline Selection (Priority: P1)
 
-A researcher wants to include pipeline selection as a parameter in an automated Optuna optimization sweep, discovering which combination of pipeline index and pipeline-specific settings minimizes total JIT + execution overhead for each kernel in the workload. The search space is described externally so that adding a new pipeline or a new parameter requires no code changes to the optimizer script.
+A researcher wants to include pipeline selection as a parameter in an automated Optuna optimization sweep, discovering which combination of pipeline index and pipeline-specific settings minimizes total JIT + execution overhead for each kernel in the workload. The search space is described externally — in a hand-editable JSON file — so that adding a new pipeline or a new parameter requires no code changes to the optimizer script. The descriptor and all trial parameters are stored in the database so the exact optimization setup is always reproducible.
+
+**Search Space Descriptor Design**: The format is a JSON document modeled on Optuna's `suggest_*` API (the same semantic model used by W&B Sweeps and NNI). Each parameter entry declares its name (Optuna trial key), the ENV var the optimizer sets when invoking the benchmark subprocess, a `type`, and type-specific fields. The types map one-to-one to Optuna calls:
+
+| Type | Optuna call | Fields |
+|---|---|---|
+| `int` | `suggest_int(min, max)` | `min`, `max` |
+| `log_int` | `suggest_int(min, max, log=True)` | `min`, `max` |
+| `float` | `suggest_float(min, max)` | `min`, `max` |
+| `log_float` | `suggest_float(min, max, log=True)` | `min`, `max` |
+| `bool` | `suggest_categorical([0, 1])` | — |
+| `categorical` | `suggest_categorical(choices)` | `choices` |
+| `int_or_zero` | `suggest_categorical([0]) ∪ suggest_int(min, max, log=True)` | `min`, `max` |
+
+Example descriptor:
+```json
+{
+  "version": 1,
+  "parameters": [
+    { "name": "fixpoint_max",    "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 1,    "max": 20     },
+    { "name": "unroll_max",      "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,    "max": 256    },
+    { "name": "large_module_max","env_var": "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1000, "max": 100000 },
+    { "name": "early_prune",     "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"                                  },
+    { "name": "o3_final",        "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"                                  },
+    { "name": "pipeline",        "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "categorical","choices": [0, 1]          }
+  ]
+}
+```
+
+**DB schema for parameters**: Rather than extending `optim_trial_params` with a new fixed column for every new option (which requires schema migrations and breaks historical queries), the chosen approach is a **hybrid schema**: fixed columns exist only for the original 5 parameters (maintained for backwards-compatible queries), while a `params_json` column stores the complete parameter set as a JSON object for every trial. New parameters appear only in `params_json` — no migration required. The descriptor itself is stored in `optimization_sessions.search_space_json` so the exact search space for any historical study is always queryable.
 
 **Why this priority**: Pipeline comparison is the central research question; automating the sweep across strategies is the direct empirical method for answering it.
 
@@ -38,6 +67,7 @@ A researcher wants to include pipeline selection as a parameter in an automated 
 2. **Given** a search space descriptor that omits `pipeline`, **When** `optimize_benchmarks.py` runs, **Then** the optimizer behaves as before (single pipeline, fixed by whatever ENV var is set in the environment).
 3. **Given** no `--search-space` flag, **When** `optimize_benchmarks.py` runs, **Then** it uses a built-in default descriptor that covers all standardized ENV-var-exposed options.
 4. **Given** a descriptor that includes a new parameter not in the current fixed `optim_trial_params` columns, **When** a trial is written, **Then** all parameters appear in `params_json`; no schema migration is required.
+5. **Given** a study completes, **When** the researcher queries `optimization_sessions`, **Then** the `search_space_json` column contains the exact descriptor used for that study, so the optimization setup is fully reproducible from the database alone.
 
 ---
 
@@ -97,17 +127,19 @@ A researcher reviewing optimization history has trials from different studies �
 
 - **FR-006**: Each JIT compilation pipeline MUST be implemented in its own dedicated source file (translation unit). The implementation of pipeline N MUST NOT appear in the source file of pipeline M (N ≠ M).
 - **FR-007**: The shared infrastructure (LLJIT setup, bitcode loading, wrapper generation, pass instrumentation, stats collection) MUST reside in a source file that is independent of any specific pipeline's pass sequences.
-- **FR-008**: Adding a new pipeline MUST be achievable by creating one new source file and registering the pipeline in the infrastructure; it MUST NOT require modifications to any existing pipeline's source file.
+- **FR-008**: Adding a new pipeline MUST be achievable by creating one new source file and registering the pipeline in the infrastructure; it MUST NOT require modifications to any existing pipeline's source file. Any new `Options` fields introduced by the pipeline MUST follow the `CRS_DEFAULT_*` ENV var convention (FR-003) and MUST be expressible as entries in the search space descriptor (FR-010) without further code changes to `optimize_benchmarks.py`.
 
 **Optimizer — Search Space Descriptor**
 
-- **FR-009**: `optimize_benchmarks.py` MUST support a `--search-space PATH` argument. When supplied, the set of parameters to optimize, their types, ranges, and ENV var bindings MUST be loaded from a JSON file at `PATH` rather than from hardcoded values.
-- **FR-010**: The JSON search space descriptor MUST support at minimum these parameter types:
-  - `int`: linear integer range with `min` and `max`
-  - `log_int`: logarithmically-scaled integer range with `min` and `max`
-  - `bool`: binary choice (0 or 1)
-  - `categorical`: explicit list of integer or string `choices`
-  - `int_or_zero`: `log_int` range augmented with a special zero choice (as used for `LargeModuleInstrThreshold`)
+- **FR-009**: `optimize_benchmarks.py` MUST support a `--search-space PATH` argument. When supplied, the set of parameters to optimize, their types, ranges, and ENV var bindings MUST be loaded from a JSON file at `PATH` rather than from hardcoded values. When a study starts, the serialized descriptor JSON MUST be written to `optimization_sessions.search_space_json` so the exact search space is permanently queryable for that study.
+- **FR-010**: The JSON search space descriptor MUST support at minimum these parameter types (each maps directly to an Optuna `suggest_*` call):
+  - `int`: linear integer range (`min`, `max`) → `suggest_int(min, max)`
+  - `log_int`: log-scaled integer range (`min`, `max`) → `suggest_int(min, max, log=True)`
+  - `float`: linear float range (`min`, `max`) → `suggest_float(min, max)`
+  - `log_float`: log-scaled float range (`min`, `max`) → `suggest_float(min, max, log=True)`
+  - `bool`: binary choice (0 or 1) → `suggest_categorical([0, 1])`
+  - `categorical`: explicit list of integer or string `choices` → `suggest_categorical(choices)`
+  - `int_or_zero`: log-scaled integer range augmented with a zero choice; zero means "disabled" (as used for `LargeModuleInstrThreshold`)
 - **FR-011**: Each entry in the search space descriptor MUST specify: `name` (used as the Optuna parameter name), `env_var` (the ENV var set when invoking the benchmark subprocess), `type` (one of FR-010), and the type-appropriate range/choice fields.
 - **FR-012**: When `--search-space` is not provided, `optimize_benchmarks.py` MUST fall back to a built-in default descriptor equivalent to the current hardcoded search space (fixpoint, unroll, large_mod, early_prune, o3_final, pipeline).
 - **FR-013**: Introducing a new ENV-var-exposed `Options` field MUST NOT require code changes to `optimize_benchmarks.py`; it MUST be expressible solely by adding an entry to a descriptor JSON file.
@@ -117,12 +149,13 @@ A researcher reviewing optimization history has trials from different studies �
 - **FR-014**: The `optim_trial_params` table MUST include a `params_json` VARCHAR column. On every trial write, this column MUST be populated with a JSON object containing the complete set of parameters for that trial (keyed by their `name` from the search space descriptor).
 - **FR-015**: The existing fixed parameter columns in `optim_trial_params` (`fixpoint_max`, `unroll_max`, `large_module_max`, `early_prune`, `o3_final`) MUST be populated when the corresponding parameter appears in the active search space, and MUST be NULL when it does not appear (i.e., the search space did not include that parameter).
 - **FR-016**: When a trial is written with parameters that have no corresponding fixed column (e.g., a future `func_spec_max_groups` parameter), those parameters MUST appear in `params_json` without requiring a schema migration. A fixed column MAY be added later via an explicit migration.
+- **FR-017**: The `optimization_sessions` table MUST include a `search_space_json` VARCHAR column. When a study starts, the complete serialized descriptor (the JSON document, whether loaded from `--search-space` or the built-in default) MUST be written to this column so the exact search space definition is permanently associated with the study.
 
 ### Key Entities *(include if feature involves data)*
 
 - **JITPipeline**: One compilation strategy implementation. Attributes: pipeline index (non-negative integer), display name, source file. Registered at compile time; identified by its index in `OptimizationPipelineToUse`.
-- **SearchSpaceDescriptor**: A JSON document that defines the set of parameters `optimize_benchmarks.py` optimizes for a given study. Attributes: list of parameter definitions, each with `name`, `env_var`, `type`, and type-appropriate range/choices. Provided via `--search-space` or defaulted to the built-in descriptor.
-- **ParameterDefinition**: One entry in a SearchSpaceDescriptor. Attributes: `name`, `env_var`, `type` (from FR-010), `min`/`max`/`choices` per type.
+- **SearchSpaceDescriptor**: A JSON document that defines the set of parameters `optimize_benchmarks.py` optimizes for a given study. Attributes: `version` integer, list of `parameters` each with `name`, `env_var`, `type`, and type-appropriate range/choices. Provided via `--search-space` or defaulted to the built-in descriptor. Persisted verbatim to `optimization_sessions.search_space_json` at study start.
+- **ParameterDefinition**: One entry in a SearchSpaceDescriptor. Attributes: `name` (Optuna parameter key), `env_var` (ENV var set in benchmark subprocess), `type` (one of the 7 types in FR-010), plus `min`/`max` for range types or `choices` for categorical.
 
 ## Success Criteria *(mandatory)*
 
@@ -141,5 +174,7 @@ A researcher reviewing optimization history has trials from different studies �
 - The search space descriptor JSON format is versioned (a `version` field) to support future evolution; the initial version is `1`.
 - `CRS_DEFAULT_PIPELINE` uses the integer index; human-readable pipeline names are for documentation only.
 - The built-in default descriptor covers all ENV-var-exposed Options fields present at the time this feature is implemented; new fields added later require updating the default descriptor.
-- Backwards compatibility of the `optim_trial_params` table: the existing 5 fixed columns are preserved; `params_json` is added as a new additive column.
+- Backwards compatibility of the `optim_trial_params` table: the existing 5 fixed columns are preserved; `params_json` is added as a new additive column. Fixed columns exist for fast equality-filter queries; `params_json` is the authoritative complete record.
+- `float` and `log_float` parameter types (FR-010) are included for completeness and future pipeline-specific options; no current Options field requires them.
+- `optimization_sessions.search_space_json` is a new additive column; rows written before this feature (without a search space) will have NULL in that column.
 - The `FuncSpecMaxGroups` field (pipeline 1 specific, currently without an ENV var) MUST be given a standard ENV var (`CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS`) as part of this infrastructure work; it is not part of the pipeline-specific specs 003/004.
