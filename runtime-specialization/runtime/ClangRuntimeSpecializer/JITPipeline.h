@@ -5,10 +5,13 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/CGSCCPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/PassInstrumentation.h"
+#include "llvm/IR/PassManager.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Transforms/Scalar/LoopPassManager.h"
 
 namespace clangRuntimeSpecializer {
 
@@ -20,10 +23,16 @@ struct PipelineRunArgs {
   llvm::Module& Mod;
 
   /// Active options for this JIT invocation (read-only).
-  const Options& Opts;
+  const ClangRuntimeSpecializer::Options& Opts;
 
   /// Pre-constructed PassBuilder with the target machine already set.
   llvm::PassBuilder& PB;
+
+  /// Pre-populated analysis managers (cross-registered).
+  llvm::ModuleAnalysisManager& MAM;
+  llvm::FunctionAnalysisManager& FAM;
+  llvm::CGSCCAnalysisManager& CGAM;
+  llvm::LoopAnalysisManager& LAM;
 
   /// Pre-populated PassInstrumentationCallbacks carrying trace callbacks.
   llvm::PassInstrumentationCallbacks& PIC;

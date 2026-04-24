@@ -1,5 +1,8 @@
 add_library(ClangRuntimeSpecializer SHARED
         ClangRuntimeSpecializer.cpp
+        JITPipelineInlining.cpp
+        JITPipelineFuncSpec.cpp
+        JITPipelineRegistry.cpp
         DevirtualizeConstantVtableCalls.cpp
         StaticMutabilityAnalysis.cpp
         InvariantLoadToConstant.cpp
