@@ -267,9 +267,9 @@ def measure_unspecialized(binary: str, timeout: float) -> dict[str, float]:
 def _make_env(magic: dict) -> dict:
     return {
         **os.environ,
-        "CRS_DEFAULT_FIXPOINT":    str(magic["fixpoint"]),
-        "CRS_DEFAULT_UNROLL":      str(magic["unroll"]),
-        "CRS_DEFAULT_LARGE_MOD":   str(magic["large_mod"]),
+        "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS":      str(magic["fixpoint"]),
+        "CRS_DEFAULT_LOOP_UNROLL_COUNT":            str(magic["unroll"]),
+        "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": str(magic["large_mod"]),
         "CRS_DEFAULT_EARLY_PRUNE": str(magic["early_prune"]),
         "CRS_DEFAULT_O3_FINAL":    str(magic["o3_final"]),
     }

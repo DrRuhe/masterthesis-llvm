@@ -216,12 +216,13 @@ namespace clangRuntimeSpecializer {
       // --- Preset factories ---
       static Options Default() {
         // ENV-var overrides (read once per process — each optimizer trial is a fresh subprocess).
-        static const int    kFixpoint   = (int)_envOr("CRS_DEFAULT_FIXPOINT",    10.0);
-        static const int    kUnroll     = (int)_envOr("CRS_DEFAULT_UNROLL",     128.0);
-        static const size_t kLargeMod   = (size_t)_envOr("CRS_DEFAULT_LARGE_MOD", 10000.0);
-        static const bool   kEarlyPrune = _envOr("CRS_DEFAULT_EARLY_PRUNE", 1.0) != 0.0;
-        static const bool   kO3Final    = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
-        static const int    kPipeline   = (int)_envOr("CRS_DEFAULT_PIPELINE",   0.0);
+        static const int      kFixpoint        = (int)_envOr("CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",      10.0);
+        static const int      kUnroll          = (int)_envOr("CRS_DEFAULT_LOOP_UNROLL_COUNT",            128.0);
+        static const size_t   kLargeMod        = (size_t)_envOr("CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", 10000.0);
+        static const bool     kEarlyPrune      = _envOr("CRS_DEFAULT_EARLY_PRUNE", 1.0) != 0.0;
+        static const bool     kO3Final         = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
+        static const int      kPipeline        = (int)_envOr("CRS_DEFAULT_PIPELINE",                    0.0);
+        static const unsigned kFuncSpecMaxGroups = (unsigned)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS",  0.0);
         Options O;
         O.MaxFixpointIterations     = kFixpoint;
         O.LoopUnrollCount           = kUnroll;
@@ -229,6 +230,7 @@ namespace clangRuntimeSpecializer {
         O.EnableEarlyPrune          = kEarlyPrune;
         O.EnableO3Final             = kO3Final;
         O.OptimizationPipelineToUse = kPipeline;
+        O.FuncSpecMaxGroups         = kFuncSpecMaxGroups;
         return O;
       }
       static Options O3Only() {
