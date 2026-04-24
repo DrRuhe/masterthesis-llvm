@@ -164,6 +164,11 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **FR-025**: `optimize_benchmarks.py` MUST support `--study-name` for named, re-identifiable studies; if omitted, a timestamp-based name is generated.
 - **FR-026**: `optimize_benchmarks.py` MUST support `--seed` for reproducible TPE sampler initialization.
 - **FR-027**: `optimize_benchmarks.py` MUST write an optimization session record at study start (status = `incomplete`) and update it to `complete` upon normal termination; interrupted studies remain `incomplete` and MUST NOT appear in best-config queries or comparison reports unless explicitly requested.
+- **FR-041**: `optimize_benchmarks.py` MUST support a `--search-space PATH` argument that loads the set of parameters to optimize, their types, ranges, and ENV var bindings from a JSON descriptor file at `PATH`. When this argument is supplied, no hardcoded parameter list is used.
+- **FR-042**: When `--search-space` is not provided, `optimize_benchmarks.py` MUST fall back to a built-in default descriptor that covers all currently standardized optimizable options, producing the same behavior as the previous hardcoded search space.
+- **FR-043**: The `optim_trial_params` table MUST include a `params_json` VARCHAR column. On every trial write, this column MUST be populated with a JSON object containing the complete parameter set for that trial (keyed by parameter name), regardless of whether those parameters have dedicated fixed columns.
+- **FR-044**: Introducing a new optimizable option MUST NOT require code changes to `optimize_benchmarks.py`; the new parameter MUST be expressible solely by adding an entry to a JSON descriptor file.
+- **FR-045**: Trial records with parameters that have no corresponding fixed column in `optim_trial_params` MUST appear in `params_json` without requiring a schema migration; fixed columns remain NULL for those rows.
 
 **Reporting scripts**
 
@@ -187,7 +192,9 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **BenchmarkRow**: One row per benchmark within a run; base attributes: run ID, name, family/instance index, run type, repetitions, repetition index, threads, iterations, real time, CPU time, time unit, KV-parsed fields (group, kernel, phase, raw params). Dynamic counter columns (hardware perf counters, JIT stats) are added on demand.
 - **PassTrace**: One record per compiler pass per benchmarkJITAnalysis invocation; attributes: run ID, benchmark name, pass index, pass name, pipeline group, fixpoint iteration, instruction/function/basic-block counts before and after, wall time in ms, IR-changed flag.
 - **OptimizationSession**: One record per `optimize_benchmarks.py` invocation; attributes: study name, benchmark binary, trial budget, start timestamp, end timestamp, status (`complete` | `incomplete`). Written at study start as `incomplete`; updated to `complete` on normal exit.
-- **OptimizationTrial**: One record per Optuna trial; attributes: study name, trial ID, linked run ID, pipeline parameters (fixpoint max, unroll max, large-module threshold, early-prune flag, O3-final flag), timeout-fallback flag, geomean objective values (JIT, exec, combined).
+- **OptimizationTrial**: One record per Optuna trial; attributes: study name, trial ID, linked run ID, fixed parameter columns (fixpoint max, unroll max, large-module threshold, early-prune flag, O3-final flag), timeout-fallback flag, geomean objective values (JIT, exec, combined), and `params_json` (complete parameter set as a JSON object for all parameters regardless of fixed-column coverage).
+- **SearchSpaceDescriptor**: A JSON document loaded at optimizer start that defines which parameters are optimized, their types, ENV var bindings, and ranges/choices. Provided via `--search-space` or defaulted to the built-in descriptor.
+- **ParameterDefinition**: One entry in a SearchSpaceDescriptor; attributes: name (Optuna parameter name), env_var (ENV var set when invoking the benchmark subprocess), type (integer range, log-scaled integer, boolean, categorical, or log-integer-or-zero), and type-appropriate range or choice fields.
 - **UnspecializedBaseline**: Per-kernel unspecialized median time for a study; attributes: study name, kernel name, unspec time in ns.
 
 ### Documentation Requirements
@@ -205,6 +212,7 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **SC-005**: All stored runs are retrievable and queryable without data loss after 100 consecutive benchmark executions.
 - **SC-006**: A researcher can reproduce any previously reported plot by executing the `regenerate.py` from its report directory.
 - **SC-007**: `create_db.py` initializes a fresh data store with the complete schema in under 5 seconds.
+- **SC-008**: A new optimizable JIT parameter can be added to the optimization workflow by editing only a JSON descriptor file, with zero changes to `optimize_benchmarks.py` and zero schema migrations; all existing and new trial records coexist in the same data store and are queryable via `params_json`.
 
 ## Assumptions
 
@@ -213,7 +221,7 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - Best-practice performance isolation (CPU pinning, governor, SMT, ASLR, Turbo Boost) requires sudo and is optional; the standard recording path works without it.
 - Benchmark binaries are already compiled; compilation is not a responsibility of these scripts.
 - Reporting scripts produce files (PDF plots, CSV tables) rather than an interactive web UI.
-- The optimization algorithm is Optuna's TPE sampler; the search space covers MaxFixpointIterations, LoopUnrollCount, LargeModuleInstrThreshold, EarlyPrune, and O3Final.
+- The optimization algorithm is Optuna's TPE sampler; the default search space covers MaxFixpointIterations, LoopUnrollCount, LargeModuleInstrThreshold, EarlyPrune, and O3Final plus any pipeline-selector or pipeline-specific options exposed via the standard `CRS_DEFAULT_*` ENV var convention. New options are added to the search space by updating the descriptor JSON file, not by modifying the optimizer script.
 - Pass-trace data is only present when benchmarks are compiled with pass instrumentation (`benchmarkJITAnalysis`); reporting scripts for pass traces degrade gracefully when no such data exists.
 - Existing data in the data store from prior runs must remain valid after script updates; schema changes add columns rather than dropping or altering existing ones.
 - Hardware perf counter availability depends on the host kernel and CPU; if counters are unavailable, Google Benchmark silently omits them and the schema extension mechanism handles the missing columns gracefully.
