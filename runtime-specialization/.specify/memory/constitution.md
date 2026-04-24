@@ -1,7 +1,14 @@
 <!--
 SYNC IMPACT REPORT
 ==================
-Version change: 1.0.0 → 2.0.0
+Version change: 2.0.0 → 2.1.0
+Added sections:
+  - Claude Interaction Protocol (AskUserQuestion tool requirement; clarify during spec/plan)
+Templates requiring updates: None.
+Follow-up TODOs: None.
+
+---
+Previous: 1.0.0 → 2.0.0
 Modified principles:
   - IV. Benchmark-Driven Performance → IV. Performance Measurement (softened from MUST to SHOULD;
     removed strict 10% regression threshold; reflects research-prototype reality)
@@ -274,6 +281,16 @@ examples; no lengthy "how" narratives.
 7. **Specification**: ensure the relevant spec under `.specify/specs/` reflects the
    engineering decision and its research motivation.
 
+## Claude Interaction Protocol
+
+- **Clarifying questions MUST use the `AskUserQuestion` tool** — never embed questions in
+  plain text output. Questions written as prose are easily missed; `AskUserQuestion`
+  surfaces them as a distinct UI element the user can respond to directly.
+- **Clarifying questions MUST be asked during specification and planning** (i.e., when
+  running `/speckit-clarify`, `/speckit-specify`, or `/speckit-plan`) — not deferred to
+  implementation. Open ambiguities found late cause rework; resolve them before code is
+  written.
+
 ## Governance
 
 This constitution is the single authoritative reference for non-negotiable rules on the
@@ -293,4 +310,4 @@ no external documents are required to understand the rules.
 **Compliance review**: every feature plan (`/speckit-plan`) MUST include a Constitution
 Check section that gates Phase 0 research on principle compliance.
 
-**Version**: 2.0.0 | **Ratified**: 2026-04-23 | **Last Amended**: 2026-04-23
+**Version**: 2.1.0 | **Ratified**: 2026-04-23 | **Last Amended**: 2026-04-24
