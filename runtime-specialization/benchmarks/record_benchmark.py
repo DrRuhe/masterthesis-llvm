@@ -303,12 +303,8 @@ def resolve_db_path(flag_value: str | None) -> Path:
     return Path.cwd() / "benchmarks.duckdb"
 
 
-def open_db(db_path: Path, create: bool) -> duckdb.DuckDBPyConnection:
-    if create and db_path.exists():
-        print(f"Error: DB file already exists: {db_path}", file=sys.stderr)
-        print("Remove it first, or omit --create-db to append to the existing database.", file=sys.stderr)
-        sys.exit(1)
-    if not create and not db_path.exists():
+def open_db(db_path: Path) -> duckdb.DuckDBPyConnection:
+    if not db_path.exists():
         print(f"Error: DB file not found: {db_path}", file=sys.stderr)
         print("Run create_db.py to initialise a new database.", file=sys.stderr)
         sys.exit(1)
@@ -653,7 +649,7 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
     db_path = resolve_db_path(args.db)
     con = None
     try:
-        con = open_db(db_path, args.create_db)
+        con = open_db(db_path)
         run_id = str(uuid.uuid4())
         run_ts = datetime.now()
 
@@ -793,10 +789,6 @@ def main():
         help="DuckDB file path (overrides BENCHPLOT_DB_PATH env var and CWD default).",
     )
     parser.add_argument(
-        "--create-db", action="store_true",
-        help="Create the database file if it does not exist.",
-    )
-    parser.add_argument(
         "--pass-trace-dir", metavar="DIR", default=None,
         help="Directory to scan for *_pass_trace.json files written by benchmarkJITAnalysis. "
              "Defaults to the current working directory when running a binary.",
@@ -807,11 +799,6 @@ def main():
     if args.record_json and args.binary:
         parser.error("--record-json and binary are mutually exclusive.")
     if not args.record_json and not args.binary:
-        if args.create_db:
-            db_path = resolve_db_path(args.db)
-            open_db(db_path, create=True).close()
-            print(f"Database initialised: {db_path}")
-            return
         parser.error("Provide a binary to run, or use --record-json to import existing results.")
 
     if args.record_json:
