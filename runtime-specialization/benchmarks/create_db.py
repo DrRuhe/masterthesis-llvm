@@ -113,6 +113,17 @@ CREATE TABLE IF NOT EXISTS unspec_baselines (
 );
 """
 
+_SCHEMA_OPTIM_SESSIONS = """
+CREATE TABLE IF NOT EXISTS optimization_sessions (
+    study_name    VARCHAR PRIMARY KEY,
+    binary        VARCHAR,
+    n_trials      INTEGER,
+    started_at    TIMESTAMP,
+    completed_at  TIMESTAMP,
+    status        VARCHAR
+);
+"""
+
 # ---------------------------------------------------------------------------
 # Views — copied from record_benchmark.py
 # ---------------------------------------------------------------------------
@@ -222,20 +233,20 @@ FROM v_optim_results;
 """
 
 # Per-kernel best trial: the config that minimised jit + exec for each kernel individually.
+# Only considers studies where status = 'complete' (excludes interrupted studies).
 _SCHEMA_V_OPTIM_BEST_PER_KERNEL = """
 CREATE OR REPLACE VIEW v_optim_best_per_kernel AS
-SELECT DISTINCT ON (study_name, kernel)
-    study_name, trial_id, kernel,
-    fixpoint_max, unroll_max, large_module_max, early_prune, o3_final,
-    t_jit_ns, t_spec_ns, unspec_ns,
-    (t_jit_ns + t_spec_ns) AS total_ns,
-    CASE
-        WHEN unspec_ns > t_spec_ns
-        THEN t_jit_ns / (unspec_ns - t_spec_ns)
-        ELSE NULL
-    END AS break_even_calls
-FROM (SELECT *, (t_jit_ns + t_spec_ns) AS _total FROM v_optim_results)
-ORDER BY study_name, kernel, _total;
+SELECT DISTINCT ON (ob.study_name, ob.kernel)
+    ob.study_name, ob.trial_id, ob.kernel,
+    ob.fixpoint_max, ob.unroll_max, ob.large_module_max,
+    ob.early_prune, ob.o3_final,
+    ob.t_jit_ns, ob.t_spec_ns, ob.unspec_ns,
+    (ob.t_jit_ns + ob.t_spec_ns) AS total_ns,
+    ob.break_even_calls
+FROM (SELECT *, (t_jit_ns + t_spec_ns) AS _total FROM v_optim_breakeven) ob
+JOIN optimization_sessions os USING (study_name)
+WHERE os.status = 'complete'
+ORDER BY ob.study_name, ob.kernel, ob._total;
 """
 
 # ---------------------------------------------------------------------------
@@ -280,6 +291,7 @@ def main():
     con.execute(_SCHEMA_PASS_TRACES)
     con.execute(_SCHEMA_OPTIM_TRIAL_PARAMS)
     con.execute(_SCHEMA_UNSPEC_BASELINES)
+    con.execute(_SCHEMA_OPTIM_SESSIONS)
 
     # Core views
     con.execute(_SCHEMA_V_PARSED)
