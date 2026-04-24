@@ -567,6 +567,18 @@ def main():
     finally:
         con.close()
 
+    # Write session start (FR-027); updated to 'complete' on normal exit
+    try:
+        with duckdb.connect(str(db_path)) as _sess:
+            _sess.execute(
+                "INSERT INTO optimization_sessions "
+                "(study_name, binary, n_trials, started_at, status) "
+                "VALUES (?, ?, ?, ?, 'incomplete')",
+                [study_name, binary, args.n_trials, datetime.now()],
+            )
+    except Exception as e:
+        print(f"Warning: could not write session record: {e}", file=sys.stderr)
+
     lock = threading.Lock()
 
     sampler = optuna.samplers.TPESampler(seed=args.seed)
@@ -597,7 +609,24 @@ def main():
         git_sha=git_sha,
     )
 
-    study.optimize(objective, n_trials=args.n_trials, n_jobs=args.n_parallel)
+    _interrupted = False
+    try:
+        study.optimize(objective, n_trials=args.n_trials, n_jobs=args.n_parallel)
+    except KeyboardInterrupt:
+        _interrupted = True
+        print("\nOptimization interrupted; completed trials have been saved.", flush=True)
+        print(f"Study '{study_name}' is marked 'incomplete' in the data store.", flush=True)
+
+    if not _interrupted:
+        try:
+            with duckdb.connect(str(db_path)) as _sess:
+                _sess.execute(
+                    "UPDATE optimization_sessions "
+                    "SET status = 'complete', completed_at = ? WHERE study_name = ?",
+                    [datetime.now(), study_name],
+                )
+        except Exception as e:
+            print(f"Warning: could not finalise session status: {e}", file=sys.stderr)
 
     # Report best trial (geomean recomputed from per-kernel rows via v_optim_results)
     con = duckdb.connect(str(db_path))
