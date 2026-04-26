@@ -731,8 +731,11 @@ def cmd_record(args):
         cpu_list_str = ",".join(str(c) for c in sorted(benchmark_cpus))
         with best_practice_env(benchmark_cpus) as setup_ok:
             if not setup_ok:
-                print("Error: benchmarking best-practice setup failed; aborting to avoid unreliable results.", file=sys.stderr)
-                sys.exit(1)
+                print(
+                    "Warning: not all benchmarking best-practice settings could be applied; "
+                    "results may be less reliable.",
+                    file=sys.stderr,
+                )
             taskset_bin = shutil.which("taskset") or "taskset"
             full_cmd = [taskset_bin, "-c", cpu_list_str] + cmd
             print(f"Running: {' '.join(full_cmd)}", flush=True)

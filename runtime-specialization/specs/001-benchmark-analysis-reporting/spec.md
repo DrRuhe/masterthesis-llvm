@@ -19,7 +19,7 @@ A researcher wants to execute a benchmark binary against the JIT specializer, au
 
 1. **Given** the data store exists, **When** the user runs `record_benchmark.py <binary>`, **Then** all benchmark metrics (timing, hardware perf counters, JIT stats) are recorded atomically with a timestamp, unique run ID, and current git SHA; the run ID is printed to stdout.
 2. **Given** the `--benchmarking-best-practice` flag is supplied and the user has appropriate privileges, **When** the benchmark runs, **Then** ASLR is disabled, CPU governor is set to performance, Intel Turbo Boost is disabled, SMT siblings of benchmark CPUs are taken offline, and CPU affinity is set via taskset; the data store records include the isolation-mode flag.
-3. **Given** the `--benchmarking-best-practice` flag is supplied, **When** best-practice setup fails on any step, **Then** the script exits with a clear error before running the benchmark and no record is written.
+3. **Given** the `--benchmarking-best-practice` flag is supplied, **When** one or more best-practice setup steps cannot be applied (e.g., CPU frequency scaling unavailable on a VM), **Then** the script prints a warning per failed step, still runs the benchmark and stores the result, and restores any settings that were successfully changed during teardown.
 4. **Given** the benchmark binary exits with a non-zero code, **When** `record_benchmark.py` detects the failure, **Then** it exits without writing to the data store.
 5. **Given** the benchmark ran successfully but the DB write fails, **When** the error is caught, **Then** the raw JSON output is preserved on disk and the user is shown the exact command to re-import it with `--record-json`.
 6. **Given** the user passes `--benchmark_filter=PATTERN`, **When** the binary is invoked, **Then** only benchmarks matching the pattern are run and recorded.
@@ -124,6 +124,7 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - How does `optimize_benchmarks.py` handle a search space with only one viable configuration? → Single-config study completes normally; best config = the only config evaluated.
 - What happens when a reporting script encounters records from a pre-existing schema missing newer columns (e.g., `jit_blob_kb`)? → Views are defined with `CREATE OR REPLACE` and guarded `try/except`; scripts check for column existence before querying.
 - What happens when `best_practice_env` teardown fails (e.g., cannot re-enable a disabled CPU)? → Each teardown step is attempted independently; warnings are printed but the script does not exit with an error on teardown failure.
+- What happens when some best-practice setup steps fail but others succeed (e.g., ASLR disabled but CPU frequency scaling unavailable)? → A warning is printed per failed step; the benchmark still runs and results are recorded. Only successfully applied settings are restored on teardown.
 
 ## Requirements *(mandatory)*
 
@@ -137,7 +138,8 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **FR-004**: `record_benchmark.py` MUST persist all data atomically in a single transaction; if the DB write fails, any partial write MUST be rolled back.
 - **FR-005**: `record_benchmark.py` MUST NOT write any record to the data store if the benchmark binary exits with a non-zero code.
 - **FR-006**: `record_benchmark.py` MUST preserve the raw benchmark JSON on disk and print a re-import command if the DB write fails after a successful benchmark run.
-- **FR-007**: `record_benchmark.py` MUST accept `--benchmarking-best-practice` to apply: ASLR disable, performance CPU governor, Intel Turbo Boost disable, SMT sibling offline, and taskset CPU affinity. Each step requires sudo.
+- **FR-007**: `record_benchmark.py` MUST accept `--benchmarking-best-practice` to attempt, on a best-effort basis: ASLR disable, performance CPU governor, Intel Turbo Boost disable, SMT sibling offline, and taskset CPU affinity. Each step requires sudo. Steps that cannot be applied (e.g., CPU frequency scaling absent on a VM) MUST print a per-step warning but MUST NOT prevent the benchmark from running or its results from being recorded.
+- **FR-016b**: When `--benchmarking-best-practice` is used and one or more setup steps fail, the benchmark run MUST still execute and results MUST be stored. The script MUST NOT exit before running the benchmark solely due to partial best-practice setup failure.
 - **FR-008**: `record_benchmark.py` MUST auto-select the two highest-indexed non-boot P-cores for benchmarking when `--benchmark-cpus` is not specified in best-practice mode.
 - **FR-009**: `record_benchmark.py` MUST restore all modified system settings (governor, SMT, ASLR, Turbo Boost) after the benchmark completes, even if the benchmark fails.
 - **FR-010**: `record_benchmark.py` MUST support `--sudo-askpass PATH` to enable non-interactive sudo via an askpass helper.

@@ -427,23 +427,9 @@ namespace clangRuntimeSpecializer {
                 llvm::timeTraceProfilerInitialize(/*TimeTraceGranularity=*/0, "JIT");
 
             if (Optimize) {
-              // ── Diagnostic phase timer (stderr, always flushed) ──────────────
-              auto T0_jit = std::chrono::steady_clock::now();
-              auto phaseLog = [&](const char* phase, size_t instrs = 0) {
-                double sec = std::chrono::duration<double>(
-                    std::chrono::steady_clock::now() - T0_jit).count();
-                if (instrs)
-                  std::fprintf(stderr, "[JIT %.2fs] %s  (%zu instrs)\n", sec, phase, instrs);
-                else
-                  std::fprintf(stderr, "[JIT %.2fs] %s\n", sec, phase);
-                std::fflush(stderr);
-              };
-              // ────────────────────────────────────────────────────────────────
-
               // Snapshot pre-prune stats
               g_lastTransformStats.FunctionCount    = countNonDecl(M);
               g_lastTransformStats.InstructionCount = countInstrs(M);
-              phaseLog("start", g_lastTransformStats.InstructionCount);
 
               // Early pruning: remove definitions unreachable from the wrapper + vtable roots.
               // Safe: prepareModuleForJIT set the wrapper to ExternalLinkage; IRDumpingPass
@@ -460,7 +446,6 @@ namespace clangRuntimeSpecializer {
               // Snapshot post-prune stats (reflects current state whether prune ran or not)
               g_lastTransformStats.FunctionCountAfterPrune    = countNonDecl(M);
               g_lastTransformStats.InstructionCountAfterPrune = countInstrs(M);
-              phaseLog("after prune", g_lastTransformStats.InstructionCountAfterPrune);
 
               // Classify module size after pruning to gate expensive transforms.
               // Large modules (e.g. the sqlite3 amalgamation compiled as a single
