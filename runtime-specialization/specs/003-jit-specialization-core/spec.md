@@ -77,19 +77,16 @@ A researcher benchmarks multiple JIT pipeline configurations against the same wo
 
 ### User Story 5 — Module Preparation for JIT Linkage (Priority: P2)
 
-Before the cloned module is handed to the LLJIT, its symbol linkages must be set so that (a) the specialized wrapper is the unique exported entry point, (b) the JIT optimizer can still inline any function body it needs, and (c) definitions whose canonical copy lives in the host process are not duplicated. This preparation must also remove global constructors/destructors (already run by the host) and zero-sized globals (which cause JITLink assertion failures).
+Before the cloned module is handed to the LLJIT, the wrapper function must be set as the unique exported entry point. All other linkage preparation (function `InternalLinkage`, vtable `WeakODRLinkage`, `llvm.global_ctors` removal, zero-sized global removal) was already applied at compile time by the IR-dumping pass (see spec 004-ir-dump-preprocessing), so `prepareModuleForJIT` has only one job at JIT time.
 
-**Why this priority**: Incorrect linkage preparation causes either linkage errors (duplicate symbols) or missed optimization opportunities (bodies not visible to the inliner), both of which break the specialization correctness or performance guarantees.
+**Why this priority**: Without setting the wrapper to `ExternalLinkage`, the JIT linker cannot resolve the entry point. Because all other linkage preparation is done at compile time, this step is trivially cheap.
 
-**Independent Test**: After `prepareModuleForJIT` runs on a cloned module, verify: the wrapper function has `ExternalLinkage`; vtable-referenced functions have `WeakODR` linkage; all other non-declaration functions have `InternalLinkage`; `llvm.global_ctors` is absent; constant globals with initializers (vtables) have `WeakODR` linkage.
+**Independent Test**: After `prepareModuleForJIT` runs on a cloned module, verify: the wrapper function has `ExternalLinkage`; all other non-declaration functions retain `InternalLinkage` (unchanged from the preprocessed blob); `llvm.global_ctors` is absent.
 
 **Acceptance Scenarios**:
 
-1. **Given** a cloned module with a wrapper function and other function definitions, **When** `prepareModuleForJIT` runs, **Then** the wrapper has `ExternalLinkage`, vtable functions have `WeakODRLinkage` (optimize path) or `InternalLinkage` (no-optimize path), and all other defined functions have `InternalLinkage`. GlobalDCE (which runs as the first JIT pipeline stage) removes unreachable internal functions so only the actual specialization call-chain is compiled.
-2. **Given** a module with vtable globals (constant globals with initializers), **When** `prepareModuleForJIT` runs, **Then** those globals have `WeakODRLinkage` (so GlobalDCE keeps them as roots).
-3. **Given** a module with `llvm.global_ctors` / `llvm.global_dtors`, **When** `prepareModuleForJIT` runs, **Then** both are erased from the module.
-4. **Given** a module with zero-sized globals (e.g., empty C++ init structs), **When** `prepareModuleForJIT` runs, **Then** those globals are replaced with poison and erased to prevent JITLink assertion failures.
-5. **Given** functions that are referenced from vtable constant initializers, **When** `prepareModuleForJIT` runs in optimize mode, **Then** those functions receive `WeakODRLinkage` so the vtable-devirtualization pass can look them up after GlobalDCE.
+1. **Given** a cloned preprocessed module, **When** `prepareModuleForJIT` runs, **Then** only the wrapper function's linkage is changed (to `ExternalLinkage`); all other functions and globals are unmodified.
+2. **Given** functions referenced from vtable constant initializers, **When** `prepareModuleForJIT` runs, **Then** those functions already have `WeakODRLinkage` (set at compile time) and are not modified.
 
 ---
 
@@ -143,15 +140,9 @@ Before the cloned module is handed to the LLJIT, its symbol linkages must be set
 
 **Module Preparation for JIT**
 
-- **FR-019**: `prepareModuleForJIT` MUST set the following linkages in the cloned module before it is submitted to the JIT:
-  - Wrapper function: `ExternalLinkage`
-  - VTable functions (functions referenced transitively from constant global initializers): `WeakODRLinkage` (optimize path) or `InternalLinkage` (no-optimize path)
-  - All other defined functions: `InternalLinkage` (both paths). `AvailableExternallyLinkage` MUST NOT be used for functions because symbols from statically-linked libraries and linkonce_odr symbols deduplicated to `STB_LOCAL` by the ELF linker are absent from `.dynsym` and cannot be resolved by `DynamicLibrarySearchGenerator`. `InternalLinkage` is safe: both linkages allow inlining; unreachable internal functions are pruned by the early-GlobalDCE stage.
-  - Internal/private globals: unchanged
-  - Constant globals with initializers (vtables, RTTI): `WeakODRLinkage`
-  - Non-constant non-internal globals: `AvailableExternallyLinkage`
-- **FR-020**: `prepareModuleForJIT` MUST erase `llvm.global_ctors` and `llvm.global_dtors` from the cloned module.
-- **FR-021**: `prepareModuleForJIT` MUST remove zero-sized globals (type `{}`) by replacing all uses with `PoisonValue` and erasing them, to prevent JITLink `setMutableContent` assertion failures.
+- **FR-019**: `prepareModuleForJIT` MUST set the wrapper function to `ExternalLinkage`. This is the only linkage modification it performs; all other linkage invariants are guaranteed by compile-time preprocessing (spec 004-ir-dump-preprocessing).
+- **FR-020**: `llvm.global_ctors` and `llvm.global_dtors` are guaranteed absent from preprocessed blobs; `prepareModuleForJIT` does not need to erase them.
+- **FR-021**: Zero-sized globals (type `{}`) are guaranteed absent from preprocessed blobs; `prepareModuleForJIT` does not need to remove them.
 
 **JITDylib Isolation**
 

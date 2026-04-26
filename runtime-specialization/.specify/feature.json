@@ -1,3 +1,3 @@
 {
-  "feature_directory": "specs/003-jit-specialization-core"
+  "feature_directory": "specs/004-ir-dump-preprocessing"
 }
