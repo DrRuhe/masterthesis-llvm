@@ -2,7 +2,7 @@
 
 **Feature Branch**: `003-jit-specialization-core`  
 **Created**: 2026-04-24  
-**Status**: Draft  
+**Status**: Implemented (prepareModuleForJIT simplification complete; smoke tests 22/22 green)  
 **Input**: User description: "Extract a specification for the process of runtime specialization from ClangRuntimeSpecializer.h + ClangRuntimeSpecializer.cpp. Accurately reflect the state of the current implementation."
 
 ## User Scenarios & Testing *(mandatory)*

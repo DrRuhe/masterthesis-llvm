@@ -2,7 +2,7 @@
 
 **Feature Branch**: `004-ir-dump-preprocessing`  
 **Created**: 2026-04-26  
-**Status**: Draft  
+**Status**: Implemented (CloneModule + preprocessing; smoke tests 22/22 green; prepareModuleForJIT simplified)  
 **Input**: User description: "Compile-time preprocessing of the dumped IR: capture IR at the right moment, preprocess linkages and run GlobalDCE before serialization to reduce blob size and JIT overhead."
 
 ## User Scenarios & Testing *(mandatory)*

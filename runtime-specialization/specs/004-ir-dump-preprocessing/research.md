@@ -44,12 +44,24 @@
 **Decision**: Before running GlobalDCE, the module is prepared so that:
 1. Vtable functions (transitively referenced from constant global initializers) → `WeakODRLinkage`
 2. Constant globals with initializers (vtables, RTTI) → `WeakODRLinkage`
-3. Non-constant non-internal globals → `AvailableExternallyLinkage`
+3. Non-constant non-internal globals → `AvailableExternallyLinkage` (Comdat cleared first — see Decision 3b)
 4. `llvm.global_ctors`/`llvm.global_dtors` → erased
 5. Zero-sized globals → replaced with PoisonValue + erased
 6. Target functions remain at ExternalLinkage (= DCE root)
 
 GlobalDCE then prunes everything not reachable from these roots.
+
+---
+
+## Decision 3b: Comdat globals — clear Comdat before AvailableExternally
+
+**Decision**: For non-constant, non-internal globals that carry a Comdat (e.g., guard variables `_ZGVZ*` and local static values `_ZZN*E` for inline functions like `Options::Default()`), clear the Comdat with `G.setComdat(nullptr)` BEFORE setting `AvailableExternallyLinkage`.
+
+**Rationale**: The LLVM IR verifier rejects `AvailableExternallyLinkage` on a global that still carries a Comdat (error: "Declaration may not be in a Comdat!"), because `isDeclarationForLinker()` returns true for `AvailableExternally` globals. Simply skipping Comdat globals (keeping them WeakODR) causes a different failure: the JIT loads them as WeakODR definitions, but conflicts with host definitions that are not in `.dynsym` → "Missing definitions in module" JIT error. Clearing the Comdat first then setting AvailableExternally makes these globals unreferenced AvailableExternally declarations; GlobalDCE prunes them entirely since AvailableExternally is not a DCE root.
+
+**Consequence**: Guard variables and function-local static values from unreachable inline functions (e.g., `Options::Default()`) are absent from the blob. The JIT resolves the host's copies via `DynamicLibrarySearchGenerator` if they're referenced by a surviving function.
+
+**Alternatives considered**: Skip Comdat globals entirely (keep WeakODR) → JIT "Missing definitions" crash. Handle in `prepareModuleForJIT` at JIT time → contradicts spec 003's goal of a fully simplified `prepareModuleForJIT`.
 
 **Rationale**: The `__clangRS_register_blob_*` constructor (if present from a prior partial run) has its only entry point via `llvm.global_ctors`. Once ctors are erased, the constructor has no callers and gets DCE'd. Vtable functions need WeakODR before DCE so they are not accidentally pruned (DevirtualizeConstantVtableCallsPass needs them at JIT-optimization time). Target functions keep ExternalLinkage through DCE, then get InternalLinkage post-DCE.
 

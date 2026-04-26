@@ -65,6 +65,7 @@ After serialization the blob satisfies these invariants (verified by JIT-time ca
 | Vtable/RTTI constant globals | `WeakODRLinkage` | FR-005 |
 | Vtable method functions | `WeakODRLinkage` | FR-005 |
 | Specialization target functions | `InternalLinkage` | FR-005 post-DCE |
-| Non-constant non-internal globals | `AvailableExternallyLinkage` | FR-005 |
+| Non-constant non-internal globals (no Comdat) | `AvailableExternallyLinkage` | FR-005 |
+| Non-constant non-internal Comdat globals (guard vars, local statics) | absent (Comdat cleared → AvailableExternally → DCE pruned) | FR-005 + Decision 3b |
 | Internal/private globals | unchanged | FR-005 |
 | `__clangRS`-prefixed functions | absent | FR-007 (DCE) |

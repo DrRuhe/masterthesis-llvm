@@ -446,9 +446,10 @@ namespace clangRuntimeSpecializer {
               phaseLog("start", g_lastTransformStats.InstructionCount);
 
               // Early pruning: remove definitions unreachable from the wrapper + vtable roots.
-              // Safe: prepareModuleForJIT already gave the wrapper ExternalLinkage and vtable
-              // functions WeakODRLinkage (both are GlobalDCE roots). AvailableExternally functions
-              // that get removed are resolved from the host via DynamicLibrarySearchGenerator.
+              // Safe: prepareModuleForJIT set the wrapper to ExternalLinkage; IRDumpingPass
+              // (spec 004) set vtable functions to WeakODRLinkage at compile time — both are
+              // GlobalDCE roots. AvailableExternally functions that get removed are resolved
+              // from the host via DynamicLibrarySearchGenerator.
               if (Instance->CurrentCallOptions.EnableEarlyPrune) {
                 CurrentGroup = "prune";
                 llvm::ModulePassManager PruneMPM;
@@ -693,126 +694,14 @@ namespace clangRuntimeSpecializer {
   }
 
   void ClangRuntimeSpecializer::prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const {
-    bool Optimize = true;
-    for (auto &F : M) {
-        if (F.hasFnAttribute("force-no-optimize")) {
-            Optimize = false;
-            break;
-        }
-    }
-
-    // Every function except the specialized wrapper should have available_externally linkage
-    // if it has a definition. This allows the JIT inliner to see the bodies but won't
-    // produce a definition in the resulting object file, as we want to use the host's version
-    // if it's not inlined.
-    // Collect functions referenced from vtable constants.  These are virtual-method
-    // implementations that DevirtualizeConstantVtablePass may call in a future fixpoint
-    // iteration even when they currently have no direct callers, so they must not be
-    // deleted by the inliner's dead-function removal.
-    llvm::SmallPtrSet<llvm::Function *, 16> VTableFunctions;
-    if (Optimize) {
-      llvm::SmallVector<llvm::Constant *, 32> WorkList;
-      llvm::SmallPtrSet<llvm::Constant *, 32> Visited;
-      for (auto &G : M.globals()) {
-        if (G.isConstant() && G.hasInitializer()) {
-          auto *Init = G.getInitializer();
-          if (Visited.insert(Init).second)
-            WorkList.push_back(Init);
-        }
-      }
-      while (!WorkList.empty()) {
-        auto *C = WorkList.pop_back_val();
-        if (auto *F = llvm::dyn_cast<llvm::Function>(C)) {
-          VTableFunctions.insert(F);
-        } else {
-          for (unsigned I = 0, E = C->getNumOperands(); I != E; ++I) {
-            if (auto *Op = llvm::dyn_cast<llvm::Constant>(C->getOperand(I)))
-              if (Visited.insert(Op).second)
-                WorkList.push_back(Op);
-          }
-        }
-      }
-    }
-
-    for (auto &F : M) {
-      if (F.getName() == WrapperName) {
-         F.setLinkage(llvm::GlobalValue::ExternalLinkage);
-         continue;
-      }
-      if (!F.isDeclaration()) {
-        if (!Optimize) {
-          // Baseline / instrumentation path: compile all functions so instrumented
-          // bodies run instead of the host's uninstrumented versions.
-          F.setLinkage(llvm::GlobalValue::InternalLinkage);
-        } else if (VTableFunctions.count(&F)) {
-          // Virtual-method implementations referenced from vtables need WeakODR so
-          // the ModuleInlinerPass does not delete their bodies between fixpoint
-          // iterations — DevirtualizeConstantVtablePass looks them up by name.
-          F.setLinkage(llvm::GlobalValue::WeakODRLinkage);
-        } else {
-          // Use InternalLinkage for all non-vtable defined functions.
-          // AvailableExternallyLinkage would tell the JIT to resolve non-inlined
-          // symbols from the host via dlsym, but symbols from statically-linked
-          // libraries and template instantiations deduplicated to STB_LOCAL are not
-          // in .dynsym and cannot be found.  InternalLinkage is safe: both linkages
-          // allow inlining; InternalLinkage functions not reachable from the wrapper
-          // are removed by the early GlobalDCE prune step, so only the actual call
-          // chain gets compiled by the JIT.
-          F.setLinkage(llvm::GlobalValue::InternalLinkage);
-        }
-      }
-    }
-    
-    // Also convert global variables to available_externally or declarations.
-    // Special care for constant strings and other internal globals.
-    for (auto &G : M.globals()) {
-      if (!G.isDeclaration()) {
-        if (G.hasInternalLinkage() || G.hasPrivateLinkage()) {
-          continue; // Keep internal/private globals as is.
-        }
-        if (G.isConstant() && G.hasInitializer()) {
-          // Constant globals (vtables, RTTI, etc.) must survive GlobalDCE in the
-          // IRTransformLayer so that DevirtualizeConstantVtableCallsPass can read
-          // their initializers.  WeakODR is a GlobalDCE root (not discardable if
-          // unused), whereas AvailableExternally would be removed by GlobalDCE
-          // once constructors are erased and no direct IR reference remains.
-          G.setLinkage(llvm::GlobalValue::WeakODRLinkage);
-          continue;
-        }
-        G.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
-      }
-    }
-
-    // Remove global constructors/destructors. The host process already ran them
-    // at startup; the JIT only needs to compile the specialized wrapper, not
-    // re-initialize the entire translation unit.
-    if (auto *GCtors = M.getGlobalVariable("llvm.global_ctors"))
-      GCtors->eraseFromParent();
-    if (auto *GDtors = M.getGlobalVariable("llvm.global_dtors"))
-      GDtors->eraseFromParent();
-
-    // Remove zero-sized globals (e.g., empty C++ init structs of type `{}`) before JIT
-    // compilation. The ELF backend can emit a SHT_PROGBITS section with sh_size=0 for
-    // such globals. JITLink's BasicLayout::apply() then calls setMutableContent with a
-    // null pointer (malloc(0) may return nullptr), triggering an assertion failure.
-    // These globals are always dead after llvm.global_ctors is erased above, so removing
-    // them here is safe; GlobalDCE in the IR transform will clean up any remaining
-    // references in dead constructor functions.
-    {
-      const auto &DL = M.getDataLayout();
-      llvm::SmallVector<llvm::GlobalVariable *, 16> ZeroSized;
-      for (auto &G : M.globals()) {
-        if (!G.isDeclaration()) {
-          uint64_t Sz = DL.getTypeAllocSize(G.getValueType());
-          if (Sz == 0)
-            ZeroSized.push_back(&G);
-        }
-      }
-      for (auto *G : ZeroSized) {
-        G->replaceAllUsesWith(llvm::PoisonValue::get(G->getType()));
-        G->eraseFromParent();
-      }
-    }
+    // All linkage invariants (vtable WeakODR, targets InternalLinkage, globals
+    // AvailableExternally, ctors/dtors erased, zero-sized globals removed) are
+    // established at compile time by IRDumpingPass (spec 004). The only JIT-time
+    // fixup needed is making the wrapper symbol externally visible so JITLink can
+    // export it for lookup.
+    for (auto &F : M)
+      if (F.getName() == WrapperName)
+        F.setLinkage(llvm::GlobalValue::ExternalLinkage);
   }
 
   ClangRuntimeSpecializer::JITResult ClangRuntimeSpecializer::addModuleAndLookup(llvm::orc::ThreadSafeModule TSM,
