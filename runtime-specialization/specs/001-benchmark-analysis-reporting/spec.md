@@ -155,6 +155,7 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 
 **optimize_benchmarks.py**
 
+- **FR-044**: `optimize_benchmarks.py` MUST error and exit when the target data store file does not exist, printing a message directing the user to run `create_db.py` first. It MUST NOT create the data store itself; creation is exclusively the responsibility of `create_db.py`. Optimizer-specific tables (`optim_trial_params`, `unspec_baselines`, `optimization_sessions`) and their associated views are appended to an existing store via `CREATE TABLE/VIEW IF NOT EXISTS` on first use.
 - **FR-019**: `optimize_benchmarks.py` MUST measure the unspecialized baseline (3 repetitions, median per kernel) before starting the optimization loop and persist baselines to the data store.
 - **FR-020**: `optimize_benchmarks.py` MUST run each benchmark in an independent subprocess with a configurable per-benchmark timeout, using timeout/unspec fallback values when a benchmark times out.
 - **FR-021**: `optimize_benchmarks.py` MUST persist every trial's parameters and objectives to the data store immediately upon trial completion, not only at the end of the study.

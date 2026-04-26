@@ -81,15 +81,15 @@ Before the cloned module is handed to the LLJIT, its symbol linkages must be set
 
 **Why this priority**: Incorrect linkage preparation causes either linkage errors (duplicate symbols) or missed optimization opportunities (bodies not visible to the inliner), both of which break the specialization correctness or performance guarantees.
 
-**Independent Test**: After `prepareModuleForJIT` runs on a cloned module, verify: the wrapper function has `ExternalLinkage`; all other non-declaration functions have `AvailableExternally` or `WeakODR` linkage; `llvm.global_ctors` is absent; constant globals with initializers (vtables) have `WeakODR` linkage.
+**Independent Test**: After `prepareModuleForJIT` runs on a cloned module, verify: the wrapper function has `ExternalLinkage`; vtable-referenced functions have `WeakODR` linkage; all other non-declaration functions have `InternalLinkage`; `llvm.global_ctors` is absent; constant globals with initializers (vtables) have `WeakODR` linkage.
 
 **Acceptance Scenarios**:
 
-1. **Given** a cloned module with a wrapper function and other function definitions, **When** `prepareModuleForJIT` runs, **Then** the wrapper has `ExternalLinkage` and every other defined function has `AvailableExternallyLinkage` (optimize path) or `InternalLinkage` (no-optimize path).
+1. **Given** a cloned module with a wrapper function and other function definitions, **When** `prepareModuleForJIT` runs, **Then** the wrapper has `ExternalLinkage`, vtable functions have `WeakODRLinkage` (optimize path) or `InternalLinkage` (no-optimize path), and all other defined functions have `InternalLinkage`. GlobalDCE (which runs as the first JIT pipeline stage) removes unreachable internal functions so only the actual specialization call-chain is compiled.
 2. **Given** a module with vtable globals (constant globals with initializers), **When** `prepareModuleForJIT` runs, **Then** those globals have `WeakODRLinkage` (so GlobalDCE keeps them as roots).
 3. **Given** a module with `llvm.global_ctors` / `llvm.global_dtors`, **When** `prepareModuleForJIT` runs, **Then** both are erased from the module.
 4. **Given** a module with zero-sized globals (e.g., empty C++ init structs), **When** `prepareModuleForJIT` runs, **Then** those globals are replaced with poison and erased to prevent JITLink assertion failures.
-5. **Given** functions that are referenced from vtable constant initializers, **When** `prepareModuleForJIT` runs in optimize mode, **Then** those functions receive `WeakODRLinkage` rather than `AvailableExternally` so the vtable-devirtualization pass can look them up.
+5. **Given** functions that are referenced from vtable constant initializers, **When** `prepareModuleForJIT` runs in optimize mode, **Then** those functions receive `WeakODRLinkage` so the vtable-devirtualization pass can look them up after GlobalDCE.
 
 ---
 
@@ -146,7 +146,7 @@ Before the cloned module is handed to the LLJIT, its symbol linkages must be set
 - **FR-019**: `prepareModuleForJIT` MUST set the following linkages in the cloned module before it is submitted to the JIT:
   - Wrapper function: `ExternalLinkage`
   - VTable functions (functions referenced transitively from constant global initializers): `WeakODRLinkage` (optimize path) or `InternalLinkage` (no-optimize path)
-  - All other defined functions: `AvailableExternallyLinkage` (optimize path) or `InternalLinkage` (no-optimize path)
+  - All other defined functions: `InternalLinkage` (both paths). `AvailableExternallyLinkage` MUST NOT be used for functions because symbols from statically-linked libraries and linkonce_odr symbols deduplicated to `STB_LOCAL` by the ELF linker are absent from `.dynsym` and cannot be resolved by `DynamicLibrarySearchGenerator`. `InternalLinkage` is safe: both linkages allow inlining; unreachable internal functions are pruned by the early-GlobalDCE stage.
   - Internal/private globals: unchanged
   - Constant globals with initializers (vtables, RTTI): `WeakODRLinkage`
   - Non-constant non-internal globals: `AvailableExternallyLinkage`
@@ -205,7 +205,7 @@ Before the cloned module is handed to the LLJIT, its symbol linkages must be set
 ## Assumptions
 
 - `init()` is called from a single thread before any multi-threaded specialization calls. Thread-safety of `init()` itself is out of scope.
-- The binary is linked with `--export-dynamic` (or equivalent) so that host-process symbols referenced by `AvailableExternallyLinkage` functions in the JIT module are resolvable at JIT link time.
+- The binary is linked with `--export-dynamic` (or equivalent) so that host-process symbols referenced by globals with `AvailableExternallyLinkage` and function declarations (externals) in the JIT module are resolvable at JIT link time. Function *definitions* in the JIT module use `InternalLinkage` and are compiled by the JIT; they do not rely on `--export-dynamic` for resolution. Benchmark target functions MUST be defined in a separate translation unit (not the same TU as benchmark-library registration code) so that their JIT blobs remain free of statically-linked library dependencies.
 - Argument serialization handles only integer, floating-point, pointer, and class (by address) types. Serialization of structs by value, arrays, references, or non-trivial class types is out of scope.
 - `clang_runtime_specializer_register_blob_v2` is always called by the TU constructor before `main()` starts, as injected by the IR-dumping plugin. The v1 API (`register_blob` without function names) is not specified here.
 - The `TSCtx` LLVMContext is shared across all blob modules; no blob module outlives the `ClangRuntimeSpecializer` instance.

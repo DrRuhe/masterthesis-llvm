@@ -1,73 +1,7 @@
 
 #include <benchmark/benchmark.h>
 #include "ClangRuntimeSpecializerBenchmark.h"
-#include <cmath>
-
-// ── Scenario 1: mypow (loop with known iteration count) ──────────────────────
-
-// A simple function to specialize.
-// It performs some computation that is easier to optimize if x is known.
-extern "C" int mypow_bench(int x) {
-    int result = 1;
-    for (int i = 0; i < x; i++) {
-        result *= 3;
-    }
-    return result;
-}
-
-inline constexpr char Fn_mypow[] = "mypow_bench";
-
-// ── Scenario 2: config_count (branch elimination via pointer-to-config) ───────
-
-struct Config {
-    int threshold;
-    bool direction;  // true = (val >= threshold), false = (val < threshold)
-};
-
-// Count integers in [0, n) matching the threshold condition.
-// Specializing for a fixed cfg pointer eliminates the conditional branch and
-// exposes n as a compile-time constant for loop unrolling/vectorization.
-extern "C" int config_count(Config* cfg, int n) __asm__("config_count");
-int config_count(Config* cfg, int n) {
-    int count = 0;
-    for (int i = 0; i < n; i++)
-        count += ((i >= cfg->threshold) == cfg->direction);
-    return count;
-}
-
-inline constexpr char Fn_config_count[] = "config_count";
-static Config g_config{512, true};
-
-// ── Scenario 3: A::add (method field constant-folding) ───────────────────────
-
-// Specializing for a fixed this pointer makes the 'value' field a compile-time
-// constant, folding the entire addition to a constant return value.
-class A {
-    int value;
-public:
-    explicit A(int val) : value(val) {}
-    __attribute__((noinline)) int add(int a, int b) const __asm__("A::add") {
-        return value + a + b;
-    }
-};
-
-inline constexpr char Fn_A_add[] = "A::add";
-static A g_a_instance{42};
-
-// ── IR embedding trigger ─────────────────────────────────────────────────────
-
-// We need to ensure callSpecialized is actually called in the IR so the
-// compile-time pass embeds IR for all three functions.
-volatile bool g_dummy_trigger = false;
-
-extern "C" __attribute__((used)) void dummy_registration() {
-    auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    if (g_dummy_trigger) {
-        RS->callSpecialized<int>(Fn_mypow, 0);
-        RS->callSpecialized<int>(Fn_config_count, (Config*)nullptr, 0);
-        RS->callSpecialized<int>(Fn_A_add, (const A*)nullptr, 0, 0);
-    }
-}
+#include "SyntheticKernels.h"
 
 extern "C" void BM_unspecialized____mypow(benchmark::State& state) {
     int x = state.range(0);

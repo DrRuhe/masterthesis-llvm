@@ -5,6 +5,26 @@ set(PLUGIN_LIB "$<TARGET_FILE:LLVMRuntimeSpecializationComptimePlugin>")
 
 separate_arguments(CXX_FLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 
+# ── SyntheticKernels ──────────────────────────────────────────────────────────
+# Compiled separately from SpecializerBenchmark.cpp so the JIT blob for each
+# kernel contains only the kernel code, not the benchmark-library infrastructure.
+
+set(KERNELS_OBJ_FILE "${CMAKE_CURRENT_BINARY_DIR}/SyntheticKernels.o")
+
+add_custom_command(
+    OUTPUT ${KERNELS_OBJ_FILE}
+    COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
+            -I${CMAKE_CURRENT_SOURCE_DIR}
+            -fpass-plugin=${PLUGIN_LIB}
+            -fexceptions -frtti
+            -c ${CMAKE_CURRENT_SOURCE_DIR}/SyntheticKernels.cpp
+            -o ${KERNELS_OBJ_FILE}
+    DEPENDS SyntheticKernels.cpp SyntheticKernels.h LLVMRuntimeSpecializationComptimePlugin clang
+    COMMENT "Compiling SyntheticKernels with project clang and plugin"
+)
+
+set_source_files_properties(SyntheticKernels.cpp PROPERTIES HEADER_FILE_ONLY ON)
+
 # ── SpecializerBenchmark ──────────────────────────────────────────────────────
 
 set(OBJ_FILE "${CMAKE_CURRENT_BINARY_DIR}/SpecializerBenchmark.o")
@@ -33,7 +53,8 @@ set(IDE_STUB "${CMAKE_CURRENT_BINARY_DIR}/benchmark_ide_stub.cpp")
 file(WRITE "${IDE_STUB}" "")
 
 set_source_files_properties(SpecializerBenchmark.cpp PROPERTIES HEADER_FILE_ONLY ON)
-add_benchmark(SpecializerBenchmark PARTIAL_SOURCES_INTENDED ${OBJ_FILE} SpecializerBenchmark.cpp ${IDE_STUB})
+add_benchmark(SpecializerBenchmark PARTIAL_SOURCES_INTENDED
+    ${KERNELS_OBJ_FILE} ${OBJ_FILE} SpecializerBenchmark.cpp SyntheticKernels.cpp ${IDE_STUB})
 
 target_include_directories(SpecializerBenchmark PRIVATE
     ${LLVM_THIRD_PARTY_DIR}/benchmark/include
@@ -186,7 +207,7 @@ add_custom_command(
 )
 
 add_benchmark(AllBenchmarks PARTIAL_SOURCES_INTENDED
-    ${ALL_OBJ_SPEC} ${ALL_OBJ_DB} ${ALL_OBJ_POLY} ${ALL_OBJ_TPCH} ${TPCH_SQLITE3_IR_OBJ}
+    ${KERNELS_OBJ_FILE} ${ALL_OBJ_SPEC} ${ALL_OBJ_DB} ${ALL_OBJ_POLY} ${ALL_OBJ_TPCH} ${TPCH_SQLITE3_IR_OBJ}
     AllBenchmarks_main.cpp)
 
 target_include_directories(AllBenchmarks PRIVATE

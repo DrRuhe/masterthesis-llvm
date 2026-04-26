@@ -750,10 +750,15 @@ namespace clangRuntimeSpecializer {
           // iterations — DevirtualizeConstantVtablePass looks them up by name.
           F.setLinkage(llvm::GlobalValue::WeakODRLinkage);
         } else {
-          // All other functions: body available for inlining but canonical definition
-          // lives in the host process (--export-dynamic).  The JIT will not compile
-          // a new copy; if not inlined it resolves the symbol from the host.
-          F.setLinkage(llvm::GlobalValue::AvailableExternallyLinkage);
+          // Use InternalLinkage for all non-vtable defined functions.
+          // AvailableExternallyLinkage would tell the JIT to resolve non-inlined
+          // symbols from the host via dlsym, but symbols from statically-linked
+          // libraries and template instantiations deduplicated to STB_LOCAL are not
+          // in .dynsym and cannot be found.  InternalLinkage is safe: both linkages
+          // allow inlining; InternalLinkage functions not reachable from the wrapper
+          // are removed by the early GlobalDCE prune step, so only the actual call
+          // chain gets compiled by the JIT.
+          F.setLinkage(llvm::GlobalValue::InternalLinkage);
         }
       }
     }

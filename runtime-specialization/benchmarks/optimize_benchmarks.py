@@ -207,8 +207,8 @@ ORDER BY ob.study_name, ob.kernel, ob._total;
 # ---------------------------------------------------------------------------
 
 def open_optim_db(db_path: Path) -> duckdb.DuckDBPyConnection:
-    """Open benchmark DB (create if absent), ensure optimizer tables and views exist."""
-    con = _rb_open_db(db_path, create=not db_path.exists())
+    """Open an existing benchmark DB and ensure optimizer tables/views exist."""
+    con = _rb_open_db(db_path)
     con.execute(_SCHEMA_OPTIM_TRIAL_PARAMS)
     con.execute(_SCHEMA_UNSPEC_BASELINES)
     con.execute(_SCHEMA_OPTIM_SESSIONS)
@@ -560,6 +560,10 @@ def main():
 
     binary = str(Path(args.binary).resolve())
     db_path = resolve_db_path(args.db)
+    if not db_path.exists():
+        print(f"Error: DB file not found: {db_path}", file=sys.stderr)
+        print("Run create_db.py to initialise a new database.", file=sys.stderr)
+        sys.exit(1)
     study_name = args.study_name or f"direct_opts_{datetime.now():%Y%m%d_%H%M%S}"
     output_best = args.output_best or f"best_{study_name}.json"
     git_sha = get_git_sha()
