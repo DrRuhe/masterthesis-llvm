@@ -92,14 +92,19 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
       DCERoots.insert(&F);
   }
 
-  // FR-005 (pre-DCE): walk constant global initializers transitively to find
-  // vtable/RTTI method implementations; set them WeakODRLinkage so they survive
-  // GlobalDCE and DevirtualizeConstantVtableCallsPass can find them at JIT time.
+  // FR-005 (pre-DCE): walk C++ vtable/RTTI constant global initializers
+  // transitively to find virtual method implementations; set them WeakODRLinkage
+  // so they survive GlobalDCE and DevirtualizeConstantVtableCallsPass can find
+  // them at JIT time. Restricted to C++ mangled vtable/typeinfo globals (_ZTV*,
+  // _ZTI*, _ZTS*) to avoid treating C dispatch tables as vtables — those should
+  // not prevent GlobalDCE from pruning unreachable C functions.
   {
     SmallVector<Constant *, 32> WorkList;
     SmallPtrSet<Constant *, 32> Visited;
     for (auto &G : ClonedM->globals())
-      if (G.isConstant() && G.hasInitializer())
+      if (G.isConstant() && G.hasInitializer() &&
+          (G.getName().starts_with("_ZTV") || G.getName().starts_with("_ZTI") ||
+           G.getName().starts_with("_ZTS")))
         if (Visited.insert(G.getInitializer()).second)
           WorkList.push_back(G.getInitializer());
     while (!WorkList.empty()) {
@@ -180,9 +185,12 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
   // InternalLinkage. Done after DCE so they served as DCE roots during pruning.
   // Skip WeakODR functions — the vtable BFS already marked them WeakODR, which
   // is the correct blob linkage for DevirtualizeConstantVtableCallsPass at JIT time.
-  for (auto *F : DCERoots)
-    if (!F->isDeclaration() && !F->hasWeakODRLinkage())
-      F->setLinkage(GlobalValue::InternalLinkage);
+  // Iterate ClonedM (not DCERoots directly) because GlobalDCE erases discardable
+  // functions (AvailableExternally, LinkOnce) that have no uses, leaving dangling
+  // pointers in DCERoots. Using live functions from ClonedM is always safe.
+  for (auto &F : *ClonedM)
+    if (DCERoots.count(&F) && !F.isDeclaration() && !F.hasWeakODRLinkage())
+      F.setLinkage(GlobalValue::InternalLinkage);
 
   // === END PREPROCESSING ===
 

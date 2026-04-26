@@ -1,5 +1,5 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe | FileCheck %s
+// RUN: %t.exe | FileCheck %s --dump-input=always
 
 // Verify that compile-time GlobalDCE in IRDumpingPass (spec 004) significantly
 // reduces the function count in the embedded blob. A minimal TU with a single

@@ -108,7 +108,7 @@
 
 - [X] T020 Run `ninja check-smoke-runtime-specializer`. All tests must be green. This is the final gate confirming spec 004 and spec 003 land correctly together. ✅ 26/26 passing (18 original + 2 new blob-stats/determinism smoke tests + 4 WIP + 2 promoted).
 
-- [ ] T021 [P] Run `ninja check-all-runtime-specializer` (or at minimum the benchmark suite with `--benchmark_filter=".*"`) to confirm no benchmark-level "Symbols not found" or JIT crash regressions.
+- [X] T021 [P] Run `ninja check-all-runtime-specializer` (or at minimum the benchmark suite with `--benchmark_filter=".*"`) to confirm no benchmark-level "Symbols not found" or JIT crash regressions. Fixed two issues found during TPCH benchmark: (a) vtable BFS restricted to `_ZTV*`/`_ZTI*`/`_ZTS*` C++ globals only (was incorrectly marking C dispatch table functions WeakODR); (b) `InvariantLoadToConstantPass` crashes on unmapped FinalAddr for large TUs — fixed by adding `mincore`-based safety guard + using `getSExtValue()` for signed offsets.
 
 **Checkpoint**: All smoke tests green; spec 004 and spec 003 simplification landed together.
 
