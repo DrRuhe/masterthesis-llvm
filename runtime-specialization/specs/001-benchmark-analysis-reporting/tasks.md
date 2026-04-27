@@ -26,7 +26,7 @@ No setup needed — existing scripts, schema DDL, and dependencies are already i
 
 **⚠️ CRITICAL**: Complete T001 before T002.
 
-- [ ] T001 [US3] Create `benchmarks/create_db.py` — CLI (`--db`/`BENCHPLOT_DB_PATH`/default), exit-1 if file exists, CREATE all 6 tables + 8 views from plan.md schema, print success + path
+- [x] T001 [US3] Create `benchmarks/create_db.py` — CLI (`--db`/`BENCHPLOT_DB_PATH`/default), exit-1 if file exists, CREATE all 6 tables + 8 views from plan.md schema, print success + path
 
 **Checkpoint**: `create_db.py` exists and is callable; US1 error-message patch and US4 can now proceed.
 
@@ -38,7 +38,7 @@ No setup needed — existing scripts, schema DDL, and dependencies are already i
 
 **Independent Test**: Run `record_benchmark.py` against a missing DB path; verify the error message says "Run create_db.py to initialise a new database." (not "--create-db").
 
-- [ ] T002 [US1] In `benchmarks/record_benchmark.py` `open_db()` — change missing-DB error message from "Pass --create-db to initialise a new database." to "Run create_db.py to initialise a new database."
+- [x] T002 [US1] In `benchmarks/record_benchmark.py` `open_db()` — change missing-DB error message from "Pass --create-db to initialise a new database." to "Run create_db.py to initialise a new database."
 
 > US2 (`--record-json`, `--pass-trace-dir`) is fully implemented; no tasks required.
 
@@ -52,13 +52,13 @@ No setup needed — existing scripts, schema DDL, and dependencies are already i
 
 **Independent Test**: Run `optimize_benchmarks.py --n-trials=2` against a benchmark binary; verify (a) an `optimization_sessions` row exists with `status='complete'` after normal exit, and (b) interrupting with Ctrl-C leaves `status='incomplete'` and those rows do not appear in `v_optim_best_per_kernel`.
 
-- [ ] T003 [US4] In `benchmarks/optimize_benchmarks.py` — add `_SCHEMA_OPTIM_SESSIONS` DDL constant and call `con.execute(_SCHEMA_OPTIM_SESSIONS)` in `open_optim_db()`, matching the `optimization_sessions` table definition in `plan.md`
+- [x] T003 [US4] In `benchmarks/optimize_benchmarks.py` — add `_SCHEMA_OPTIM_SESSIONS` DDL constant and call `con.execute(_SCHEMA_OPTIM_SESSIONS)` in `open_optim_db()`, matching the `optimization_sessions` table definition in `plan.md`
 
-- [ ] T004 [US4] In `benchmarks/optimize_benchmarks.py` `main()` — after `open_optim_db()`, INSERT a row into `optimization_sessions` with `status='incomplete'`, `started_at=NOW()`; wrap `study.optimize(...)` in `try/finally`; on normal exit UPDATE `status='complete'`, `completed_at=NOW()`; on `KeyboardInterrupt` print a warning and leave status `incomplete`
+- [x] T004 [US4] In `benchmarks/optimize_benchmarks.py` `main()` — after `open_optim_db()`, INSERT a row into `optimization_sessions` with `status='incomplete'`, `started_at=NOW()`; wrap `study.optimize(...)` in `try/finally`; on normal exit UPDATE `status='complete'`, `completed_at=NOW()`; on `KeyboardInterrupt` print a warning and leave status `incomplete`
 
-- [ ] T005 [US4] In `benchmarks/optimize_benchmarks.py` — update `_SCHEMA_V_OPTIM_BEST_PER_KERNEL` to JOIN `optimization_sessions` and add `WHERE os.status = 'complete'`, matching the view DDL in `plan.md`; verify `_SCHEMA_V_OPTIM_BREAKEVEN` does not need the same filter (it exposes raw trial data; filtering happens at the best-per-kernel layer)
+- [x] T005 [US4] In `benchmarks/optimize_benchmarks.py` — update `_SCHEMA_V_OPTIM_BEST_PER_KERNEL` to JOIN `optimization_sessions` and add `WHERE os.status = 'complete'`, matching the view DDL in `plan.md`; verify `_SCHEMA_V_OPTIM_BREAKEVEN` does not need the same filter (it exposes raw trial data; filtering happens at the best-per-kernel layer)
 
-- [ ] T006 [P] [US4] In `benchmarks/create_db.py` — add `optimization_sessions` table DDL and the updated `v_optim_best_per_kernel` view DDL (with status filter) to the schema block, keeping it in sync with `optimize_benchmarks.py`
+- [x] T006 [P] [US4] In `benchmarks/create_db.py` — add `optimization_sessions` table DDL and the updated `v_optim_best_per_kernel` view DDL (with status filter) to the schema block, keeping it in sync with `optimize_benchmarks.py`
 
 **Checkpoint**: US4 is fully functional; optimization studies have complete lifecycle tracking.
 
@@ -82,7 +82,11 @@ No additional tasks — T001 and T006 together satisfy FR-016, FR-017, FR-018.
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T007 [P] Update `benchmarks/record_benchmark.py` — remove the `--create-db` flag and its associated `open_db(…, create=True)` path now that `create_db.py` exists as the canonical initializer (keeps CLI surface minimal per constitution §V)
+- [x] T007 [P] Update `benchmarks/record_benchmark.py` — remove the `--create-db` flag and its associated `open_db(…, create=True)` path now that `create_db.py` exists as the canonical initializer (keeps CLI surface minimal per constitution §V)
+
+- [x] T008 [US1] In `benchmarks/record_benchmark.py` `check_dependencies()` — add early DB existence check so a missing DB is reported before the benchmark runs (fail-fast; prevents results being lost when the DB path is wrong)
+- [x] T009 [US1] In `benchmarks/record_benchmark.py` `cmd_record()` — delete the temp JSON file when the benchmark exits with a non-zero code in standard (non-best-practice) mode to avoid orphaned temp files
+- [x] T010 [US1] In `benchmarks/create_db.py` — add `best_practice_full BOOLEAN` column to `_SCHEMA_CONTEXT` to keep the canonical schema in sync with `record_benchmark.py`
 
 ---
 

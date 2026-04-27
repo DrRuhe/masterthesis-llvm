@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS context (
     mhz_per_cpu         INTEGER,
     cpu_scaling_enabled BOOLEAN,
     library_version     VARCHAR,
-    library_build_type  VARCHAR
+    library_build_type  VARCHAR,
+    best_practice_full  BOOLEAN
 );
 """
 

@@ -11,6 +11,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS context (
     mhz_per_cpu         INTEGER,
     cpu_scaling_enabled BOOLEAN,
     library_version     VARCHAR,
-    library_build_type  VARCHAR
+    library_build_type  VARCHAR,
+    best_practice_full  BOOLEAN
 );
 """
 
@@ -326,6 +328,8 @@ def open_db(db_path: Path) -> duckdb.DuckDBPyConnection:
         con.execute(_SCHEMA_V_BUDGET_SWEEP)
     except Exception:
         pass  # budget counter columns not yet present in this DB
+    # Migrate existing DBs that predate the best_practice_full column.
+    con.execute("ALTER TABLE context ADD COLUMN IF NOT EXISTS best_practice_full BOOLEAN")
     return con
 
 
@@ -480,6 +484,10 @@ def best_practice_env(benchmark_cpus: list[int]):
       3. Set CPU governor to performance
       4. Disable SMT siblings of benchmark CPUs
     CPU affinity is enforced by the caller via taskset (no cpuset filesystem needed).
+
+    Teardown is guaranteed to run for any Python-catchable termination: normal
+    exit, exceptions (including DB write failures), KeyboardInterrupt (SIGINT),
+    and SIGTERM.  SIGKILL cannot be intercepted and is out of scope.
     """
     disabled_cpus: list[int] = []
     original_gov: str | None = None
@@ -491,69 +499,80 @@ def best_practice_env(benchmark_cpus: list[int]):
     aslr_path = "/proc/sys/kernel/randomize_va_space"
     turbo_path = "/sys/devices/system/cpu/intel_pstate/no_turbo"
 
-    # 1. Disable ASLR
+    # Convert SIGTERM to SystemExit before any setup so the finally block below
+    # always runs teardown.  SIGINT already raises KeyboardInterrupt natively.
+    def _sigterm_handler(signum, frame):
+        raise SystemExit(signum)
+
+    original_sigterm = signal.signal(signal.SIGTERM, _sigterm_handler)
+
     try:
-        original_aslr = Path(aslr_path).read_text().strip()
-        if original_aslr != "0":
-            print("Disabling ASLR...", file=sys.stderr)
-            _sudo_write(aslr_path, "0\n")
-    except Exception as e:
-        print(f"Warning: could not configure ASLR: {e}", file=sys.stderr)
-        setup_failed = True
-
-    # 2. Disable Intel Turbo Boost (Intel pstate only)
-    if Path(turbo_path).exists():
+        # 1. Disable ASLR
         try:
-            original_turbo = Path(turbo_path).read_text().strip()
-            if original_turbo != "1":
-                print("Disabling Intel Turbo Boost...", file=sys.stderr)
-                _sudo_write(turbo_path, "1\n")
+            original_aslr = Path(aslr_path).read_text().strip()
+            if original_aslr != "0":
+                print("Disabling ASLR...", file=sys.stderr)
+                _sudo_write(aslr_path, "0\n")
         except Exception as e:
-            print(f"Warning: could not disable Turbo Boost: {e}", file=sys.stderr)
+            print(f"Warning: could not configure ASLR: {e}", file=sys.stderr)
             setup_failed = True
 
-    # 3. Set CPU governor to performance
-    if _GOV_FILE.exists():
-        try:
-            original_gov = _GOV_FILE.read_text().strip()
-            if original_gov != "performance":
-                print(
-                    f"Setting CPU governor to performance (was: {original_gov})...",
-                    file=sys.stderr,
-                )
-                _set_governor("performance")
-        except Exception as e:
-            print(f"Warning: could not set CPU governor: {e}", file=sys.stderr)
-            setup_failed = True
-    else:
-        print("Warning: CPU frequency scaling not available.", file=sys.stderr)
-        setup_failed = True
-
-    # 4. Disable SMT siblings of benchmark CPUs
-    benchmark_cpu_set = set(benchmark_cpus)
-    siblings_to_disable: set[int] = set()
-    for cpu in benchmark_cpus:
-        for sib in _get_smt_siblings(cpu):
-            if sib not in benchmark_cpu_set:
-                siblings_to_disable.add(sib)
-
-    for sib in sorted(siblings_to_disable):
-        online_file = f"/sys/devices/system/cpu/cpu{sib}/online"
-        if Path(online_file).exists():
+        # 2. Disable Intel Turbo Boost (Intel pstate only)
+        if Path(turbo_path).exists():
             try:
-                print(f"Disabling SMT sibling CPU {sib}...", file=sys.stderr)
-                _sudo_write(online_file, "0\n")
-                disabled_cpus.append(sib)
+                original_turbo = Path(turbo_path).read_text().strip()
+                if original_turbo != "1":
+                    print("Disabling Intel Turbo Boost...", file=sys.stderr)
+                    _sudo_write(turbo_path, "1\n")
             except Exception as e:
-                print(f"Warning: could not disable CPU {sib}: {e}", file=sys.stderr)
+                print(f"Warning: could not disable Turbo Boost: {e}", file=sys.stderr)
                 setup_failed = True
 
-    print(f"CPU affinity will be set via taskset on CPU(s) {cpu_list_str}.", file=sys.stderr)
+        # 3. Set CPU governor to performance
+        if _GOV_FILE.exists():
+            try:
+                original_gov = _GOV_FILE.read_text().strip()
+                if original_gov != "performance":
+                    print(
+                        f"Setting CPU governor to performance (was: {original_gov})...",
+                        file=sys.stderr,
+                    )
+                    _set_governor("performance")
+            except Exception as e:
+                print(f"Warning: could not set CPU governor: {e}", file=sys.stderr)
+                setup_failed = True
+        else:
+            print("Warning: CPU frequency scaling not available.", file=sys.stderr)
+            setup_failed = True
 
-    try:
+        # 4. Disable SMT siblings of benchmark CPUs
+        benchmark_cpu_set = set(benchmark_cpus)
+        siblings_to_disable: set[int] = set()
+        for cpu in benchmark_cpus:
+            for sib in _get_smt_siblings(cpu):
+                if sib not in benchmark_cpu_set:
+                    siblings_to_disable.add(sib)
+
+        for sib in sorted(siblings_to_disable):
+            online_file = f"/sys/devices/system/cpu/cpu{sib}/online"
+            if Path(online_file).exists():
+                try:
+                    print(f"Disabling SMT sibling CPU {sib}...", file=sys.stderr)
+                    _sudo_write(online_file, "0\n")
+                    disabled_cpus.append(sib)
+                except Exception as e:
+                    print(f"Warning: could not disable CPU {sib}: {e}", file=sys.stderr)
+                    setup_failed = True
+
+        print(f"CPU affinity will be set via taskset on CPU(s) {cpu_list_str}.", file=sys.stderr)
+
         yield not setup_failed
+
     finally:
-        # Teardown in reverse order
+        # Restore SIGTERM before any sudo calls in teardown.
+        signal.signal(signal.SIGTERM, original_sigterm)
+
+        # Teardown in reverse order; each step is independent.
         for sib in sorted(disabled_cpus):
             online_file = f"/sys/devices/system/cpu/cpu{sib}/online"
             try:
@@ -609,6 +628,13 @@ def check_dependencies(args) -> None:
     if getattr(args, 'benchmarking_best_practice', False):
         if not shutil.which("sudo"):
             missing.append("sudo (required for --benchmarking-best-practice)")
+    # Validate DB path before running the benchmark so we fail fast rather than
+    # running a potentially long benchmark and then losing its results.
+    db_path = resolve_db_path(getattr(args, 'db', None))
+    if not db_path.exists():
+        missing.append(
+            f"DB file not found: {db_path} — run create_db.py to initialise a new database"
+        )
     if missing:
         print("Error: missing dependencies:", file=sys.stderr)
         for m in missing:
@@ -643,7 +669,8 @@ def _load_json_safe(path: str) -> dict:
 
 
 def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
-                trace_dir: Path | None = None) -> None:
+                trace_dir: Path | None = None,
+                best_practice_full: bool | None = None) -> None:
     ctx = data.get("context", {})
     benchmarks = data.get("benchmarks", [])
     db_path = resolve_db_path(args.db)
@@ -655,7 +682,7 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
 
         con.begin()
         con.execute(
-            "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 run_id, run_ts,
                 ctx.get("git_sha", ""),
@@ -667,6 +694,7 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
                 ctx.get("cpu_scaling_enabled"),
                 ctx.get("library_version", ""),
                 ctx.get("library_build_type", ""),
+                best_practice_full,
             ],
         )
         ensure_columns(con, benchmarks)
@@ -740,16 +768,33 @@ def cmd_record(args):
             full_cmd = [taskset_bin, "-c", cpu_list_str] + cmd
             print(f"Running: {' '.join(full_cmd)}", flush=True)
             result = subprocess.run(full_cmd)
+            if result.returncode != 0:
+                print(
+                    f"Warning: benchmark exited with code {result.returncode}; "
+                    "storing available results before restoring system settings.",
+                    file=sys.stderr,
+                )
+            # Store BEFORE the with-block exits so teardown (ASLR/governor restore)
+            # happens after the DB write, not before.
+            data = _load_json_safe(out_path)
+            trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else Path.cwd()
+            store_to_db(args, data, out_path, delete_on_success=True, trace_dir=trace_dir,
+                        best_practice_full=bool(setup_ok))
+        # System settings restored here; propagate non-zero exit code after the fact.
+        if result.returncode != 0:
+            sys.exit(result.returncode)
     else:
         print(f"Running: {' '.join(cmd)}", flush=True)
         result = subprocess.run(cmd)
-
-    if result.returncode != 0:
-        sys.exit(result.returncode)
-
-    data = _load_json_safe(out_path)
-    trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else Path.cwd()
-    store_to_db(args, data, out_path, delete_on_success=True, trace_dir=trace_dir)
+        if result.returncode != 0:
+            try:
+                os.unlink(out_path)
+            except OSError:
+                pass
+            sys.exit(result.returncode)
+        data = _load_json_safe(out_path)
+        trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else Path.cwd()
+        store_to_db(args, data, out_path, delete_on_success=True, trace_dir=trace_dir)
 
 
 # ---------------------------------------------------------------------------

@@ -18,9 +18,10 @@ A researcher wants to execute a benchmark binary against the JIT specializer, au
 **Acceptance Scenarios**:
 
 1. **Given** the data store exists, **When** the user runs `record_benchmark.py <binary>`, **Then** all benchmark metrics (timing, hardware perf counters, JIT stats) are recorded atomically with a timestamp, unique run ID, and current git SHA; the run ID is printed to stdout.
-2. **Given** the `--benchmarking-best-practice` flag is supplied and the user has appropriate privileges, **When** the benchmark runs, **Then** ASLR is disabled, CPU governor is set to performance, Intel Turbo Boost is disabled, SMT siblings of benchmark CPUs are taken offline, and CPU affinity is set via taskset; the data store records include the isolation-mode flag.
-3. **Given** the `--benchmarking-best-practice` flag is supplied, **When** one or more best-practice setup steps cannot be applied (e.g., CPU frequency scaling unavailable on a VM), **Then** the script prints a warning per failed step, still runs the benchmark and stores the result, and restores any settings that were successfully changed during teardown.
-4. **Given** the benchmark binary exits with a non-zero code, **When** `record_benchmark.py` detects the failure, **Then** it exits without writing to the data store.
+2. **Given** the `--benchmarking-best-practice` flag is supplied and the user has appropriate privileges, **When** the benchmark runs, **Then** ASLR is disabled, CPU governor is set to performance, Intel Turbo Boost is disabled, SMT siblings of benchmark CPUs are taken offline, and CPU affinity is set via taskset; the context row in the data store has `best_practice_full = TRUE`.
+3. **Given** the `--benchmarking-best-practice` flag is supplied, **When** one or more setup steps cannot be applied (e.g., CPU frequency scaling unavailable on a VM), **Then** the script prints a per-step warning, still runs the benchmark, stores the result with `best_practice_full = FALSE` in the context row, then restores any settings that were successfully changed.
+4. **Given** `--benchmarking-best-practice` is used and the benchmark binary exits with a non-zero code, **When** `record_benchmark.py` processes the result, **Then** it stores all available results to the data store first, then restores system settings, and finally exits with the benchmark's original non-zero code.
+4b. **Given** the benchmark binary exits with a non-zero code in standard (non-best-practice) mode, **When** `record_benchmark.py` detects the failure, **Then** it exits without writing to the data store.
 5. **Given** the benchmark ran successfully but the DB write fails, **When** the error is caught, **Then** the raw JSON output is preserved on disk and the user is shown the exact command to re-import it with `--record-json`.
 6. **Given** the user passes `--benchmark_filter=PATTERN`, **When** the binary is invoked, **Then** only benchmarks matching the pattern are run and recorded.
 7. **Given** the user passes `--sudo-askpass PATH`, **When** sudo is needed, **Then** the askpass helper is used instead of interactive input, allowing the script to run in non-terminal environments (CI, remote sessions).
@@ -125,6 +126,10 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - What happens when a reporting script encounters records from a pre-existing schema missing newer columns (e.g., `jit_blob_kb`)? → Views are defined with `CREATE OR REPLACE` and guarded `try/except`; scripts check for column existence before querying.
 - What happens when `best_practice_env` teardown fails (e.g., cannot re-enable a disabled CPU)? → Each teardown step is attempted independently; warnings are printed but the script does not exit with an error on teardown failure.
 - What happens when some best-practice setup steps fail but others succeed (e.g., ASLR disabled but CPU frequency scaling unavailable)? → A warning is printed per failed step; the benchmark still runs and results are recorded. Only successfully applied settings are restored on teardown.
+- What happens when the process receives SIGTERM (e.g., `kill <pid>`) while best-practice settings are active? → The installed SIGTERM handler raises `SystemExit`, which propagates through the `finally` block and triggers full teardown before the process exits.
+- What happens when the process receives SIGKILL (`kill -9`)? → Teardown cannot run; SIGKILL is out of scope. The operator must restore settings manually.
+- What happens when the benchmark exits with a non-zero code under `--benchmarking-best-practice`? → Results are stored first, teardown runs, then the script exits with the benchmark's original exit code.
+- What happens when the DB write fails under `--benchmarking-best-practice`? → The exception propagates through the `finally` block, teardown runs (restoring all settings), and the script exits with an error and the path to the preserved JSON file.
 
 ## Requirements *(mandatory)*
 
@@ -132,16 +137,17 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 
 **record_benchmark.py**
 
-- **FR-001**: `record_benchmark.py` MUST accept a path to a compiled benchmark binary and execute it with JSON output directed to a temporary file.
+- **FR-001**: `record_benchmark.py` MUST accept a path to a compiled benchmark binary and execute it with JSON output directed to a temporary file. Before launching the benchmark, it MUST verify that the target data store file exists and exit with an error directing the user to `create_db.py` if it does not, so that benchmark time is never wasted when the DB path is wrong.
 - **FR-002**: `record_benchmark.py` MUST collect hardware performance counters (instructions, cpu-cycles, branch-misses, L1-icache-load-misses, L1-icache-loads, iTLB-load-misses) alongside timing data for every benchmark row.
 - **FR-003**: `record_benchmark.py` MUST capture the current git SHA and embed it in the run context record.
 - **FR-004**: `record_benchmark.py` MUST persist all data atomically in a single transaction; if the DB write fails, any partial write MUST be rolled back.
-- **FR-005**: `record_benchmark.py` MUST NOT write any record to the data store if the benchmark binary exits with a non-zero code.
+- **FR-005**: `record_benchmark.py` MUST NOT write any record to the data store if the benchmark binary exits with a non-zero code in standard (non-best-practice) mode. The temporary JSON output file MUST be deleted in this case to avoid orphaned temp files.
 - **FR-006**: `record_benchmark.py` MUST preserve the raw benchmark JSON on disk and print a re-import command if the DB write fails after a successful benchmark run.
 - **FR-007**: `record_benchmark.py` MUST accept `--benchmarking-best-practice` to attempt, on a best-effort basis: ASLR disable, performance CPU governor, Intel Turbo Boost disable, SMT sibling offline, and taskset CPU affinity. Each step requires sudo. Steps that cannot be applied (e.g., CPU frequency scaling absent on a VM) MUST print a per-step warning but MUST NOT prevent the benchmark from running or its results from being recorded.
-- **FR-016b**: When `--benchmarking-best-practice` is used and one or more setup steps fail, the benchmark run MUST still execute and results MUST be stored. The script MUST NOT exit before running the benchmark solely due to partial best-practice setup failure.
+- **FR-007b**: When `--benchmarking-best-practice` is used and one or more setup steps fail, the benchmark run MUST still execute and results MUST be stored with `best_practice_full = FALSE` in the context row. The script MUST NOT exit before running the benchmark solely due to partial best-practice setup failure.
+- **FR-007c**: When `--benchmarking-best-practice` is used, results MUST be stored to the data store before system settings are restored (before teardown). If the benchmark exits with a non-zero code, the script MUST still attempt to store any available results, restore system settings, and only then exit with the original non-zero code.
 - **FR-008**: `record_benchmark.py` MUST auto-select the two highest-indexed non-boot P-cores for benchmarking when `--benchmark-cpus` is not specified in best-practice mode.
-- **FR-009**: `record_benchmark.py` MUST restore all modified system settings (governor, SMT, ASLR, Turbo Boost) after the benchmark completes, even if the benchmark fails.
+- **FR-009**: `record_benchmark.py` MUST restore all modified system settings (governor, SMT, ASLR, Turbo Boost) in all Python-catchable termination scenarios: normal exit, exceptions during benchmark or DB write, `KeyboardInterrupt` (Ctrl-C / SIGINT), and SIGTERM. Teardown MUST NOT occur before the DB write attempt completes. SIGKILL (`kill -9`) cannot be intercepted by Python and is explicitly out of scope.
 - **FR-010**: `record_benchmark.py` MUST support `--sudo-askpass PATH` to enable non-interactive sudo via an askpass helper.
 - **FR-011**: `record_benchmark.py` MUST support `--record-json PATH` to import a previously saved Google Benchmark JSON file into the data store without re-running the binary.
 - **FR-012**: `record_benchmark.py` MUST support `--pass-trace-dir DIR` to import `*_pass_trace.json` files in the same transaction as the benchmark data.
@@ -191,7 +197,7 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 
 ### Key Entities *(include if feature involves data)*
 
-- **Context**: One record per benchmark run; attributes: run ID (UUID), run timestamp, git SHA, host name, executable path, CPU count, MHz/CPU, CPU scaling flag, library version, library build type.
+- **Context**: One record per benchmark run; attributes: run ID (UUID), run timestamp, git SHA, host name, executable path, CPU count, MHz/CPU, CPU scaling flag, library version, library build type, `best_practice_full` (BOOLEAN, NULL when `--benchmarking-best-practice` was not used, TRUE when all setup steps succeeded, FALSE when one or more steps were skipped or failed).
 - **BenchmarkRow**: One row per benchmark within a run; base attributes: run ID, name, family/instance index, run type, repetitions, repetition index, threads, iterations, real time, CPU time, time unit, KV-parsed fields (group, kernel, phase, raw params). Dynamic counter columns (hardware perf counters, JIT stats) are added on demand.
 - **PassTrace**: One record per compiler pass per benchmarkJITAnalysis invocation; attributes: run ID, benchmark name, pass index, pass name, pipeline group, fixpoint iteration, instruction/function/basic-block counts before and after, wall time in ms, IR-changed flag.
 - **OptimizationSession**: One record per `optimize_benchmarks.py` invocation; attributes: study name, benchmark binary, trial budget, start timestamp, end timestamp, status (`complete` | `incomplete`). Written at study start as `incomplete`; updated to `complete` on normal exit.
