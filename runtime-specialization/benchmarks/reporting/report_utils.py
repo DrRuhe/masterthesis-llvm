@@ -28,7 +28,33 @@ def resolve_db_path(cli_path: str | None) -> Path:
 def open_db(path: Path, read_only: bool = True) -> duckdb.DuckDBPyConnection:
     if not path.exists():
         sys.exit(f"Database not found: {path}")
-    return duckdb.connect(str(path), read_only=read_only)
+    con = duckdb.connect(str(path), read_only=read_only)
+    if not read_only:
+        return con
+    # Probe for stale views (b.* expansion changes when columns are added dynamically).
+    # If detected, reopen read-write, refresh, then return a fresh read-only handle.
+    try:
+        con.execute("SELECT * FROM v_parsed LIMIT 0")
+    except duckdb.BinderException:
+        con.close()
+        _refresh_db_views(path)
+        con = duckdb.connect(str(path), read_only=True)
+    return con
+
+
+def _refresh_db_views(path: Path) -> None:
+    """Reopen the DB read-write and recreate all views to fix stale column caches."""
+    import sys as _sys
+    import os as _os
+    _sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), ".."))
+    try:
+        import record_benchmark as rb
+        con = duckdb.connect(str(path))
+        rb.refresh_views(con)
+        con.commit()
+        con.close()
+    except Exception as e:
+        _sys.exit(f"Failed to auto-repair stale views in {path}: {e}")
 
 
 def get_latest_run_id(con: duckdb.DuckDBPyConnection) -> str:

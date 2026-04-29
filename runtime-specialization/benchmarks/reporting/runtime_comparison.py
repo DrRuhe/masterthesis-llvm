@@ -153,7 +153,7 @@ def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
         FROM v_parsed
         WHERE run_id = ? AND phase != ''
         GROUP BY kernel, raw_params
-        ORDER BY kernel, raw_params
+        ORDER BY (t_spec_ns + t_jit_ns) / t_unspec_ns ASC NULLS LAST
         """,
         [run_id],
     )

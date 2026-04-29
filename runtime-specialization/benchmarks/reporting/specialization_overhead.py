@@ -110,7 +110,7 @@ def load_data(con, run_id: str, kernel_filter: str | None = None) -> pd.DataFram
     df = query_df(
         con,
         "SELECT kernel, raw_params, t_unspec_ns, t_spec_ns, t_jit_ns "
-        "FROM v_ratios WHERE run_id = ? ORDER BY kernel, raw_params",
+        "FROM v_ratios WHERE run_id = ? ORDER BY (t_spec_ns + t_jit_ns) / t_unspec_ns ASC NULLS LAST",
         [run_id],
     )
     return apply_kernel_filter(df, kernel_filter)

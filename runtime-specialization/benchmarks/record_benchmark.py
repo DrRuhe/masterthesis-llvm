@@ -307,31 +307,31 @@ def resolve_db_path(flag_value: str | None) -> Path:
     return Path.cwd() / "benchmarks.duckdb"
 
 
+def refresh_views(con: duckdb.DuckDBPyConnection) -> None:
+    """Recreate all views so their cached column lists reflect the current table schema."""
+    for stmt in [_SCHEMA_V_PARSED, _SCHEMA_V_NS, _SCHEMA_V_RATIOS]:
+        con.execute(stmt)
+    try:
+        con.execute(_SCHEMA_V_JIT_STATS)
+    except Exception:
+        pass
+    try:
+        con.execute(_SCHEMA_V_BUDGET_SWEEP)
+    except Exception:
+        pass
+
+
 def open_db(db_path: Path) -> duckdb.DuckDBPyConnection:
     if not db_path.exists():
         print(f"Error: DB file not found: {db_path}", file=sys.stderr)
         print("Run create_db.py to initialise a new database.", file=sys.stderr)
         sys.exit(1)
     con = duckdb.connect(str(db_path))
-    for stmt in [
-        _SCHEMA_CONTEXT,
-        _SCHEMA_BENCHMARKS,
-        _SCHEMA_PASS_TRACES,
-        _SCHEMA_V_PARSED,
-        _SCHEMA_V_NS,
-        _SCHEMA_V_RATIOS,
-    ]:
+    for stmt in [_SCHEMA_CONTEXT, _SCHEMA_BENCHMARKS, _SCHEMA_PASS_TRACES]:
         con.execute(stmt)
-    try:
-        con.execute(_SCHEMA_V_JIT_STATS)
-    except Exception:
-        pass  # JIT counter columns not yet present in this DB
-    try:
-        con.execute(_SCHEMA_V_BUDGET_SWEEP)
-    except Exception:
-        pass  # budget counter columns not yet present in this DB
     # Migrate existing DBs that predate the best_practice_full column.
     con.execute("ALTER TABLE context ADD COLUMN IF NOT EXISTS best_practice_full BOOLEAN")
+    refresh_views(con)
     return con
 
 
@@ -701,6 +701,7 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
             ],
         )
         ensure_columns(con, benchmarks)
+        refresh_views(con)
         insert_benchmarks(con, run_id, benchmarks)
         if trace_dir is not None:
             n_traces = import_pass_traces(con, run_id, trace_dir,
