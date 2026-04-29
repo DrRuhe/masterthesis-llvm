@@ -4,8 +4,10 @@
 #include <string_view>
 #include <vector>
 
-// Implemented in tpch_bench.cpp (linked into AllBenchmarks).
+// Implemented in sqlite3_tpch_bench.cpp (linked into AllBenchmarks).
 void tpch_set_db_path(const char* path);
+// Implemented in duckdb_tpch_bench.cpp (linked into AllBenchmarks).
+void duckdb_tpch_set_db_path(const char* path);
 
 // Default filter: fast benchmarks only.
 // Pass --benchmark_filter=.* to also run polybench/TPCH.
@@ -22,8 +24,11 @@ int main(int argc, char** argv) {
             has_filter = true;
             new_argv.push_back(argv[i]);
         } else if (a.rfind("--db=", 0) == 0) {
-            // Strip --db=<path> and forward it to the TPCH benchmark module.
+            // Strip --db=<path> and forward it to the SQLite TPCH benchmark module.
             tpch_set_db_path(std::string(a.substr(5)).c_str());
+        } else if (a.rfind("--duckdb-db=", 0) == 0) {
+            // Strip --duckdb-db=<path> and forward it to the DuckDB TPCH benchmark module.
+            duckdb_tpch_set_db_path(std::string(a.substr(12)).c_str());
         } else {
             new_argv.push_back(argv[i]);
         }

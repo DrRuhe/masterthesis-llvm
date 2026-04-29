@@ -94,7 +94,7 @@ benchmarks/
 
 1. **Rename source file**: `benchmarks/tpch/tpch_bench.cpp` → `benchmarks/tpch/sqlite3_tpch_bench.cpp`. Update all references in `benchmarks/tpch/CMakeLists.txt` and `benchmarks/CMakeLists.txt` (search for `tpch_bench.cpp`, `TPCH_SRC_FILE`, `TPCH_OBJ`).
 
-2. **Update group string**: In `sqlite3_tpch_bench.cpp`, replace every occurrence of `"BM_g:tpch;` with `"BM_g:db/sqlite3/tpch;` in all `BENCHMARK(...)->Name(...)` calls (currently 9 occurrences across Q1×5, Q6×3, Q3×3 minus the p1 variant).
+2. **Update group string and remove p1 phase**: In `sqlite3_tpch_bench.cpp`, replace every occurrence of `"BM_g:tpch;` with `"BM_g:db/sqlite3/tpch;` in all `BENCHMARK(...)->Name(...)` calls. Additionally, remove the `Pipeline1Opts()` helper and all `BM_p1_specialized_exec_*` benchmark functions and their `BENCHMARK(...)` registrations — this simplification is intentional; Q1 is left with 4 phases (unspecialized, jit_overhead, specialized_exec, jit_analysis). The `p1_specialized_exec` phase served a transitional role and is no longer needed now that pipeline selection is exposed via `Options`.
 
 3. **Add SQL query files**: Create `queries/q02.sql` through `queries/q22.sql` (except q03, q06 which exist). Each file contains the standard TPC-H SQL adapted for SQLite where needed (see data-model.md for compatibility notes). Key adaptations:
    - Date arithmetic: Use `DATE('1994-01-01', '+1 year')` form instead of `INTERVAL`
@@ -158,6 +158,16 @@ benchmarks/
    ```
 
 **Verification**: Build fails if SHA256 mismatch. Build succeeds if `duckdb_with_ir.o` is produced without errors.
+
+---
+
+### Phase 2b: JIT timeout API (prerequisite for DuckDB benchmark)
+
+**Decision**: Add `withJITTimeoutSeconds(unsigned)` fluent builder and `JITTimeoutSeconds` field to the `Options` struct in `ClangRuntimeSpecializer.h`. When non-zero, `specializeOnlyImpl` runs `addModuleAndLookup` in a detached `std::thread` backed by a `std::promise/future` pair and waits up to `JITTimeoutSeconds` using `future.wait_for`. On timeout, the function returns a null `JITResult` (`TimedOut=true`); `specializeOnly` detects this and returns a default-constructed (null) `SpecializedFunction<R>`. The default value remains 0 (no timeout) to avoid breaking existing benchmarks.
+
+**Rationale**: DuckDB's amalgamation is ~500k lines; JIT compilation for complex queries may occasionally exceed acceptable wall-clock budget. The timeout prevents the benchmark from hanging indefinitely. The implementation is best-effort: the detached thread continues to completion in the background; callers guard against concurrent JIT ops using `g_last_jit_timed_out`.
+
+**WIP test**: `test/WIP/jit-timeout.cpp` verifies that `specializeOnly` with a generous timeout succeeds and returns a callable function, and that `Options::Default()` (no timeout) also succeeds.
 
 ---
 

@@ -5,6 +5,7 @@ set(POLYBENCH_OBJ "${CMAKE_CURRENT_BINARY_DIR}/polybench_bench.o")
 add_custom_command(
     OUTPUT ${POLYBENCH_OBJ}
     COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
+            -Wno-unknown-pragmas -Wno-misleading-indentation -Wno-unused-variable
             -I${CMAKE_CURRENT_SOURCE_DIR}
             -I${CMAKE_CURRENT_SOURCE_DIR}/..
             -I${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/ClangRuntimeSpecializer

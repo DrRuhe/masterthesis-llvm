@@ -7,6 +7,9 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <chrono>
+#include <future>
+#include <thread>
 #include <stdexcept>
 #include <tuple>
 #include <type_traits>
@@ -207,6 +210,9 @@ namespace clangRuntimeSpecializer {
       double ExpectedCallDurationNs = 0.0;  // 0 = not set
       double BudgetScale            = 1.0;
 
+      // --- Timeout ---
+      unsigned JITTimeoutSeconds = 0;       // 0 = no timeout; best-effort wall-clock limit on JIT compile
+
       // --- Debug / analysis ---
       bool Optimize = true;                          // when false → skips all JIT optimization passes
       bool EnableInstructionInstrumentation = false;
@@ -291,6 +297,7 @@ namespace clangRuntimeSpecializer {
       Options& withOptimizationPipeline(int P)        { OptimizationPipelineToUse = P; return *this; }
       Options& withExpectedCallDurationNs(double V)   { ExpectedCallDurationNs = V; return *this; }
       Options& withBudgetScale(double V)              { BudgetScale = V; return *this; }
+      Options& withJITTimeoutSeconds(unsigned V)      { JITTimeoutSeconds = V; return *this; }
 
     private:
       static double _envOr(const char* name, double def) noexcept {
@@ -332,6 +339,7 @@ namespace clangRuntimeSpecializer {
     __attribute__((noinline))
     auto specializeOnly(const char* funcName, ARGS&&... Args) -> SpecializedFunction<R> {
       auto Res = specializeOnlyImpl(funcName, CurrentOptions, std::forward<ARGS>(Args)...);
+      if (Res.TimedOut) return SpecializedFunction<R>{};
       return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
     }
 
@@ -339,6 +347,7 @@ namespace clangRuntimeSpecializer {
     __attribute__((noinline))
     auto specializeOnly(const char* funcName, const Options& opts, ARGS&&... Args) -> SpecializedFunction<R> {
       auto Res = specializeOnlyImpl(funcName, opts, std::forward<ARGS>(Args)...);
+      if (Res.TimedOut) return SpecializedFunction<R>{};
       return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
     }
 
@@ -347,8 +356,9 @@ namespace clangRuntimeSpecializer {
   private:
 
     struct JITResult {
-      uintptr_t            Addr;
-      llvm::orc::JITDylib* Dylib;
+      uintptr_t            Addr     = 0;
+      llvm::orc::JITDylib* Dylib   = nullptr;
+      bool                 TimedOut = false;
     };
 
     template <class... ARGS>
@@ -403,12 +413,44 @@ namespace clangRuntimeSpecializer {
       auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), TSCtx);
 
       CurrentCallOptions = Opts;
+
+      if (Opts.JITTimeoutSeconds > 0) {
+        // Run JIT in a detached thread; wait up to JITTimeoutSeconds.
+        // If timeout elapses, return a null result. The background thread
+        // completes independently — no further JIT calls should be made
+        // until it finishes (callers guard with g_last_jit_timed_out).
+        std::string wrapperCopy = UniqueWrapperName;
+        std::string funcNameStr(funcName);
+        auto promise = std::make_shared<std::promise<JITResult>>();
+        auto future = promise->get_future();
+        std::thread([this, tsm = std::move(TSM), wrapperCopy, funcNameStr,
+                     p = std::move(promise)]() mutable {
+          try {
+            p->set_value(addModuleAndLookup(std::move(tsm), wrapperCopy, funcNameStr));
+          } catch (...) {
+            try { p->set_exception(std::current_exception()); } catch (...) {}
+          }
+        }).detach();
+
+        if (future.wait_for(std::chrono::seconds(Opts.JITTimeoutSeconds)) ==
+            std::future_status::timeout) {
+          log(LogLevel::Warning,
+              (llvm::Twine("JIT timeout (") + std::to_string(Opts.JITTimeoutSeconds) +
+               "s) for: " + funcName).str());
+          return {0, nullptr, /*TimedOut=*/true};
+        }
+        return future.get();
+      }
+
       return addModuleAndLookup(std::move(TSM), UniqueWrapperName, std::string(funcName));
     }
 
     template <class R, class... ARGS>
     R callImpl(const char* funcName, const Options& Opts, ARGS&&... Args) {
       auto Res = specializeOnlyImpl(funcName, Opts, std::forward<ARGS>(Args)...);
+      if (Res.TimedOut)
+        throw ClangRuntimeSpecializerError(
+            std::string("callSpecialized: JIT timed out for ") + funcName);
       SpecializedFunction<R> Fn(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
       if constexpr (std::is_void_v<R>) {
           Fn();
