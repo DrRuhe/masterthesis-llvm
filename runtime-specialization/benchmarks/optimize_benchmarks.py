@@ -539,6 +539,9 @@ def parse_args():
                         help="JSON search-space descriptor; defaults to built-in.")
     parser.add_argument("--seed", type=int, default=None, metavar="INT",
                         help="Random seed for TPE sampler (default: no seed — non-deterministic).")
+    parser.add_argument("--apply-default-filters", action="store_true", default=False,
+                        help="Prepend a filter that excludes benchmarkJITAnalysis benchmarks "
+                             "(names containing '_t_jit_analysis_') from the active set.")
     return parser.parse_args()
 
 
@@ -569,16 +572,35 @@ def main():
     git_sha = get_git_sha()
     descriptor = _load_descriptor(args.search_space)
 
+    # Resolve benchmark filter (apply default exclusions if requested)
+    filter_pattern = args.benchmark_filter
+    if args.apply_default_filters:
+        jit_analysis_exclusion = "(?!.*_t_jit_analysis_)"
+        filter_pattern = f"{jit_analysis_exclusion}({filter_pattern})"
+
     # Enumerate benchmarks to run (once per study)
     print("Listing benchmarks...", flush=True)
     try:
-        benchmark_names = list_benchmarks(binary, args.benchmark_filter)
+        benchmark_names = list_benchmarks(binary, filter_pattern)
     except Exception as e:
         print(f"Error: failed to list benchmarks: {e}", file=sys.stderr)
         sys.exit(1)
     if not benchmark_names:
-        print(f"Error: no benchmarks matched filter '{args.benchmark_filter}'", file=sys.stderr)
+        print(f"Error: no benchmarks matched filter '{filter_pattern}'", file=sys.stderr)
         sys.exit(1)
+
+    jit_analysis_names = [n for n in benchmark_names if "_t_jit_analysis_" in n]
+    if jit_analysis_names:
+        print("Error: the following benchmarkJITAnalysis benchmarks are in the active set:",
+              file=sys.stderr)
+        for name in jit_analysis_names:
+            print(f"  {name}", file=sys.stderr)
+        print("These benchmarks require CRS_PASS_TRACE_DIR and CRS_CHROME_TRACE_DIR to be set "
+              "and are not compatible with optimization trials.", file=sys.stderr)
+        print("Use --benchmark_filter to exclude them, or pass --apply-default-filters.",
+              file=sys.stderr)
+        sys.exit(1)
+
     print(f"  {len(benchmark_names)} benchmarks matched.", flush=True)
 
     # Measure unspecialized baseline (3 reps, median; used as exec fallback on timeout)

@@ -1,12 +1,14 @@
 # Implementation Plan: Benchmark Analysis & Reporting System
 
-**Branch**: `001-benchmark-analysis-reporting` | **Date**: 2026-04-24  
+**Branch**: `001-benchmark-analysis-reporting` | **Date**: 2026-04-29  
 **Spec**: `specs/001-benchmark-analysis-reporting/spec.md`  
 **Input**: Feature specification from `specs/001-benchmark-analysis-reporting/spec.md`
 
 ## Summary
 
-The benchmarking infrastructure (run → record → analyze → report) is largely already implemented. Two gaps remain: (1) a dedicated `create_db.py` script that initializes the full DuckDB schema in one step (FR-016–018), and (2) `OptimizationSession` tracking in `optimize_benchmarks.py` so interrupted studies are flagged `incomplete` and excluded from best-config queries (FR-027).
+The benchmarking infrastructure (run → record → analyze → report) is fully implemented except for one remaining gap: **FR-040b** — `optimize_benchmarks.py` must detect `benchmarkJITAnalysis` benchmarks in the active set before starting any trial and fail with a descriptive error; a `--apply-default-filters` flag must be added to automatically exclude them.
+
+All previously planned gaps (`create_db.py` FR-016–018; `optimization_sessions` FR-027; run-directory restructuring FR-012; pass-trace auto-detection FR-011; collision-safe run dir naming) have been implemented.
 
 ## Technical Context
 
@@ -57,7 +59,8 @@ CREATE TABLE IF NOT EXISTS context (
     mhz_per_cpu         INTEGER,
     cpu_scaling_enabled BOOLEAN,
     library_version     VARCHAR,
-    library_build_type  VARCHAR
+    library_build_type  VARCHAR,
+    best_practice_full  BOOLEAN  -- NULL = flag not used; TRUE = all steps OK; FALSE = partial
 );
 ```
 
@@ -317,18 +320,18 @@ ORDER BY ob.study_name, ob.kernel, ob._total;
 
 | Requirement(s) | Script | Notes |
 |----------------|--------|-------|
-| FR-001–015 | `record_benchmark.py` | Recording, best-practice isolation, pass traces, dynamic columns |
-| FR-019–026 | `optimize_benchmarks.py` | Baseline, Optuna TPE, per-trial writes, `--n-parallel`, `--seed` |
+| FR-001–015b | `record_benchmark.py` | Recording, best-practice isolation, run-dir structure, pass-trace import + cleanup, sibling auto-detect, counter-suffix collision avoidance, `benchmarkJITAnalysis` env-var guard |
+| FR-016–018 | `create_db.py` | Standalone DB initializer; error on existing file |
+| FR-019–027 | `optimize_benchmarks.py` | Baseline, Optuna TPE, per-trial writes, `--n-parallel`, `--seed`, `optimization_sessions` lifecycle |
 | FR-028–040 | `reporting/*.py` | All 6 plot scripts + shared utilities |
+| FR-041–046 | `optimize_benchmarks.py` | Search-space descriptor, `params_json`, `search_space_json` |
+| DR-001 | `plan.md` | Authoritative schema — this document ✓ |
 
-### Gaps to implement
+### Remaining gap
 
 | FR | Description | File |
 |----|-------------|------|
-| FR-016, FR-017, FR-018 | `create_db.py` does not exist | Create `benchmarks/create_db.py` |
-| FR-027 | No `optimization_sessions` table; no `incomplete`/`complete` lifecycle; views don't filter incomplete sessions | `optimize_benchmarks.py` + `create_db.py` |
-| DR-001 | `plan.md` must contain authoritative schema | This document ✓ |
-| Edge case | Missing-DB error message should direct user to `create_db.py` | `record_benchmark.py` (1-line patch) |
+| FR-040b | Before any trial, enumerate benchmarks via `list_benchmarks()`; fail if any `jit_analysis`-phase benchmark is in the active set; add `--apply-default-filters` to auto-exclude them | `optimize_benchmarks.py` |
 
 ## Project Structure
 
@@ -342,39 +345,35 @@ specs/001-benchmark-analysis-reporting/
 └── tasks.md             # Phase 2 output (from /speckit-tasks)
 ```
 
-### Source Code (impacted files only)
+### Source Code (remaining changes)
 
 ```text
 benchmarks/
-├── create_db.py                  # NEW — standalone DB initializer (FR-016–018)
-├── record_benchmark.py           # PATCH — fix missing-DB error message
-├── optimize_benchmarks.py        # PATCH — add optimization_sessions + FR-027 lifecycle
-└── reporting/
-    └── (all scripts complete — no changes needed)
+└── optimize_benchmarks.py        # PATCH — add jit_analysis guard + --apply-default-filters (FR-040b)
 ```
 
 ## Implementation Details
 
-### 1. `create_db.py` (new)
+### FR-040b: jit_analysis guard in `optimize_benchmarks.py`
 
-- CLI: `create_db.py [--db PATH]` — same resolution order: `--db` → `BENCHPLOT_DB_PATH` → `./benchmarks.duckdb`
-- If target **exists**: print error, exit 1, leave file untouched (FR-017)
-- If target **does not exist**: create it, execute all DDL from the schema above (FR-016)
-- Prints success message + path; completes in < 5 s (SC-007)
+**File**: `benchmarks/optimize_benchmarks.py`
 
-### 2. `optimization_sessions` + FR-027 lifecycle (`optimize_benchmarks.py`)
+`list_benchmarks(binary, filter_pattern)` (line ~284) already enumerates benchmark names via `--benchmark_list_tests`. The guard must run before any trial or baseline measurement:
 
-In `main()`:
-1. After `open_optim_db()`, `INSERT` row with `status = 'incomplete'`, `started_at = NOW()`.
-2. Wrap `study.optimize(...)` in `try/finally`.
-3. On normal return: `UPDATE … SET status = 'complete', completed_at = NOW()`.
-4. On `KeyboardInterrupt`: print warning, leave row as `incomplete`, re-raise (or exit).
+1. **Add `--apply-default-filters` flag** to `parse_args()`:
+   - Type: `store_true`; default `False`
+   - Effect: appends a regex to the benchmark filter that excludes names containing `_t_jit_analysis_` (the KV-encoded phase that `benchmarkJITAnalysis` registrations produce)
 
-Update view definitions: `v_optim_best_per_kernel` (see schema above) gains the `JOIN optimization_sessions … WHERE status = 'complete'` filter.
+2. **In `main()`, after resolving `filter_pattern`**:
+   ```python
+   names = list_benchmarks(args.binary, filter_pattern)
+   jit_analysis_names = [n for n in names if "_t_jit_analysis_" in n]
+   if jit_analysis_names:
+       print("ERROR: the following benchmarkJITAnalysis benchmarks are in the active set:", ...)
+       print("  Use --benchmark_filter to exclude them, or pass --apply-default-filters.")
+       sys.exit(1)
+   ```
 
-### 3. `record_benchmark.py` error message patch
+3. **`--apply-default-filters` filter construction**: prepend `(?!.*_t_jit_analysis_)` to any existing `--benchmark_filter` pattern, or use it standalone as the full filter.
 
-Change the missing-DB message in `open_db()` from  
-`"Pass --create-db to initialise a new database."`  
-to  
-`"Run create_db.py to initialise a new database."`
+**Pattern match**: `benchmarkJITAnalysis` registrations follow the naming convention `BM_g_<group>_n_<kernel>_t_jit_analysis_<suffix>` — the `_t_jit_analysis_` substring is reliable and unique to the analysis phase.

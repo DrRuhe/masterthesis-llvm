@@ -3,9 +3,8 @@
 **Input**: Design documents from `specs/001-benchmark-analysis-reporting/`  
 **Prerequisites**: plan.md ✓, spec.md ✓, research.md ✓, data-model.md ✓
 
-> **Implementation note**: US1, US2, US5, and US6 are largely complete in the existing codebase.
-> The task list below covers only the remaining gaps identified in plan.md.
-> US3 and US4 require new/extended code.
+> **Implementation note**: US1–US6 are implemented. T011–T015 record run-dir restructuring done
+> on 2026-04-29 (FR-012, FR-011, FR-015b). One open task remains: T016 (FR-040b).
 
 ## Format: `[ID] [P?] [Story] Description`
 
@@ -85,8 +84,20 @@ No additional tasks — T001 and T006 together satisfy FR-016, FR-017, FR-018.
 - [x] T007 [P] Update `benchmarks/record_benchmark.py` — remove the `--create-db` flag and its associated `open_db(…, create=True)` path now that `create_db.py` exists as the canonical initializer (keeps CLI surface minimal per constitution §V)
 
 - [x] T008 [US1] In `benchmarks/record_benchmark.py` `check_dependencies()` — add early DB existence check so a missing DB is reported before the benchmark runs (fail-fast; prevents results being lost when the DB path is wrong)
-- [x] T009 [US1] In `benchmarks/record_benchmark.py` `cmd_record()` — delete the temp JSON file when the benchmark exits with a non-zero code in standard (non-best-practice) mode to avoid orphaned temp files
+- [x] T009 [US1] In `benchmarks/record_benchmark.py` `cmd_record()` — on non-zero exit in standard mode preserve the run directory intact for crash recovery and print its path to stderr (FR-005 as clarified 2026-04-29)
 - [x] T010 [US1] In `benchmarks/create_db.py` — add `best_practice_full BOOLEAN` column to `_SCHEMA_CONTEXT` to keep the canonical schema in sync with `record_benchmark.py`
+
+- [x] T011 [US1] In `benchmarks/record_benchmark.py` — replace `tempfile.NamedTemporaryFile` output path with structured `benchmarks/benchmarks_raw_data/YYYYMMDD-HHmmss/raw.json`; create `pass_traces/` and `chrome_traces/` subdirs; add counter-suffix collision avoidance (`-2`, `-3`, …); set `CRS_PASS_TRACE_DIR` and `CRS_CHROME_TRACE_DIR` in subprocess env; add `_make_run_dir()` and `_cleanup_after_store()` helpers (FR-012)
+
+- [x] T012 [P] [US1] In `benchmarks/record_benchmark.py` — add `--keep-pass-traces` flag (skip JSON deletion after import) and `--keep-chrome-traces` flag (skip `chrome_traces/` rmtree in `_cleanup_after_store`); delete `import tempfile` import (FR-012)
+
+- [x] T013 [P] [US2] In `benchmarks/record_benchmark.py` `--record-json` path — auto-detect sibling `pass_traces/` directory next to the JSON file when `--pass-trace-dir` is absent; fall back to no trace import if sibling dir does not exist (FR-011)
+
+- [x] T014 [P] In `benchmarks/ClangRuntimeSpecializerBenchmark.h` — require `CRS_PASS_TRACE_DIR` in `writePassTraceJSON` (throw `std::runtime_error` if unset; write to `$CRS_PASS_TRACE_DIR/<file>`) and `CRS_CHROME_TRACE_DIR` in `benchmarkJITAnalysis` (throw if unset; write chrome trace to `$CRS_CHROME_TRACE_DIR/<file>`); add `<cstdlib>` and `<stdexcept>` includes (FR-015b)
+
+- [x] T015 [P] Add `benchmarks_raw_data/` to `benchmarks/.gitignore` so run directories are never tracked by git (FR-012)
+
+- [x] T016 [US4] In `benchmarks/optimize_benchmarks.py` — after resolving `filter_pattern`, call `list_benchmarks(args.binary, filter_pattern)` and check if any returned name contains `_t_jit_analysis_`; if so print a descriptive error listing the offending names and exit 1; add `--apply-default-filters` flag that prepends a regex excluding `_t_jit_analysis_` names to the active filter (FR-040b)
 
 ---
 
@@ -97,51 +108,40 @@ No additional tasks — T001 and T006 together satisfy FR-016, FR-017, FR-018.
 - **Phase 2 (T001)**: No dependencies — start immediately
 - **Phase 3 (T002)**: Depends on T001 (error message names `create_db.py`)
 - **Phase 4 (T003–T006)**: T003 must precede T004 and T005; T006 can run in parallel with T003–T005 once T001 is done
-- **Final Phase (T007)**: Depends on T001 (needs `create_db.py` to exist before removing `--create-db`)
+- **Final Phase (T007–T015)**: All complete; T016 is the only remaining open task and has no blocking dependencies
 
 ### User Story Dependencies
 
 | Story | Depends on | Notes |
 |-------|-----------|-------|
-| US3 (T001) | — | First to implement |
-| US1/US2 (T002) | T001 | Error message names `create_db.py` |
-| US4 (T003–T006) | T001 | `optimization_sessions` schema must exist in `create_db.py` |
-| US5/US6 | — | Already complete; no dependency |
+| US3 (T001) | — | Complete |
+| US1/US2 (T002, T009–T015) | T001 | Complete |
+| US4 (T003–T006, T016) | T001 | T003–T006 complete; T016 open |
+| US5/US6 | — | Complete |
 
 ### Parallel Opportunities
 
-- T003, T004, T005, T006 can all be dispatched after T001 completes; T006 is independent of T003–T005 within Phase 4 [marked P]
+- T011, T012, T013, T014, T015 were all independent (different files) and were implemented in parallel
+- T016 is independent of all completed tasks; can start immediately
 
 ---
 
-## Parallel Example: Phase 4 (US4)
+## Remaining Open Task
 
 ```bash
-# After T001 (create_db.py) is complete, launch in parallel:
-Task T003: "Add _SCHEMA_OPTIM_SESSIONS DDL in benchmarks/optimize_benchmarks.py"
-Task T006: "Add optimization_sessions DDL to benchmarks/create_db.py"
-
-# After T003, launch sequentially:
-Task T004: "Insert/update optimization_sessions lifecycle in optimize_benchmarks.py main()"
-Task T005: "Update v_optim_best_per_kernel view with status='complete' filter"
+# Only T016 remains:
+Task T016: "Add jit_analysis guard + --apply-default-filters in benchmarks/optimize_benchmarks.py"
+# No dependencies; can start immediately.
 ```
 
 ---
 
 ## Implementation Strategy
 
-### MVP (US3 + US1, P1 stories only)
+### Remaining work (single task)
 
-1. T001 — create `create_db.py`
-2. T002 — patch error message
-3. **Validate**: `create_db.py` creates schema; `record_benchmark.py` gives correct error when DB missing
-
-### Full Delivery
-
-4. T003 → T004 → T005 (sequential within optimize_benchmarks.py)
-5. T006 (parallel with T003–T005)
-6. **Validate**: full optimization lifecycle with incomplete/complete tracking
-7. T007 — polish: remove `--create-db` from `record_benchmark.py`
+1. T016 — add jit_analysis guard + `--apply-default-filters` in `optimize_benchmarks.py`
+2. **Validate**: run `optimize_benchmarks.py` against a binary that includes `benchmarkJITAnalysis` benchmarks without a filter → should exit with error listing offending names; re-run with `--apply-default-filters` → should proceed without error
 
 ---
 
