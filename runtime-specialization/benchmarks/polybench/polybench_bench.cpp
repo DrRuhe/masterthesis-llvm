@@ -204,12 +204,14 @@ POLYBENCH_IMPL_5(3mm)
 #include "polybench_import_kernel.h"
 #undef kernel_atax
 // After include: M=1800, N=2200, DATA_TYPE=double
-double (*g_atax_A)[N] = nullptr; // [M][N]
+// LARGE dataset uses m=1900 > M=1800; size arrays for max m across all 5 benchmark sizes.
+static constexpr int kAtaxMaxM = 1900;
+double (*g_atax_A)[N] = nullptr; // [kAtaxMaxM][N]
 double g_atax_x[N];
 double g_atax_y[N];
-double g_atax_tmp[M];
+double g_atax_tmp[kAtaxMaxM]; // was [M=1800]; LARGE uses m=1900
 static struct AtaxInit {
-    AtaxInit() { g_atax_A = new double[M][N](); }
+    AtaxInit() { g_atax_A = new double[kAtaxMaxM][N](); }
 } _atax_arrinit;
 extern "C" void kernel_atax(int m, int n) __asm__("kernel_atax");
 extern "C" void kernel_atax(int m, int n) {
@@ -225,10 +227,14 @@ POLYBENCH_IMPL_2(atax)
 #include "polybench_import_kernel.h"
 #undef kernel_bicg
 // After include: M=1800, N=2200, DATA_TYPE=double
-double (*g_bicg_A)[M] = nullptr; // [N][M]
-double g_bicg_s[M];
+// LARGE dataset uses m=1900 > M=1800; size arrays for max m across all 5 benchmark sizes.
+// g_bicg_A stride stays M=1800 to match the compiled kernel's type; allocation is N*M which
+// covers all accesses for LARGE (max index 2099*1800+1899 < 2200*1800).
+static constexpr int kBicgMaxM = 1900;
+double (*g_bicg_A)[M] = nullptr; // [N][M]; stride=M=1800 matches compiled kernel
+double g_bicg_s[kBicgMaxM];     // was [M=1800]; LARGE uses m=1900
 double g_bicg_q[N];
-double g_bicg_p[M];
+double g_bicg_p[kBicgMaxM];     // was [M=1800]; LARGE uses m=1900
 double g_bicg_r[N];
 static struct BicgInit {
     BicgInit() { g_bicg_A = new double[N][M](); }
