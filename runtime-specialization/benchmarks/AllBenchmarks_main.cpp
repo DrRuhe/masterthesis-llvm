@@ -6,8 +6,10 @@
 
 // Implemented in sqlite3_tpch_bench.cpp (linked into AllBenchmarks).
 void tpch_set_db_path(const char* path);
+void sqlite_tpch_set_queries_dir(const char* path);
 // Implemented in duckdb_tpch_bench.cpp (linked into AllBenchmarks).
 void duckdb_tpch_set_db_path(const char* path);
+void duckdb_tpch_set_queries_dir(const char* path);
 
 // Default filter: fast benchmarks only.
 // Pass --benchmark_filter=.* to also run polybench/TPCH.
@@ -24,11 +26,14 @@ int main(int argc, char** argv) {
             has_filter = true;
             new_argv.push_back(argv[i]);
         } else if (a.rfind("--db=", 0) == 0) {
-            // Strip --db=<path> and forward it to the SQLite TPCH benchmark module.
             tpch_set_db_path(std::string(a.substr(5)).c_str());
         } else if (a.rfind("--duckdb-db=", 0) == 0) {
-            // Strip --duckdb-db=<path> and forward it to the DuckDB TPCH benchmark module.
             duckdb_tpch_set_db_path(std::string(a.substr(12)).c_str());
+        } else if (a.rfind("--queries-dir=", 0) == 0) {
+            // Forward <path>/sqlite and <path>/duckdb to the respective modules.
+            std::string base(a.substr(14));
+            sqlite_tpch_set_queries_dir((base + "/sqlite").c_str());
+            duckdb_tpch_set_queries_dir((base + "/duckdb").c_str());
         } else {
             new_argv.push_back(argv[i]);
         }
