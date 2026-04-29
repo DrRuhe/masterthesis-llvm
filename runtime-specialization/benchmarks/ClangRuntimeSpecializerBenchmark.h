@@ -5,8 +5,10 @@
 #include <benchmark/benchmark.h>
 #include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <stdexcept>
 #include <string>
 
 // Tracks process RSS growth across each benchmark run using Google Benchmark's
@@ -136,13 +138,19 @@ void benchmarkSpecializedExec(
 // Non-filename characters in benchmark_name are replaced with '_'.
 inline void writePassTraceJSON(const std::string& BenchmarkName,
                                const std::vector<ClangRuntimeSpecializer::PassRecord>& Trace) {
+    const char* TraceDir = std::getenv("CRS_PASS_TRACE_DIR");
+    if (!TraceDir)
+        throw std::runtime_error(
+            "CRS_PASS_TRACE_DIR must be set before running benchmarkJITAnalysis. "
+            "Use record_benchmark.py or export CRS_PASS_TRACE_DIR=/path/to/dir.");
+
     std::string Filename = BenchmarkName + "_pass_trace.json";
     for (char& C : Filename)
         if (C != '.' && C != '-' && C != '_' &&
             !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
             C = '_';
 
-    std::ofstream Out(Filename);
+    std::ofstream Out(std::string(TraceDir) + "/" + Filename);
     if (!Out.is_open()) return;
 
     Out << "[\n";
@@ -185,13 +193,18 @@ void benchmarkJITAnalysis(
     };
     using R = decltype(std::apply(InvokeNormal, specArgs));
 
-    // Auto-derive Chrome trace filename from benchmark name; caller opts control everything else.
+    // Chrome trace requires CRS_CHROME_TRACE_DIR; use it to build the output path.
+    const char* ChromeDir = std::getenv("CRS_CHROME_TRACE_DIR");
+    if (!ChromeDir)
+        throw std::runtime_error(
+            "CRS_CHROME_TRACE_DIR must be set before running benchmarkJITAnalysis. "
+            "Use record_benchmark.py or export CRS_CHROME_TRACE_DIR=/path/to/dir.");
     std::string ChromeTraceFilename = state.name() + "_chrome_trace.json";
     for (char& C : ChromeTraceFilename)
         if (C != '.' && C != '-' && C != '_' &&
             !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
             C = '_';
-    opts.TimeTraceOutputPath = ChromeTraceFilename;
+    opts.TimeTraceOutputPath = std::string(ChromeDir) + "/" + ChromeTraceFilename;
 
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);

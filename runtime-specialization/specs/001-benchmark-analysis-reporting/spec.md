@@ -25,6 +25,7 @@ A researcher wants to execute a benchmark binary against the JIT specializer, au
 5. **Given** the benchmark ran successfully but the DB write fails, **When** the error is caught, **Then** the raw JSON output is preserved on disk and the user is shown the exact command to re-import it with `--record-json`.
 6. **Given** the user passes `--benchmark_filter=PATTERN`, **When** the binary is invoked, **Then** only benchmarks matching the pattern are run and recorded.
 7. **Given** the user passes `--sudo-askpass PATH`, **When** sudo is needed, **Then** the askpass helper is used instead of interactive input, allowing the script to run in non-terminal environments (CI, remote sessions).
+8. **Given** the benchmark binary includes `benchmarkJITAnalysis` calls, **When** `record_benchmark.py` executes the binary, **Then** a timestamped run directory is created at `benchmarks/benchmarks_raw_data/YYYYMMDD-HHmmss/` containing `raw.json`, `pass_traces/`, and `chrome_traces/` subdirs; `CRS_PASS_TRACE_DIR` and `CRS_CHROME_TRACE_DIR` are set to those subdirs in the subprocess environment; after a successful DB import `raw.json` and all `pass_traces/*.json` files are deleted and the `chrome_traces/` directory is removed (unless `--keep-chrome-traces` is set); and any now-empty subdirs and the run directory itself are removed, leaving no trace debris in the repository. If the benchmark crashes or is interrupted the run directory persists intact for manual inspection or re-import.
 
 ---
 
@@ -130,6 +131,10 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - What happens when the process receives SIGKILL (`kill -9`)? → Teardown cannot run; SIGKILL is out of scope. The operator must restore settings manually.
 - What happens when the benchmark exits with a non-zero code under `--benchmarking-best-practice`? → Results are stored first, teardown runs, then the script exits with the benchmark's original exit code.
 - What happens when the DB write fails under `--benchmarking-best-practice`? → The exception propagates through the `finally` block, teardown runs (restoring all settings), and the script exits with an error and the path to the preserved JSON file.
+- What happens when a `benchmarkJITAnalysis` benchmark binary is run directly without `CRS_PASS_TRACE_DIR` or `CRS_CHROME_TRACE_DIR` set? → `benchmarkJITAnalysis` throws `std::runtime_error` immediately with a descriptive message directing the user to use `record_benchmark.py` or export the env var manually. When launched via `record_benchmark.py` this never happens because both variables are always set before the subprocess is started.
+- What happens if run directory creation fails in `record_benchmark.py` (e.g., disk full)? → An exception is raised before the benchmark launches; no benchmark time is wasted and no partial state is left.
+- What happens if the benchmark crashes mid-run or is killed? → The `benchmarks_raw_data/YYYYMMDD-HHmmss/` directory persists with whatever partial output was written; the user can inspect it and re-import via `--record-json` if `raw.json` is complete.
+- What happens after a successful run with neither `--keep-pass-traces` nor `--keep-chrome-traces`? → All trace files and the run directory are removed; the working tree is clean.
 
 ## Requirements *(mandatory)*
 
@@ -150,10 +155,11 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **FR-009**: `record_benchmark.py` MUST restore all modified system settings (governor, SMT, ASLR, Turbo Boost) in all Python-catchable termination scenarios: normal exit, exceptions during benchmark or DB write, `KeyboardInterrupt` (Ctrl-C / SIGINT), and SIGTERM. Teardown MUST NOT occur before the DB write attempt completes. SIGKILL (`kill -9`) cannot be intercepted by Python and is explicitly out of scope.
 - **FR-010**: `record_benchmark.py` MUST support `--sudo-askpass PATH` to enable non-interactive sudo via an askpass helper.
 - **FR-011**: `record_benchmark.py` MUST support `--record-json PATH` to import a previously saved Google Benchmark JSON file into the data store without re-running the binary.
-- **FR-012**: `record_benchmark.py` MUST support `--pass-trace-dir DIR` to import `*_pass_trace.json` files in the same transaction as the benchmark data.
+- **FR-012**: Before launching the benchmark binary, `record_benchmark.py` MUST create a timestamped run directory at `benchmarks/benchmarks_raw_data/YYYYMMDD-HHmmss/` containing `pass_traces/` and `chrome_traces/` subdirectories, and MUST set `CRS_PASS_TRACE_DIR` and `CRS_CHROME_TRACE_DIR` to those subdirectories in the subprocess environment. The benchmark JSON output MUST be written to `raw.json` inside the run directory. On successful DB import: pass-trace JSON files MUST be deleted (unless `--keep-pass-traces` is supplied); chrome-trace files MUST be deleted (unless `--keep-chrome-traces` is supplied); any resulting empty subdirectories and the run directory itself MUST be removed. If the benchmark exits with a non-zero code or is interrupted, the run directory MUST be preserved intact for manual inspection and re-import. `--pass-trace-dir DIR` remains supported to override the scan directory when using `--record-json`.
 - **FR-013**: `record_benchmark.py` MUST support `--benchmark_filter PATTERN` to restrict which benchmarks within the binary are executed.
 - **FR-014**: `record_benchmark.py` MUST resolve the data store path in this order: `--db` flag → `BENCHPLOT_DB_PATH` env var → `./benchmarks.duckdb`.
 - **FR-015**: `record_benchmark.py` MUST extend the `benchmarks` table schema dynamically to accommodate new counter columns produced by any binary, without requiring a schema migration.
+- **FR-015b**: `benchmarkJITAnalysis` MUST read `CRS_PASS_TRACE_DIR` and `CRS_CHROME_TRACE_DIR` from the process environment and MUST throw `std::runtime_error` if either variable is unset. This prevents silent working-directory pollution when a benchmark binary is run directly (outside `record_benchmark.py`). When run via `record_benchmark.py` the requirement is always satisfied because FR-012 guarantees both variables are set in the subprocess environment before the binary is launched.
 
 **create_db.py**
 

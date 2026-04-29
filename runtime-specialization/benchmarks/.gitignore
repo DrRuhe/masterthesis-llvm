@@ -1,3 +1,4 @@
 tpch/data/tpch.db
 .claude
 db_archive
+benchmarks_raw_data/

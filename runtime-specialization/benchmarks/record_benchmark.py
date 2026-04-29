@@ -14,7 +14,6 @@ import shutil
 import signal
 import subprocess
 import sys
-import tempfile
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -264,7 +263,8 @@ def insert_benchmarks(con: duckdb.DuckDBPyConnection, run_id: str, benchmarks: l
 # Pass-trace import
 # ---------------------------------------------------------------------------
 
-def import_pass_traces(con: duckdb.DuckDBPyConnection, run_id: str, trace_dir: Path) -> int:
+def import_pass_traces(con: duckdb.DuckDBPyConnection, run_id: str, trace_dir: Path,
+                       delete_after_import: bool = True) -> int:
     """Import *_pass_trace.json files written by benchmarkJITAnalysis into pass_traces table."""
     total = 0
     for trace_file in sorted(trace_dir.glob("*_pass_trace.json")):
@@ -286,6 +286,8 @@ def import_pass_traces(con: duckdb.DuckDBPyConnection, run_id: str, trace_dir: P
                 )
                 total += 1
             print(f"  Imported {len(records)} pass records from {trace_file.name}")
+            if delete_after_import:
+                trace_file.unlink()
         except Exception as e:
             print(f"Warning: could not import pass trace {trace_file}: {e}", file=sys.stderr)
     return total
@@ -670,7 +672,8 @@ def _load_json_safe(path: str) -> dict:
 
 def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
                 trace_dir: Path | None = None,
-                best_practice_full: bool | None = None) -> None:
+                best_practice_full: bool | None = None,
+                keep_pass_traces: bool = False) -> None:
     ctx = data.get("context", {})
     benchmarks = data.get("benchmarks", [])
     db_path = resolve_db_path(args.db)
@@ -700,7 +703,8 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
         ensure_columns(con, benchmarks)
         insert_benchmarks(con, run_id, benchmarks)
         if trace_dir is not None:
-            n_traces = import_pass_traces(con, run_id, trace_dir)
+            n_traces = import_pass_traces(con, run_id, trace_dir,
+                                          delete_after_import=not keep_pass_traces)
             if n_traces:
                 print(f"Imported {n_traces} pass-trace records.")
         con.commit()
@@ -725,6 +729,42 @@ def store_to_db(args, data: dict, json_path: str, delete_on_success: bool,
         sys.exit(1)
 
 
+def _make_run_dir() -> tuple[Path, Path, Path, Path]:
+    """Create a timestamped run directory under benchmarks/benchmarks_raw_data/.
+
+    Returns (run_dir, out_path, pass_traces_dir, chrome_traces_dir).
+    The run directory and its subdirectories are created; raw.json is not yet written.
+    On failure or crash the directory persists for manual inspection.
+    """
+    script_dir = Path(__file__).parent
+    run_dir = script_dir / "benchmarks_raw_data" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    pass_traces_dir = run_dir / "pass_traces"
+    chrome_traces_dir = run_dir / "chrome_traces"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    pass_traces_dir.mkdir()
+    chrome_traces_dir.mkdir()
+    out_path = run_dir / "raw.json"
+    return run_dir, out_path, pass_traces_dir, chrome_traces_dir
+
+
+def _cleanup_after_store(pass_traces_dir: Path, chrome_traces_dir: Path,
+                         run_dir: Path, keep_chrome_traces: bool) -> None:
+    """Remove trace files and empty dirs created by this run.
+
+    pass_traces_dir: individual JSON files already deleted by import_pass_traces;
+      this tries to rmdir the now-empty directory.
+    chrome_traces_dir: rmtree'd unless --keep-chrome-traces; then rmdir is attempted.
+    run_dir: rmdir attempted last; succeeds only when both subdirs were removed.
+    """
+    if not keep_chrome_traces:
+        shutil.rmtree(chrome_traces_dir, ignore_errors=True)
+    for d in (pass_traces_dir, chrome_traces_dir, run_dir):
+        try:
+            d.rmdir()
+        except OSError:
+            pass
+
+
 def cmd_record(args):
     check_dependencies(args)
 
@@ -733,8 +773,12 @@ def cmd_record(args):
 
     sha = get_git_sha()
 
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
-        out_path = tmp.name
+    run_dir, out_path, pass_traces_dir, chrome_traces_dir = _make_run_dir()
+    print(f"Run directory: {run_dir}", flush=True)
+
+    sub_env = os.environ.copy()
+    sub_env["CRS_PASS_TRACE_DIR"] = str(pass_traces_dir)
+    sub_env["CRS_CHROME_TRACE_DIR"] = str(chrome_traces_dir)
 
     flags = [
         "--benchmark_out_format=json",
@@ -767,7 +811,7 @@ def cmd_record(args):
             taskset_bin = shutil.which("taskset") or "taskset"
             full_cmd = [taskset_bin, "-c", cpu_list_str] + cmd
             print(f"Running: {' '.join(full_cmd)}", flush=True)
-            result = subprocess.run(full_cmd)
+            result = subprocess.run(full_cmd, env=sub_env)
             if result.returncode != 0:
                 print(
                     f"Warning: benchmark exited with code {result.returncode}; "
@@ -776,25 +820,28 @@ def cmd_record(args):
                 )
             # Store BEFORE the with-block exits so teardown (ASLR/governor restore)
             # happens after the DB write, not before.
-            data = _load_json_safe(out_path)
-            trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else Path.cwd()
-            store_to_db(args, data, out_path, delete_on_success=True, trace_dir=trace_dir,
-                        best_practice_full=bool(setup_ok))
+            data = _load_json_safe(str(out_path))
+            store_to_db(args, data, str(out_path), delete_on_success=True,
+                        trace_dir=pass_traces_dir, best_practice_full=bool(setup_ok),
+                        keep_pass_traces=args.keep_pass_traces)
+            _cleanup_after_store(pass_traces_dir, chrome_traces_dir, run_dir,
+                                 args.keep_chrome_traces)
         # System settings restored here; propagate non-zero exit code after the fact.
         if result.returncode != 0:
             sys.exit(result.returncode)
     else:
         print(f"Running: {' '.join(cmd)}", flush=True)
-        result = subprocess.run(cmd)
+        result = subprocess.run(cmd, env=sub_env)
         if result.returncode != 0:
-            try:
-                os.unlink(out_path)
-            except OSError:
-                pass
+            # run_dir persists with whatever was written for manual inspection.
+            print(f"Raw data preserved at: {run_dir}", file=sys.stderr)
             sys.exit(result.returncode)
-        data = _load_json_safe(out_path)
-        trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else Path.cwd()
-        store_to_db(args, data, out_path, delete_on_success=True, trace_dir=trace_dir)
+        data = _load_json_safe(str(out_path))
+        store_to_db(args, data, str(out_path), delete_on_success=True,
+                    trace_dir=pass_traces_dir,
+                    keep_pass_traces=args.keep_pass_traces)
+        _cleanup_after_store(pass_traces_dir, chrome_traces_dir, run_dir,
+                             args.keep_chrome_traces)
 
 
 # ---------------------------------------------------------------------------
@@ -838,8 +885,16 @@ def main():
     )
     parser.add_argument(
         "--pass-trace-dir", metavar="DIR", default=None,
-        help="Directory to scan for *_pass_trace.json files written by benchmarkJITAnalysis. "
-             "Defaults to the current working directory when running a binary.",
+        help="Directory to scan for *_pass_trace.json files (used with --record-json). "
+             "Defaults to CRS_PASS_TRACE_DIR env var if set, otherwise no trace import.",
+    )
+    parser.add_argument(
+        "--keep-pass-traces", action="store_true",
+        help="Do not delete *_pass_trace.json files after importing them into the DB.",
+    )
+    parser.add_argument(
+        "--keep-chrome-traces", action="store_true",
+        help="Do not delete *_chrome_trace.json files after the benchmark run.",
     )
 
     args = parser.parse_args()
@@ -851,8 +906,14 @@ def main():
 
     if args.record_json:
         data = _load_json_safe(args.record_json)
-        trace_dir = Path(args.pass_trace_dir) if args.pass_trace_dir else None
-        store_to_db(args, data, args.record_json, delete_on_success=False, trace_dir=trace_dir)
+        if args.pass_trace_dir:
+            trace_dir: Path | None = Path(args.pass_trace_dir)
+        elif os.environ.get("CRS_PASS_TRACE_DIR"):
+            trace_dir = Path(os.environ["CRS_PASS_TRACE_DIR"])
+        else:
+            trace_dir = None
+        store_to_db(args, data, args.record_json, delete_on_success=False, trace_dir=trace_dir,
+                    keep_pass_traces=args.keep_pass_traces)
     else:
         cmd_record(args)
 
