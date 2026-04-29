@@ -733,14 +733,22 @@ def _make_run_dir() -> tuple[Path, Path, Path, Path]:
     """Create a timestamped run directory under benchmarks/benchmarks_raw_data/.
 
     Returns (run_dir, out_path, pass_traces_dir, chrome_traces_dir).
-    The run directory and its subdirectories are created; raw.json is not yet written.
+    If the base timestamp dir already exists, appends -2, -3, … until a free name is found.
     On failure or crash the directory persists for manual inspection.
     """
     script_dir = Path(__file__).parent
-    run_dir = script_dir / "benchmarks_raw_data" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    base = script_dir / "benchmarks_raw_data" / datetime.now().strftime("%Y%m%d-%H%M%S")
+    run_dir = base
+    counter = 2
+    while True:
+        try:
+            run_dir.mkdir(parents=True)
+            break
+        except FileExistsError:
+            run_dir = Path(f"{base}-{counter}")
+            counter += 1
     pass_traces_dir = run_dir / "pass_traces"
     chrome_traces_dir = run_dir / "chrome_traces"
-    run_dir.mkdir(parents=True, exist_ok=True)
     pass_traces_dir.mkdir()
     chrome_traces_dir.mkdir()
     out_path = run_dir / "raw.json"
@@ -908,10 +916,9 @@ def main():
         data = _load_json_safe(args.record_json)
         if args.pass_trace_dir:
             trace_dir: Path | None = Path(args.pass_trace_dir)
-        elif os.environ.get("CRS_PASS_TRACE_DIR"):
-            trace_dir = Path(os.environ["CRS_PASS_TRACE_DIR"])
         else:
-            trace_dir = None
+            sibling = Path(args.record_json).parent / "pass_traces"
+            trace_dir = sibling if sibling.is_dir() else None
         store_to_db(args, data, args.record_json, delete_on_success=False, trace_dir=trace_dir,
                     keep_pass_traces=args.keep_pass_traces)
     else:

@@ -5,6 +5,18 @@
 **Status**: Draft  
 **Input**: User description: "The benchmarking system should allow me to run benchmarks, record their results in the duckdb for later analysis and have reporting scripts that can generate plots/other reports on the data."
 
+## Clarifications
+
+### Session 2026-04-29
+
+- Q: On non-zero standard-mode exit, should the run directory be preserved (for crash recovery) or deleted (per FR-005)? → A: Preserve the run dir on non-zero exit; update FR-005 and FR-001 to reflect the structured run dir (not a temp file).
+- Q: How should `optimize_benchmarks.py` handle benchmark binaries that include `benchmarkJITAnalysis` registrations? → A: The optimizer enumerates all benchmarks at startup; if any `jit_analysis`-phase benchmark is in the active set it MUST fail with an error requiring the user to add a filter. A `--apply-default-filters` flag is added to automatically exclude all `benchmarkJITAnalysis` benchmarks.
+- Q: What should happen when two runs produce the same `YYYYMMDD-HHmmss` timestamp? → A: Scan existing dirs and append an auto-incrementing counter suffix: first run uses bare timestamp, collisions get `-2`, `-3`, etc.
+- Q: Should `--record-json` auto-detect the matching `pass_traces/` subdir from the JSON file's location? → A: Yes — if `--record-json` is given and `--pass-trace-dir` is absent, check for a `pass_traces/` sibling dir next to the JSON file; use it if it exists, otherwise skip pass-trace import.
+- Q: Two requirements shared the number FR-044; which number should the "new option requires no code changes" requirement get? → A: FR-045.
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Run and Record Benchmark (Priority: P1)
@@ -40,7 +52,7 @@ A researcher has a previously saved Google Benchmark JSON output file (e.g., fro
 **Acceptance Scenarios**:
 
 1. **Given** a valid Google Benchmark JSON file exists, **When** `record_benchmark.py --record-json <path>` is invoked, **Then** the metrics are imported into the data store and the run ID is printed; the source file is not deleted.
-2. **Given** an optional `--pass-trace-dir` is provided, **When** `*_pass_trace.json` files are present in that directory, **Then** per-pass records are imported into the `pass_traces` table in the same transaction.
+2. **Given** `--record-json raw.json` is invoked without `--pass-trace-dir`, **When** a `pass_traces/` directory exists as a sibling of `raw.json`, **Then** per-pass records from that directory are imported into the `pass_traces` table in the same transaction without any extra flags. If `--pass-trace-dir` is explicitly supplied, it takes precedence over the sibling auto-detection.
 3. **Given** the JSON file is malformed, **When** `--record-json` is invoked, **Then** the script prints the first 10 lines of the file and exits with a descriptive error; no partial record is written.
 
 ---
@@ -122,8 +134,9 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - What happens when the data store file is missing at startup for `record_benchmark.py`? → Exits with an error directing the user to run `create_db.py` first.
 - What happens when `create_db.py` is invoked and the target file already exists? → Exits with an error; no overwrite.
 - How does `record_benchmark.py` behave if the same benchmark is run twice in rapid succession? → Each run gets a unique UUID run ID; duplicate timestamps are allowed.
-- What happens if a benchmark binary crashes and produces no JSON output? → The empty/missing file is detected, the user is shown a clear error, and no record is written.
+- What happens if a benchmark binary crashes and produces no JSON output? → The missing/empty `raw.json` is detected, the user is shown a clear error, no record is written, and the run directory is preserved for inspection.
 - How does `optimize_benchmarks.py` handle a search space with only one viable configuration? → Single-config study completes normally; best config = the only config evaluated.
+- What happens when `optimize_benchmarks.py` detects a `jit_analysis` benchmark in the active set? → Exits before any trial with an error listing the offending benchmark names and instructing the user to add a filter or use `--apply-default-filters`.
 - What happens when a reporting script encounters records from a pre-existing schema missing newer columns (e.g., `jit_blob_kb`)? → Views are defined with `CREATE OR REPLACE` and guarded `try/except`; scripts check for column existence before querying.
 - What happens when `best_practice_env` teardown fails (e.g., cannot re-enable a disabled CPU)? → Each teardown step is attempted independently; warnings are printed but the script does not exit with an error on teardown failure.
 - What happens when some best-practice setup steps fail but others succeed (e.g., ASLR disabled but CPU frequency scaling unavailable)? → A warning is printed per failed step; the benchmark still runs and results are recorded. Only successfully applied settings are restored on teardown.
@@ -142,11 +155,11 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 
 **record_benchmark.py**
 
-- **FR-001**: `record_benchmark.py` MUST accept a path to a compiled benchmark binary and execute it with JSON output directed to a temporary file. Before launching the benchmark, it MUST verify that the target data store file exists and exit with an error directing the user to `create_db.py` if it does not, so that benchmark time is never wasted when the DB path is wrong.
+- **FR-001**: `record_benchmark.py` MUST accept a path to a compiled benchmark binary and execute it with JSON output written to `raw.json` inside the timestamped run directory created by FR-012. Before launching the benchmark, it MUST verify that the target data store file exists and exit with an error directing the user to `create_db.py` if it does not, so that benchmark time is never wasted when the DB path is wrong.
 - **FR-002**: `record_benchmark.py` MUST collect hardware performance counters (instructions, cpu-cycles, branch-misses, L1-icache-load-misses, L1-icache-loads, iTLB-load-misses) alongside timing data for every benchmark row.
 - **FR-003**: `record_benchmark.py` MUST capture the current git SHA and embed it in the run context record.
 - **FR-004**: `record_benchmark.py` MUST persist all data atomically in a single transaction; if the DB write fails, any partial write MUST be rolled back.
-- **FR-005**: `record_benchmark.py` MUST NOT write any record to the data store if the benchmark binary exits with a non-zero code in standard (non-best-practice) mode. The temporary JSON output file MUST be deleted in this case to avoid orphaned temp files.
+- **FR-005**: `record_benchmark.py` MUST NOT write any record to the data store if the benchmark binary exits with a non-zero code in standard (non-best-practice) mode. The run directory MUST be preserved intact so the user can inspect partial output and re-import via `--record-json` if `raw.json` is complete.
 - **FR-006**: `record_benchmark.py` MUST preserve the raw benchmark JSON on disk and print a re-import command if the DB write fails after a successful benchmark run.
 - **FR-007**: `record_benchmark.py` MUST accept `--benchmarking-best-practice` to attempt, on a best-effort basis: ASLR disable, performance CPU governor, Intel Turbo Boost disable, SMT sibling offline, and taskset CPU affinity. Each step requires sudo. Steps that cannot be applied (e.g., CPU frequency scaling absent on a VM) MUST print a per-step warning but MUST NOT prevent the benchmark from running or its results from being recorded.
 - **FR-007b**: When `--benchmarking-best-practice` is used and one or more setup steps fail, the benchmark run MUST still execute and results MUST be stored with `best_practice_full = FALSE` in the context row. The script MUST NOT exit before running the benchmark solely due to partial best-practice setup failure.
@@ -154,8 +167,8 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **FR-008**: `record_benchmark.py` MUST auto-select the two highest-indexed non-boot P-cores for benchmarking when `--benchmark-cpus` is not specified in best-practice mode.
 - **FR-009**: `record_benchmark.py` MUST restore all modified system settings (governor, SMT, ASLR, Turbo Boost) in all Python-catchable termination scenarios: normal exit, exceptions during benchmark or DB write, `KeyboardInterrupt` (Ctrl-C / SIGINT), and SIGTERM. Teardown MUST NOT occur before the DB write attempt completes. SIGKILL (`kill -9`) cannot be intercepted by Python and is explicitly out of scope.
 - **FR-010**: `record_benchmark.py` MUST support `--sudo-askpass PATH` to enable non-interactive sudo via an askpass helper.
-- **FR-011**: `record_benchmark.py` MUST support `--record-json PATH` to import a previously saved Google Benchmark JSON file into the data store without re-running the binary.
-- **FR-012**: Before launching the benchmark binary, `record_benchmark.py` MUST create a timestamped run directory at `benchmarks/benchmarks_raw_data/YYYYMMDD-HHmmss/` containing `pass_traces/` and `chrome_traces/` subdirectories, and MUST set `CRS_PASS_TRACE_DIR` and `CRS_CHROME_TRACE_DIR` to those subdirectories in the subprocess environment. The benchmark JSON output MUST be written to `raw.json` inside the run directory. On successful DB import: pass-trace JSON files MUST be deleted (unless `--keep-pass-traces` is supplied); chrome-trace files MUST be deleted (unless `--keep-chrome-traces` is supplied); any resulting empty subdirectories and the run directory itself MUST be removed. If the benchmark exits with a non-zero code or is interrupted, the run directory MUST be preserved intact for manual inspection and re-import. `--pass-trace-dir DIR` remains supported to override the scan directory when using `--record-json`.
+- **FR-011**: `record_benchmark.py` MUST support `--record-json PATH` to import a previously saved Google Benchmark JSON file into the data store without re-running the binary. When `--record-json` is given and `--pass-trace-dir` is not supplied, `record_benchmark.py` MUST check for a `pass_traces/` directory that is a sibling of the JSON file (i.e., `<json-parent>/pass_traces/`) and use it for pass-trace import if it exists; if neither `--pass-trace-dir` nor the sibling dir is present, pass-trace import is skipped without error.
+- **FR-012**: Before launching the benchmark binary, `record_benchmark.py` MUST create a timestamped run directory at `benchmarks/benchmarks_raw_data/YYYYMMDD-HHmmss/` containing `pass_traces/` and `chrome_traces/` subdirectories, and MUST set `CRS_PASS_TRACE_DIR` and `CRS_CHROME_TRACE_DIR` to those subdirectories in the subprocess environment. If a directory with the base timestamp already exists, `record_benchmark.py` MUST append an auto-incrementing counter suffix (`-2`, `-3`, …) scanning existing entries until a free name is found. The benchmark JSON output MUST be written to `raw.json` inside the run directory. On successful DB import: pass-trace JSON files MUST be deleted (unless `--keep-pass-traces` is supplied); chrome-trace files MUST be deleted (unless `--keep-chrome-traces` is supplied); any resulting empty subdirectories and the run directory itself MUST be removed. If the benchmark exits with a non-zero code or is interrupted, the run directory MUST be preserved intact for manual inspection and re-import. `--pass-trace-dir DIR` remains supported to override the scan directory when using `--record-json`.
 - **FR-013**: `record_benchmark.py` MUST support `--benchmark_filter PATTERN` to restrict which benchmarks within the binary are executed.
 - **FR-014**: `record_benchmark.py` MUST resolve the data store path in this order: `--db` flag → `BENCHPLOT_DB_PATH` env var → `./benchmarks.duckdb`.
 - **FR-015**: `record_benchmark.py` MUST extend the `benchmarks` table schema dynamically to accommodate new counter columns produced by any binary, without requiring a schema migration.
@@ -179,10 +192,11 @@ A researcher wants to understand which compiler passes in the JIT pipeline take 
 - **FR-025**: `optimize_benchmarks.py` MUST support `--study-name` for named, re-identifiable studies; if omitted, a timestamp-based name is generated.
 - **FR-026**: `optimize_benchmarks.py` MUST support `--seed` for reproducible TPE sampler initialization.
 - **FR-027**: `optimize_benchmarks.py` MUST write an optimization session record at study start (status = `incomplete`) and update it to `complete` upon normal termination; interrupted studies remain `incomplete` and MUST NOT appear in best-config queries or comparison reports unless explicitly requested.
+- **FR-040b**: Before starting any trial, `optimize_benchmarks.py` MUST enumerate all benchmark names in the target binary (e.g., via `--benchmark_list_tests`) and MUST fail with a descriptive error if any benchmark whose name matches the `jit_analysis` phase pattern is present in the active benchmark set. The error MUST instruct the user to supply a `--benchmark_filter` that excludes such benchmarks, or to use `--apply-default-filters`. `optimize_benchmarks.py` MUST support `--apply-default-filters` to automatically append a filter pattern that excludes all `benchmarkJITAnalysis` registrations from the benchmark set.
 - **FR-041**: `optimize_benchmarks.py` MUST support a `--search-space PATH` argument that loads the set of parameters to optimize, their types, ranges, and ENV var bindings from a JSON descriptor file at `PATH`. When this argument is supplied, no hardcoded parameter list is used.
 - **FR-042**: When `--search-space` is not provided, `optimize_benchmarks.py` MUST fall back to a built-in default descriptor that covers all currently standardized optimizable options, producing the same behavior as the previous hardcoded search space.
 - **FR-043**: The `optim_trial_params` table MUST store all trial parameters exclusively in a `params_json JSON` column. On every trial write, this column MUST be populated with a JSON object keyed by parameter name containing the complete parameter set for that trial. There are no separate fixed columns for individual JIT options.
-- **FR-044**: Introducing a new optimizable option MUST NOT require code changes to `optimize_benchmarks.py`; the new parameter MUST be expressible solely by adding an entry to a JSON descriptor file.
+- **FR-045**: Introducing a new optimizable option MUST NOT require code changes to `optimize_benchmarks.py`; the new parameter MUST be expressible solely by adding an entry to a JSON descriptor file.
 - **FR-046**: The `optimization_sessions` table MUST include a `search_space_json JSON` column. When a study starts, the descriptor (whether loaded from `--search-space` or the built-in default) MUST be written to this column so the exact search space definition is permanently associated with every study.
 
 **Reporting scripts**
