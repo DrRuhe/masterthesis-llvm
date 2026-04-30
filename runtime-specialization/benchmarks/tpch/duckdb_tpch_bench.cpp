@@ -90,21 +90,18 @@ extern "C" __attribute__((used)) void duckdb_tpch_dummy_registration_duckdb() {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 static duckdb_database openDuckDB() {
-    duckdb_config config;
-    duckdb_create_config(&config);
-    duckdb_set_config(config, "autoinstall_known_extensions", "true");
-    duckdb_set_config(config, "autoload_known_extensions", "true");
     duckdb_database db;
-    char* err = nullptr;
-    if (duckdb_open_ext(g_duckdb_db_path.c_str(), &db, config, &err) != DuckDBSuccess) {
-        fprintf(stderr, "Cannot open DuckDB database '%s': %s\n",
-                g_duckdb_db_path.c_str(), err ? err : "unknown error");
-        if (err) duckdb_free(err);
-        duckdb_destroy_config(&config);
+    if (duckdb_open(g_duckdb_db_path.c_str(), &db) != DuckDBSuccess) {
+        fprintf(stderr, "Cannot open DuckDB database '%s'\n", g_duckdb_db_path.c_str());
         exit(1);
     }
-    duckdb_destroy_config(&config);
     return db;
+}
+
+static duckdb_connection connectAndLoad(duckdb_database db) {
+    duckdb_connection con;
+    duckdb_connect(db, &con);
+    return con;
 }
 
 static duckdb_prepared_statement prepareQuery(duckdb_connection con, const char* sql) {
@@ -120,8 +117,7 @@ static duckdb_prepared_statement prepareQuery(duckdb_connection con, const char*
 
 static void phaseUnspecialized(benchmark::State& state, const char* sql) {
     duckdb_database db = openDuckDB();
-    duckdb_connection con;
-    duckdb_connect(db, &con);
+    duckdb_connection con = connectAndLoad(db);
     duckdb_prepared_statement stmt = prepareQuery(con, sql);
 
     for (auto _ : state) {
@@ -141,8 +137,7 @@ static void phaseJITOverhead(benchmark::State& state, const char* sql) {
     g_last_jit_timed_out = false;
 
     duckdb_database db = openDuckDB();
-    duckdb_connection con;
-    duckdb_connect(db, &con);
+    duckdb_connection con = connectAndLoad(db);
     duckdb_prepared_statement stmt = prepareQuery(con, sql);
 
     auto* RS = CRS::ClangRuntimeSpecializer::init();
@@ -176,8 +171,7 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
     if (g_last_jit_timed_out) { state.SkipWithMessage("jit_timed_out"); return; }
 
     duckdb_database db = openDuckDB();
-    duckdb_connection con;
-    duckdb_connect(db, &con);
+    duckdb_connection con = connectAndLoad(db);
     duckdb_prepared_statement stmt = prepareQuery(con, sql);
 
     auto* RS = CRS::ClangRuntimeSpecializer::init();
@@ -225,8 +219,7 @@ static void phaseJITAnalysis(benchmark::State& state, const char* sql) {
     if (g_last_jit_timed_out) { state.SkipWithMessage("jit_timed_out"); return; }
 
     duckdb_database db = openDuckDB();
-    duckdb_connection con;
-    duckdb_connect(db, &con);
+    duckdb_connection con = connectAndLoad(db);
     duckdb_prepared_statement stmt = prepareQuery(con, sql);
 
     clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_duckdb_execute_prepared>(

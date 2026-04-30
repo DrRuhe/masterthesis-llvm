@@ -11,10 +11,12 @@ FetchContent_Declare(sqlite3_src
 FetchContent_MakeAvailable(sqlite3_src)
 
 # ── Fetch DuckDB amalgamation ─────────────────────────────────────────────────
-# DuckDB v1.5.2 amalgamation — single C++ source + header.
+# DuckDB v1.0.0 amalgamation — single C++ source + header.
+# v1.0.0 is used because v1.1.0+ moved core functions (sum, count, etc.) to a
+# separate loadable core_functions extension that requires libstdc++ on Linux,
+# which is not available in the NixOS libc++ environment.
 FetchContent_Declare(duckdb_src
-    URL https://github.com/duckdb/duckdb/releases/download/v1.5.2/libduckdb-src.zip
-    URL_HASH SHA256=36388f54d4e73c7148895f9b075c063189d47df8687db237f765f74a7ff5d8f6
+    URL https://github.com/duckdb/duckdb/releases/download/v1.0.0/libduckdb-src.zip
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(duckdb_src)
@@ -51,6 +53,8 @@ add_custom_command(
             -x c++ -std=c++17 -O2
             ${CXX_FLAGS_LIST}
             -w
+            -Wno-error
+            -Wno-missing-template-arg-list-after-template-kw
             -fvisibility=default
             -fexceptions -frtti
             -I${duckdb_src_SOURCE_DIR}

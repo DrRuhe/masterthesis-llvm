@@ -5,4 +5,4 @@ SELECT 100.00 * SUM(CASE WHEN p_type LIKE 'PROMO%'
 FROM lineitem, part
 WHERE l_partkey = p_partkey
   AND l_shipdate >= DATE '1995-09-01'
-  AND l_shipdate < DATE '1995-09-01' + INTERVAL 1 MONTH
+  AND l_shipdate < DATE '1995-10-01'

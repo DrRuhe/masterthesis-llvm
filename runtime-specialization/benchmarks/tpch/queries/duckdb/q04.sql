@@ -1,7 +1,7 @@
 SELECT o_orderpriority, COUNT(*) AS order_count
 FROM orders
 WHERE o_orderdate >= DATE '1993-07-01'
-  AND o_orderdate < DATE '1993-07-01' + INTERVAL 3 MONTH
+  AND o_orderdate < DATE '1993-10-01'
   AND EXISTS (
     SELECT * FROM lineitem
     WHERE l_orderkey = o_orderkey

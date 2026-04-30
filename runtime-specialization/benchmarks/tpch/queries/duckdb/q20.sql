@@ -11,7 +11,7 @@ WHERE s_suppkey IN (
     WHERE l_partkey = ps_partkey
       AND l_suppkey = ps_suppkey
       AND l_shipdate >= DATE '1994-01-01'
-      AND l_shipdate < DATE '1994-01-01' + INTERVAL 1 YEAR
+      AND l_shipdate < DATE '1995-01-01'
   )
 )
 AND s_nationkey = n_nationkey

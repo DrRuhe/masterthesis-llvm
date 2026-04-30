@@ -9,6 +9,6 @@ WHERE o_orderkey = l_orderkey
   AND l_commitdate < l_receiptdate
   AND l_shipdate < l_commitdate
   AND l_receiptdate >= DATE '1994-01-01'
-  AND l_receiptdate < DATE '1994-01-01' + INTERVAL 1 YEAR
+  AND l_receiptdate < DATE '1995-01-01'
 GROUP BY l_shipmode
 ORDER BY l_shipmode

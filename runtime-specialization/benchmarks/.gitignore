@@ -1,4 +1,5 @@
 tpch/data/tpch.db
+tpch/data/tpch.duckdb
 .claude
 db_archive
 benchmarks_raw_data/
