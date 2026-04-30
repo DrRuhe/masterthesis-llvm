@@ -74,12 +74,11 @@ add_custom_command(
             -I${LLVM_MAIN_INCLUDE_DIR}
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
-            -fpass-plugin=${PLUGIN_LIB}
             -fexceptions -frtti
             -c ${CMAKE_CURRENT_SOURCE_DIR}/sqlite3_tpch_bench.cpp
             -o ${TPCH_OBJ}
-    DEPENDS sqlite3_tpch_bench.cpp LLVMRuntimeSpecializationComptimePlugin clang ${SQLITE3_IR_OBJ}
-    COMMENT "Compiling sqlite3_tpch_bench.cpp with IR-dumping plugin"
+    DEPENDS sqlite3_tpch_bench.cpp clang
+    COMMENT "Compiling sqlite3_tpch_bench.cpp"
 )
 
 # IDE stub: empty .cpp so CMake has a compile group and CLion resolves includes.
@@ -124,12 +123,11 @@ add_custom_command(
             -I${LLVM_MAIN_INCLUDE_DIR}
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
-            -fpass-plugin=${PLUGIN_LIB}
             -fexceptions -frtti
             -c ${CMAKE_CURRENT_SOURCE_DIR}/duckdb_tpch_bench.cpp
             -o ${DUCKDB_TPCH_OBJ}
-    DEPENDS duckdb_tpch_bench.cpp LLVMRuntimeSpecializationComptimePlugin clang ${DUCKDB_IR_OBJ}
-    COMMENT "Compiling duckdb_tpch_bench.cpp with IR-dumping plugin"
+    DEPENDS duckdb_tpch_bench.cpp clang
+    COMMENT "Compiling duckdb_tpch_bench.cpp"
 )
 
 set(DUCKDB_TPCH_IDE_STUB "${CMAKE_CURRENT_BINARY_DIR}/duckdb_tpch_ide_stub.cpp")

@@ -197,12 +197,10 @@ add_custom_command(
             -I${LLVM_MAIN_INCLUDE_DIR}
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
-            -fpass-plugin=${PLUGIN_LIB}
             -fexceptions -frtti
             -c ${TPCH_SRC_FILE}
             -o ${ALL_OBJ_TPCH}
-    DEPENDS ${TPCH_SRC_FILE} LLVMRuntimeSpecializationComptimePlugin clang
-            ${TPCH_SQLITE3_IR_OBJ}
+    DEPENDS ${TPCH_SRC_FILE} clang
     COMMENT "Compiling sqlite3_tpch_bench.cpp for AllBenchmarks"
 )
 
@@ -219,12 +217,10 @@ add_custom_command(
             -I${LLVM_MAIN_INCLUDE_DIR}
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
-            -fpass-plugin=${PLUGIN_LIB}
             -fexceptions -frtti
             -c ${DUCKDB_TPCH_SRC_FILE}
             -o ${ALL_OBJ_DUCKDB_TPCH}
-    DEPENDS ${DUCKDB_TPCH_SRC_FILE} LLVMRuntimeSpecializationComptimePlugin clang
-            ${DUCKDB_IR_OBJ}
+    DEPENDS ${DUCKDB_TPCH_SRC_FILE} clang
     COMMENT "Compiling duckdb_tpch_bench.cpp for AllBenchmarks"
 )
 
