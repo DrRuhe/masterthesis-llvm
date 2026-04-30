@@ -17,12 +17,16 @@
 #include <utility>
 #include <vector>
 
+#include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IRReader/IRReader.h"
+#include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
@@ -376,13 +380,44 @@ namespace clangRuntimeSpecializer {
       // Clone only the blob module that contains the target function.
       // This avoids cloning the full merged module when multiple TUs are linked.
       std::string UniqueWrapperName = createUniqueWrapperName() + (Opts.Optimize ? "" : "_no_opt");
-      auto NewModule = llvm::CloneModule(*TargetFunc->getParent());
+      std::unique_ptr<llvm::Module> NewModule;
+      // In debug builds, use a fresh LLVMContext for each specialization call.
+      // Reusing TSCtx causes pImpl->ValueHandles to accumulate WeakVH/AssertingVH
+      // handles across calls (created by optimization passes such as JumpThreading,
+      // LazyValueInfo, AssumptionCache).  Each call grows the DenseMap, frees old
+      // buckets, and potentially leaves stale chain-head PrevPtrs.  Subsequent
+      // pImpl->ValueNames insertions during the next bitcode parse can then observe
+      // these stale writes and hit "No name entry found!" (debug-only).
+      // A per-call fresh context has no accumulated handles — optimization handles
+      // are created and destroyed entirely within that context's lifetime.
+      // In release builds CloneModule into TSCtx is fine (AssertingVH/WeakVH are
+      // plain pointers without the debug DenseMap tracking).
+#ifndef NDEBUG
+      auto FreshLLVMCtx = std::make_unique<llvm::LLVMContext>();
+      llvm::LLVMContext* FreshCtxPtr = FreshLLVMCtx.get();
+      llvm::orc::ThreadSafeContext NewTSCtx(std::move(FreshLLVMCtx));
+      {
+        llvm::SmallVector<char, 0> BC;
+        llvm::raw_svector_ostream OS(BC);
+        llvm::WriteBitcodeToFile(*TargetFunc->getParent(), OS);
+        auto Buf = llvm::MemoryBuffer::getMemBufferCopy(
+            llvm::StringRef(BC.data(), BC.size()),
+            TargetFunc->getParent()->getName());
+        llvm::SMDiagnostic Err;
+        NewModule = llvm::parseIR(*Buf, Err, *FreshCtxPtr);
+        if (!NewModule)
+          llvm::report_fatal_error("specializeOnlyImpl: bitcode re-parse failed");
+      }
+#else
+      llvm::orc::ThreadSafeContext NewTSCtx = TSCtx;
+      NewModule = llvm::CloneModule(*TargetFunc->getParent());
+#endif
       auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
       encourageInlining(TargetFuncInNewModule);
 
       llvm::LLVMContext& Ctx = NewModule->getContext();
 
-      llvm::FunctionType* const FTy = llvm::FunctionType::get(TargetFunc->getReturnType(), false);
+      llvm::FunctionType* const FTy = llvm::FunctionType::get(TargetFuncInNewModule->getReturnType(), false);
 
       llvm::Function* const NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
       if (Opts.EnableInstructionInstrumentation) {
@@ -402,7 +437,7 @@ namespace clangRuntimeSpecializer {
       CallInst->setAttributes(TargetFuncInNewModule->getAttributes());
       CallInst->addFnAttr(llvm::Attribute::AlwaysInline);
 
-      if (TargetFunc->getReturnType()->isVoidTy()) {
+      if (TargetFuncInNewModule->getReturnType()->isVoidTy()) {
           Builder.CreateRetVoid();
       } else {
           Builder.CreateRet(CallInst);
@@ -410,7 +445,7 @@ namespace clangRuntimeSpecializer {
 
       prepareModuleForJIT(*NewModule, UniqueWrapperName);
 
-      auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), TSCtx);
+      auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), std::move(NewTSCtx));
 
       CurrentCallOptions = Opts;
 

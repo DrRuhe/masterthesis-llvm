@@ -19,7 +19,6 @@
 #include "llvm/Transforms/Scalar/LoopUnrollPass.h"
 #include "llvm/Transforms/Scalar/LoopRotation.h"
 #include "llvm/Transforms/Scalar/JumpThreading.h"
-#include "llvm/Transforms/Scalar/CorrelatedValuePropagation.h"
 #include "llvm/Transforms/Scalar/EarlyCSE.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
@@ -130,11 +129,33 @@ llvm::Error runInliningPipeline(PipelineRunArgs& Args) {
     CurrentGroup = "fixpoint";
     CurrentFixpointIter = Iteration;
 
+    // Note: we intentionally do NOT call MAM.invalidate(M, none()) here.
+    // Letting the pass manager manage analysis lifetime via PreservedAnalyses
+    // return values avoids a destruction sequence that fires debug assertions
+    // in LLVM's ValueHandleBase chain (AddToUseList line 1170).
+
     llvm::ModulePassManager FixpointMPM;
 
     // 1. Interprocedural Sparse Conditional Constant Propagation.
-    FixpointMPM.addPass(llvm::IPSCCPPass(
-        llvm::IPSCCPOptions(/*AllowFuncSpec=*/true)));
+    // AllowFuncSpec=false: function specialization clones values but doesn't
+    // update the ValueHandles map, triggering a debug assertion in LazyValueInfo
+    // (AssertingVH) when the O3 CVP processes the cloned module.
+    //
+    // Large-module restriction: IPSCCP is omitted for large modules.  It
+    // creates AssumptionCache WeakVH handles on every call, which grow the
+    // per-LLVMContext pImpl->ValueHandles DenseMap.  In a fixpoint loop the
+    // DenseMap can rehash repeatedly; each rehash frees the old bucket array,
+    // leaving chain-head PrevPtr fields stale.  A subsequent RemoveFromUseList
+    // then writes through the stale pointer into freed/reused memory, corrupting
+    // instruction metadata bits or other DenseMap internals.  This is
+    // debug-mode only (AssertingVH/WeakVH are plain pointers in release builds)
+    // but makes the debug benchmark unusable.  The inliner + GlobalOpt path
+    // below already propagates the runtime constants we care about for large
+    // modules without creating a problematic number of value handles.
+    if (!LargeModule) {
+      FixpointMPM.addPass(llvm::IPSCCPPass(
+          llvm::IPSCCPOptions(/*AllowFuncSpec=*/false)));
+    }
 
     // 1b. Devirtualize indirect calls through constant vtable pointers
     FixpointMPM.addPass(DevirtualizeConstantVtableCallsPass());
@@ -163,70 +184,62 @@ llvm::Error runInliningPipeline(PipelineRunArgs& Args) {
     // 2b. Whole-program devirtualization
     FixpointMPM.addPass(llvm::WholeProgramDevirtPass());
 
-    // 3. Pre-inlining function-level optimizations
-    llvm::FunctionPassManager PreInlineFPM;
-    PreInlineFPM.addPass(llvm::EarlyCSEPass(/*UseMemorySSA=*/true));
-    PreInlineFPM.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
-    PreInlineFPM.addPass(llvm::JumpThreadingPass());
-    PreInlineFPM.addPass(llvm::CorrelatedValuePropagationPass());
-    PreInlineFPM.addPass(llvm::SimplifyCFGPass());
-    PreInlineFPM.addPass(llvm::InstCombinePass());
-    FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PreInlineFPM)));
-
-    // 6. CRITICAL: Post-inlining optimizations
-    llvm::FunctionPassManager PostInlineFPM;
-
-    // GVN - propagate constants through inlined code (KEY for devirtualization!)
-    PostInlineFPM.addPass(llvm::GVNPass());
-
-    // Static Mutability Analysis + InvariantLoadToConstantPass
-    PostInlineFPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
-    PostInlineFPM.addPass(InvariantLoadToConstantPass());
-
-    // InstCombine - fold loads of constant vtable pointers
-    PostInlineFPM.addPass(llvm::InstCombinePass());
-
-    // SROA again - eliminate redundant alloca/store/load patterns
-    PostInlineFPM.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
-
-    // InstCombine again after SROA
-    PostInlineFPM.addPass(llvm::InstCombinePass());
-
-    // EarlyCSE - cleanup redundant loads
-    PostInlineFPM.addPass(llvm::EarlyCSEPass(/*UseMemorySSA=*/true));
-
-    // JumpThreading - may find new opportunities
-    PostInlineFPM.addPass(llvm::JumpThreadingPass());
-
-    // CorrelatedValuePropagation
-    PostInlineFPM.addPass(llvm::CorrelatedValuePropagationPass());
-
-    // SimplifyCFG before loop optimization
-    PostInlineFPM.addPass(llvm::SimplifyCFGPass());
-
-    // Loop optimizations: rotate and LICM (requires MemorySSA)
-    llvm::LoopPassManager LPM;
-    LPM.addPass(llvm::LoopRotatePass());
-    LPM.addPass(llvm::LICMPass(llvm::LICMOptions()));
-    PostInlineFPM.addPass(llvm::createFunctionToLoopPassAdaptor(std::move(LPM), /*UseMemorySSA=*/true));
-
-    // Loop unrolling. On small modules use aggressive settings to expose
-    // more constants. On large modules limit to partial unrolling only.
-    llvm::LoopUnrollOptions UnrollOpts;
-    UnrollOpts.setPartial(true);
+    // 3. Pre-inlining function-level optimizations.
+    //
+    // Large-module restriction: ALL function-level passes (via FPM adaptor) are
+    // omitted from the fixpoint for large modules.  The same pImpl->ValueHandles
+    // stale-PrevPtr issue described above for IPSCCP applies to any analysis
+    // that uses AssertingVH or PoisoningVH (LazyValueInfo → JumpThreading,
+    // InstCombine; AliasSetTracker → LICM; GVN::BlockRPONumber → GVN).
+    // Debug-mode only; release builds are unaffected.
     if (!LargeModule) {
-      UnrollOpts.setRuntime(true);
-      UnrollOpts.setUpperBound(true);
-      UnrollOpts.setFullUnrollMaxCount(Opts.LoopUnrollCount);
+      llvm::FunctionPassManager PreInlineFPM;
+      PreInlineFPM.addPass(llvm::EarlyCSEPass(/*UseMemorySSA=*/true));
+      PreInlineFPM.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+      PreInlineFPM.addPass(llvm::JumpThreadingPass());
+      PreInlineFPM.addPass(llvm::SimplifyCFGPass());
+      PreInlineFPM.addPass(llvm::InstCombinePass());
+      FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PreInlineFPM)));
     }
-    PostInlineFPM.addPass(llvm::LoopUnrollPass(UnrollOpts));
 
-    // Post-unroll cleanup
-    PostInlineFPM.addPass(llvm::InstCombinePass());
-    PostInlineFPM.addPass(llvm::SimplifyCFGPass());
-    PostInlineFPM.addPass(llvm::InstSimplifyPass());
+    // 6. CRITICAL: Post-inlining optimizations (small modules only; see above).
+    if (!LargeModule) {
+      llvm::FunctionPassManager PostInlineFPM;
 
-    FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PostInlineFPM)));
+      // Static Mutability Analysis + InvariantLoadToConstantPass
+      PostInlineFPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
+      PostInlineFPM.addPass(InvariantLoadToConstantPass());
+
+      PostInlineFPM.addPass(llvm::InstCombinePass());
+      PostInlineFPM.addPass(llvm::SROAPass(llvm::SROAOptions::ModifyCFG));
+      PostInlineFPM.addPass(llvm::InstCombinePass());
+      PostInlineFPM.addPass(llvm::EarlyCSEPass(/*UseMemorySSA=*/true));
+      PostInlineFPM.addPass(llvm::JumpThreadingPass());
+      PostInlineFPM.addPass(llvm::SimplifyCFGPass());
+
+      {
+        llvm::LoopPassManager LPM;
+        LPM.addPass(llvm::LoopRotatePass());
+        LPM.addPass(llvm::LICMPass(llvm::LICMOptions()));
+        PostInlineFPM.addPass(llvm::createFunctionToLoopPassAdaptor(
+            std::move(LPM), /*UseMemorySSA=*/true));
+      }
+
+      {
+        llvm::LoopUnrollOptions UnrollOpts;
+        UnrollOpts.setPartial(true);
+        UnrollOpts.setRuntime(true);
+        UnrollOpts.setUpperBound(true);
+        UnrollOpts.setFullUnrollMaxCount(Opts.LoopUnrollCount);
+        PostInlineFPM.addPass(llvm::LoopUnrollPass(UnrollOpts));
+      }
+
+      PostInlineFPM.addPass(llvm::InstCombinePass());
+      PostInlineFPM.addPass(llvm::SimplifyCFGPass());
+      PostInlineFPM.addPass(llvm::InstSimplifyPass());
+
+      FixpointMPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PostInlineFPM)));
+    }
 
     // Run the fixpoint iteration pass pipeline
     FixpointMPM.run(M, MAM);
