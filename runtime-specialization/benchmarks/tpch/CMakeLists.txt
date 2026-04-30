@@ -116,6 +116,8 @@ set(DUCKDB_TPCH_OBJ "${CMAKE_CURRENT_BINARY_DIR}/duckdb_tpch_bench.o")
 add_custom_command(
     OUTPUT ${DUCKDB_TPCH_OBJ}
     COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
+            "-DDUCKDB_TPCH_DEFAULT_DB_PATH=\\\"${CMAKE_CURRENT_SOURCE_DIR}/data/tpch.duckdb\\\""
+            "-DDUCKDB_TPCH_DEFAULT_QUERIES_DIR=\\\"${CMAKE_CURRENT_SOURCE_DIR}/queries/duckdb\\\""
             -I${CMAKE_CURRENT_SOURCE_DIR}
             -I${CMAKE_CURRENT_SOURCE_DIR}/..
             -I${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/ClangRuntimeSpecializer

@@ -20,9 +20,18 @@ inline constexpr char Fn_duckdb_execute_prepared[] = "duckdb_execute_prepared";
 static duckdb_result g_duckdb_exec_result;
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
+// DUCKDB_TPCH_DEFAULT_DB_PATH / DUCKDB_TPCH_DEFAULT_QUERIES_DIR are injected
+// by CMake as absolute source-tree paths so the binary works from any CWD.
 
-static std::string g_duckdb_db_path = "tpch/data/tpch.duckdb";
-static std::string g_duckdb_queries_dir = "tpch/queries/duckdb";
+#ifndef DUCKDB_TPCH_DEFAULT_DB_PATH
+#define DUCKDB_TPCH_DEFAULT_DB_PATH "tpch/data/tpch.duckdb"
+#endif
+#ifndef DUCKDB_TPCH_DEFAULT_QUERIES_DIR
+#define DUCKDB_TPCH_DEFAULT_QUERIES_DIR "tpch/queries/duckdb"
+#endif
+
+static std::string g_duckdb_db_path = DUCKDB_TPCH_DEFAULT_DB_PATH;
+static std::string g_duckdb_queries_dir = DUCKDB_TPCH_DEFAULT_QUERIES_DIR;
 
 #ifdef ALL_BENCHMARKS_BUILD
 void duckdb_tpch_set_db_path(const char* path) { g_duckdb_db_path = path; }
@@ -81,11 +90,20 @@ extern "C" __attribute__((used)) void duckdb_tpch_dummy_registration_duckdb() {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 static duckdb_database openDuckDB() {
+    duckdb_config config;
+    duckdb_create_config(&config);
+    duckdb_set_config(config, "autoinstall_known_extensions", "true");
+    duckdb_set_config(config, "autoload_known_extensions", "true");
     duckdb_database db;
-    if (duckdb_open(g_duckdb_db_path.c_str(), &db) != DuckDBSuccess) {
-        fprintf(stderr, "Cannot open DuckDB database '%s'\n", g_duckdb_db_path.c_str());
+    char* err = nullptr;
+    if (duckdb_open_ext(g_duckdb_db_path.c_str(), &db, config, &err) != DuckDBSuccess) {
+        fprintf(stderr, "Cannot open DuckDB database '%s': %s\n",
+                g_duckdb_db_path.c_str(), err ? err : "unknown error");
+        if (err) duckdb_free(err);
+        duckdb_destroy_config(&config);
         exit(1);
     }
+    duckdb_destroy_config(&config);
     return db;
 }
 
