@@ -170,12 +170,13 @@ set_target_properties(DuckDBTpchBenchmark PROPERTIES ENABLE_EXPORTS ON)
 if(NOT APPLE AND NOT MSVC)
     target_link_options(DuckDBTpchBenchmark PRIVATE "-Wl,--export-dynamic")
 endif()
-# Link libstdc++ for DuckDB's core_functions (v1.1.0+) and embed rpath so the
-# binary finds libstdc++.so without LD_LIBRARY_PATH.
+# Link libstdc++ for DuckDB's core_functions (v1.1.0+).
+# Use full path to libstdc++.a via target_link_libraries so the archive
+# appears AFTER the object files in the link command (target_link_options
+# flags are placed BEFORE objects and therefore cannot resolve their references).
 if(NOT APPLE AND NOT MSVC AND CRS_GCC_TOOLCHAIN_PATH)
-    target_link_options(DuckDBTpchBenchmark PRIVATE
-        "-L${CRS_GCC_TOOLCHAIN_PATH}/lib"
-        "-static-libstdc++"
+    target_link_libraries(DuckDBTpchBenchmark PRIVATE
+        "${CRS_GCC_TOOLCHAIN_PATH}/lib/libstdc++.a"
     )
 endif()
 

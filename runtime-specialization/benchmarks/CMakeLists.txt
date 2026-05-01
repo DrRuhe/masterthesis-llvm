@@ -258,9 +258,8 @@ if(NOT APPLE AND NOT MSVC)
     target_link_options(AllBenchmarks PRIVATE "-Wl,--export-dynamic")
 endif()
 if(NOT APPLE AND NOT MSVC AND CRS_GCC_TOOLCHAIN_PATH)
-    target_link_options(AllBenchmarks PRIVATE
-        "-L${CRS_GCC_TOOLCHAIN_PATH}/lib"
-        "-static-libstdc++"
+    target_link_libraries(AllBenchmarks PRIVATE
+        "${CRS_GCC_TOOLCHAIN_PATH}/lib/libstdc++.a"
     )
 endif()
 
