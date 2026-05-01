@@ -175,8 +175,7 @@ endif()
 if(NOT APPLE AND NOT MSVC AND CRS_GCC_TOOLCHAIN_PATH)
     target_link_options(DuckDBTpchBenchmark PRIVATE
         "-L${CRS_GCC_TOOLCHAIN_PATH}/lib"
-        "-lstdc++"
-        "-Wl,-rpath,${CRS_GCC_TOOLCHAIN_PATH}/lib"
+        "-static-libstdc++"
     )
 endif()
 
