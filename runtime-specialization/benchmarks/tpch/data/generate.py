@@ -9,7 +9,7 @@ Note: --out is the SQLite TPC-H query database (not the benchmark results databa
       The benchmark results database (benchmarks.duckdb) is managed by record_benchmark.py.
 
 Requirements:
-    pip install duckdb==1.0.0   (must match the C++ DuckDB version in tpch/CMakeLists.txt)
+    pip install duckdb  (nixpkgs devshell provides this; version should be ≤ 1.5.2 to match the C++ DuckDB)
 """
 import argparse
 import os

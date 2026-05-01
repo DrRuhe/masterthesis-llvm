@@ -5,6 +5,11 @@ set(PLUGIN_LIB "$<TARGET_FILE:LLVMRuntimeSpecializationComptimePlugin>")
 
 separate_arguments(CXX_FLAGS_LIST NATIVE_COMMAND "${CMAKE_CXX_FLAGS}")
 
+# Extract GCC toolchain path for DuckDB's libstdc++ dependency (v1.1.0+).
+# The devshell injects --gcc-toolchain=<path> into CMAKE_CXX_FLAGS.
+string(REGEX MATCH "--gcc-toolchain=([^ \"]+)" _gcc_match "${CMAKE_CXX_FLAGS}")
+set(CRS_GCC_TOOLCHAIN_PATH "${CMAKE_MATCH_1}")
+
 # ── SyntheticKernels ──────────────────────────────────────────────────────────
 # Compiled separately from SpecializerBenchmark.cpp so the JIT blob for each
 # kernel contains only the kernel code, not the benchmark-library infrastructure.
@@ -251,6 +256,13 @@ target_compile_options(AllBenchmarks PRIVATE -fexceptions -frtti)
 set_target_properties(AllBenchmarks PROPERTIES ENABLE_EXPORTS ON)
 if(NOT APPLE AND NOT MSVC)
     target_link_options(AllBenchmarks PRIVATE "-Wl,--export-dynamic")
+endif()
+if(NOT APPLE AND NOT MSVC AND CRS_GCC_TOOLCHAIN_PATH)
+    target_link_options(AllBenchmarks PRIVATE
+        "-L${CRS_GCC_TOOLCHAIN_PATH}/lib"
+        "-lstdc++"
+        "-Wl,-rpath,${CRS_GCC_TOOLCHAIN_PATH}/lib"
+    )
 endif()
 
 # ── benchplot target ──────────────────────────────────────────────────────────
