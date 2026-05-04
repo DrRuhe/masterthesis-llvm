@@ -10,23 +10,45 @@ FetchContent_Declare(sqlite3_src
 )
 FetchContent_MakeAvailable(sqlite3_src)
 
-# ── Fetch DuckDB amalgamation ─────────────────────────────────────────────────
-# DuckDB v1.5.2 amalgamation — single C++ source + header.
-# v1.1.0+ requires libstdc++ for core_functions; see DUCKDB_CXX_FLAGS_LIST below.
-FetchContent_Declare(duckdb_src
-    URL https://github.com/duckdb/duckdb/releases/download/v1.5.2/libduckdb-src.zip
-    URL_HASH SHA256=36388f54d4e73c7148895f9b075c063189d47df8687db237f765f74a7ff5d8f6
+# ── Fetch + build DuckDB v1.5.2 from full source ─────────────────────────────
+# Full source build bundles core_functions statically (needed for sum/count/avg
+# in v1.1.0+). Defaults: DISABLE_BUILTIN_EXTENSIONS=OFF, EXTENSION_STATIC_BUILD=ON.
+FetchContent_Declare(duckdb
+    URL https://github.com/duckdb/duckdb/archive/refs/tags/v1.5.2.tar.gz
+    URL_HASH SHA256=6d8612fc87115cf4d3512a934ada5d1669db29378b4cc8e226fdfa8f5c537385
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
-FetchContent_MakeAvailable(duckdb_src)
+set(BUILD_UNITTESTS  OFF CACHE BOOL "" FORCE)
+set(BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(BUILD_SHELL      OFF CACHE BOOL "" FORCE)
+set(ENABLE_SANITIZER OFF CACHE BOOL "" FORCE)
+set(ENABLE_UBSAN     OFF CACHE BOOL "" FORCE)
 
-# Build DuckDB-specific compile flags: strip libc++ flags so clang finds libstdc++
-# via the --gcc-toolchain already present in CMAKE_CXX_FLAGS (set by the devshell).
+# Strip libc++ flags so DuckDB uses libstdc++ via the --gcc-toolchain injected by
+# the devshell. CMAKE_CXX_FLAGS is set before MakeAvailable so all DuckDB targets
+# inherit the stripped flags; restored afterwards for our own targets.
 set(_duckdb_cxx_flags "${CMAKE_CXX_FLAGS}")
 string(REGEX REPLACE "-nostdinc\\+\\+" "" _duckdb_cxx_flags "${_duckdb_cxx_flags}")
 string(REGEX REPLACE "-stdlib=libc\\+\\+" "" _duckdb_cxx_flags "${_duckdb_cxx_flags}")
 string(REGEX REPLACE "-isystem [^ ]+/c\\+\\+/v1/?" "" _duckdb_cxx_flags "${_duckdb_cxx_flags}")
-separate_arguments(DUCKDB_CXX_FLAGS_LIST NATIVE_COMMAND "${_duckdb_cxx_flags}")
+
+set(_saved_cxx_flags "${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "${_duckdb_cxx_flags}")
+# Inject IR-dumping plugin into all DuckDB unity-TUs via the directory COMPILE_OPTIONS
+# property, which is inherited by every OBJECT library target in the subdirectory.
+# Only inject when the compiler is our project's clang (>= 21): loading an LLVM 21
+# plugin into an older host clang causes an ABI mismatch crash (e.g. debug builds
+# that use the host clang 18 as CMAKE_CXX_COMPILER).
+if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 21)
+    add_compile_options(
+        "-fpass-plugin=$<TARGET_FILE:LLVMRuntimeSpecializationComptimePlugin>"
+        -fvisibility=default
+        -w -Wno-error)
+else()
+    add_compile_options(-fvisibility=default -w -Wno-error)
+endif()
+FetchContent_MakeAvailable(duckdb)
+set(CMAKE_CXX_FLAGS "${_saved_cxx_flags}")
 
 # ── Compile sqlite3.c with the IR-dumping pass ────────────────────────────────
 # The pass runs at OptimizerLastEP and embeds the entire SQLite module's IR
@@ -47,29 +69,6 @@ add_custom_command(
             -o ${SQLITE3_IR_OBJ}
     DEPENDS ${sqlite3_src_SOURCE_DIR}/sqlite3.c LLVMRuntimeSpecializationComptimePlugin clang
     COMMENT "Compiling sqlite3.c with IR-dumping plugin (embeds sqlite3VdbeExec IR)"
-)
-
-# ── Compile duckdb.cpp with the IR-dumping pass ───────────────────────────────
-# Embeds the entire DuckDB module's IR (including duckdb_execute_prepared) as a
-# bitcode blob registered at startup.
-set(DUCKDB_IR_OBJ "${CMAKE_CURRENT_BINARY_DIR}/duckdb_with_ir.o")
-
-add_custom_command(
-    OUTPUT ${DUCKDB_IR_OBJ}
-    COMMAND ${CLANG_EXE}
-            -x c++ -std=c++17 -O2
-            ${DUCKDB_CXX_FLAGS_LIST}
-            -w
-            -Wno-error
-            -Wno-missing-template-arg-list-after-template-kw
-            -fvisibility=default
-            -fexceptions -frtti
-            -I${duckdb_src_SOURCE_DIR}
-            -fpass-plugin=${PLUGIN_LIB}
-            -c ${duckdb_src_SOURCE_DIR}/duckdb.cpp
-            -o ${DUCKDB_IR_OBJ}
-    DEPENDS ${duckdb_src_SOURCE_DIR}/duckdb.cpp LLVMRuntimeSpecializationComptimePlugin clang
-    COMMENT "Compiling duckdb.cpp with IR-dumping plugin (embeds duckdb_execute_prepared IR)"
 )
 
 # ── Compile sqlite3_tpch_bench.cpp with the IR-dumping pass ──────────────────
@@ -132,7 +131,7 @@ add_custom_command(
             -I${CMAKE_CURRENT_SOURCE_DIR}
             -I${CMAKE_CURRENT_SOURCE_DIR}/..
             -I${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/ClangRuntimeSpecializer
-            -I${duckdb_src_SOURCE_DIR}
+            -I${duckdb_SOURCE_DIR}/src/include
             -I${LLVM_MAIN_INCLUDE_DIR}
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
@@ -149,14 +148,14 @@ file(WRITE "${DUCKDB_TPCH_IDE_STUB}" "")
 set_source_files_properties(duckdb_tpch_bench.cpp PROPERTIES HEADER_FILE_ONLY ON)
 
 add_benchmark(DuckDBTpchBenchmark PARTIAL_SOURCES_INTENDED
-    ${DUCKDB_TPCH_OBJ} ${DUCKDB_IR_OBJ} duckdb_tpch_bench.cpp ${DUCKDB_TPCH_IDE_STUB})
+    ${DUCKDB_TPCH_OBJ} duckdb_tpch_bench.cpp ${DUCKDB_TPCH_IDE_STUB})
 
 target_include_directories(DuckDBTpchBenchmark PRIVATE
     ${LLVM_THIRD_PARTY_DIR}/benchmark/include
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/..
     ${CMAKE_CURRENT_SOURCE_DIR}/../../runtime/ClangRuntimeSpecializer
-    ${duckdb_src_SOURCE_DIR}
+    ${duckdb_SOURCE_DIR}/src/include
     ${LLVM_MAIN_INCLUDE_DIR}
     ${LLVM_BINARY_DIR}/include
 )
@@ -170,10 +169,24 @@ set_target_properties(DuckDBTpchBenchmark PROPERTIES ENABLE_EXPORTS ON)
 if(NOT APPLE AND NOT MSVC)
     target_link_options(DuckDBTpchBenchmark PRIVATE "-Wl,--export-dynamic")
 endif()
-# Link libstdc++ for DuckDB's core_functions (v1.1.0+).
-# Use full path to libstdc++.a via target_link_libraries so the archive
-# appears AFTER the object files in the link command (target_link_options
-# flags are placed BEFORE objects and therefore cannot resolve their references).
+# Link duckdb_static with --whole-archive so blob-registering constructors survive
+# dead-strip.  Extension implementations live in separate static archives
+# (core_functions_extension, parquet_extension, jemalloc_extension) that are only
+# linked into the shared duckdb lib by default — we must pull them in explicitly.
+# duckdb_generated_extension_loader contains LoadAllExtensions().
+if(NOT APPLE AND NOT MSVC)
+    target_link_libraries(DuckDBTpchBenchmark PRIVATE
+        "-Wl,--whole-archive"
+        "$<TARGET_FILE:duckdb_static>"
+        "$<TARGET_FILE:duckdb_generated_extension_loader>"
+        "$<TARGET_FILE:core_functions_extension>"
+        "$<TARGET_FILE:parquet_extension>"
+        "$<TARGET_FILE:jemalloc_extension>"
+        "-Wl,--no-whole-archive"
+    )
+    add_dependencies(DuckDBTpchBenchmark duckdb_static duckdb_generated_extension_loader
+        core_functions_extension parquet_extension jemalloc_extension)
+endif()
 if(NOT APPLE AND NOT MSVC AND CRS_GCC_TOOLCHAIN_PATH)
     target_link_libraries(DuckDBTpchBenchmark PRIVATE
         "${CRS_GCC_TOOLCHAIN_PATH}/lib/libstdc++.a"
@@ -187,8 +200,7 @@ set(TPCH_SQLITE3_IR_OBJ  "${SQLITE3_IR_OBJ}"                                    
 set(TPCH_SQLITE3_SRC_DIR "${sqlite3_src_SOURCE_DIR}"                             PARENT_SCOPE)
 set(TPCH_SRC_DIR         "${CMAKE_CURRENT_SOURCE_DIR}"                           PARENT_SCOPE)
 set(TPCH_SRC_FILE        "${CMAKE_CURRENT_SOURCE_DIR}/sqlite3_tpch_bench.cpp"    PARENT_SCOPE)
-set(DUCKDB_IR_OBJ        "${DUCKDB_IR_OBJ}"                                      PARENT_SCOPE)
-set(DUCKDB_SRC_DIR       "${duckdb_src_SOURCE_DIR}"                              PARENT_SCOPE)
+set(DUCKDB_SRC_DIR       "${duckdb_SOURCE_DIR}/src/include"                      PARENT_SCOPE)
 set(DUCKDB_TPCH_OBJ      "${DUCKDB_TPCH_OBJ}"                                   PARENT_SCOPE)
 set(DUCKDB_TPCH_SRC_FILE "${CMAKE_CURRENT_SOURCE_DIR}/duckdb_tpch_bench.cpp"    PARENT_SCOPE)
 set(DUCKDB_TPCH_SRC_DIR  "${CMAKE_CURRENT_SOURCE_DIR}"                           PARENT_SCOPE)

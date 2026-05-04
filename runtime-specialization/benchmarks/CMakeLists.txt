@@ -234,7 +234,7 @@ add_custom_command(
 add_benchmark(AllBenchmarks PARTIAL_SOURCES_INTENDED
     ${KERNELS_OBJ_FILE} ${ALL_OBJ_SPEC} ${ALL_OBJ_DB} ${ALL_OBJ_POLY}
     ${ALL_OBJ_TPCH} ${TPCH_SQLITE3_IR_OBJ}
-    ${ALL_OBJ_DUCKDB_TPCH} ${DUCKDB_IR_OBJ}
+    ${ALL_OBJ_DUCKDB_TPCH}
     AllBenchmarks_main.cpp)
 
 target_include_directories(AllBenchmarks PRIVATE
@@ -256,6 +256,19 @@ target_compile_options(AllBenchmarks PRIVATE -fexceptions -frtti)
 set_target_properties(AllBenchmarks PROPERTIES ENABLE_EXPORTS ON)
 if(NOT APPLE AND NOT MSVC)
     target_link_options(AllBenchmarks PRIVATE "-Wl,--export-dynamic")
+endif()
+if(NOT APPLE AND NOT MSVC)
+    target_link_libraries(AllBenchmarks PRIVATE
+        "-Wl,--whole-archive"
+        "$<TARGET_FILE:duckdb_static>"
+        "$<TARGET_FILE:duckdb_generated_extension_loader>"
+        "$<TARGET_FILE:core_functions_extension>"
+        "$<TARGET_FILE:parquet_extension>"
+        "$<TARGET_FILE:jemalloc_extension>"
+        "-Wl,--no-whole-archive"
+    )
+    add_dependencies(AllBenchmarks duckdb_static duckdb_generated_extension_loader
+        core_functions_extension parquet_extension jemalloc_extension)
 endif()
 if(NOT APPLE AND NOT MSVC AND CRS_GCC_TOOLCHAIN_PATH)
     target_link_libraries(AllBenchmarks PRIVATE
