@@ -605,6 +605,24 @@ def best_practice_env(benchmark_cpus: list[int]):
 
 
 # ---------------------------------------------------------------------------
+# Memory limit helpers (FR-047)
+# ---------------------------------------------------------------------------
+
+def _wrap_with_mem_limits(cmd: list[str], mem_max: str, mem_high: str) -> list[str]:
+    """Prepend systemd-run --scope memory limits to cmd; warn and return cmd unchanged if unavailable."""
+    systemd_run = shutil.which("systemd-run")
+    if not systemd_run:
+        print(
+            "Warning: systemd-run not found; memory limits will not be applied.",
+            file=sys.stderr,
+        )
+        return cmd
+    return [systemd_run, "--scope",
+            "-p", f"MemoryMax={mem_max}",
+            "-p", f"MemoryHigh={mem_high}"] + cmd
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -819,6 +837,8 @@ def cmd_record(args):
                 )
             taskset_bin = shutil.which("taskset") or "taskset"
             full_cmd = [taskset_bin, "-c", cpu_list_str] + cmd
+            if not args.no_mem_limits:
+                full_cmd = _wrap_with_mem_limits(full_cmd, args.mem_max, args.mem_high)
             print(f"Running: {' '.join(full_cmd)}", flush=True)
             result = subprocess.run(full_cmd, env=sub_env)
             if result.returncode != 0:
@@ -839,8 +859,11 @@ def cmd_record(args):
         if result.returncode != 0:
             sys.exit(result.returncode)
     else:
-        print(f"Running: {' '.join(cmd)}", flush=True)
-        result = subprocess.run(cmd, env=sub_env)
+        full_cmd = cmd
+        if not args.no_mem_limits:
+            full_cmd = _wrap_with_mem_limits(full_cmd, args.mem_max, args.mem_high)
+        print(f"Running: {' '.join(full_cmd)}", flush=True)
+        result = subprocess.run(full_cmd, env=sub_env)
         if result.returncode != 0:
             # run_dir persists with whatever was written for manual inspection.
             print(f"Raw data preserved at: {run_dir}", file=sys.stderr)
@@ -904,6 +927,18 @@ def main():
     parser.add_argument(
         "--keep-chrome-traces", action="store_true",
         help="Do not delete *_chrome_trace.json files after the benchmark run.",
+    )
+    parser.add_argument(
+        "--no-mem-limits", action="store_true",
+        help="Do not wrap the benchmark with systemd-run memory limits.",
+    )
+    parser.add_argument(
+        "--mem-max", metavar="SIZE", default="20G",
+        help="Hard memory ceiling passed as MemoryMax to systemd-run (default: 20G).",
+    )
+    parser.add_argument(
+        "--mem-high", metavar="SIZE", default="18G",
+        help="Soft memory high-water mark passed as MemoryHigh to systemd-run (default: 18G).",
     )
 
     args = parser.parse_args()
