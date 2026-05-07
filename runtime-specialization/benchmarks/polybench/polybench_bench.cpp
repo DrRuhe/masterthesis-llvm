@@ -25,7 +25,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+  static void BM_jit_analysis____##K(benchmark::State& S) { \
+    auto A = std::make_tuple((int)S.range(0)); \
+    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_2(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -36,7 +39,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+  static void BM_jit_analysis____##K(benchmark::State& S) { \
+    auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
+    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_3(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -47,7 +53,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+  static void BM_jit_analysis____##K(benchmark::State& S) { \
+    auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
+    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_4(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -58,7 +67,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+  static void BM_jit_analysis____##K(benchmark::State& S) { \
+    auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
+    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_5(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -69,7 +81,10 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+  static void BM_jit_analysis____##K(benchmark::State& S) { \
+    auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
+    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
 
 
 
@@ -105,11 +120,6 @@ extern "C" void kernel_correlation(int m, int n) {
 }
 inline constexpr char Fn_correlation[] = "kernel_correlation";
 POLYBENCH_IMPL_2(correlation)
-
-static void BM_jit_analysis____correlation(benchmark::State& S) {
-    auto A = std::make_tuple((int)S.range(0), (int)S.range(1));
-    CRS::benchmarkJITAnalysis<Fn_correlation>(S, kernel_correlation, A);
-}
 
 // ── covariance ────────────────────────────────────────────────────────────────
 #define POLYBENCH_KERNEL      covariance
@@ -812,12 +822,13 @@ BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:speci
 BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:specialized_exec;")->SMALL; \
 BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:specialized_exec;")->MEDIUM; \
 BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE;
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_analysis;")->MINI->Iterations(1)->UseManualTime(); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime(); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime(); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime(); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime();
 
-
-BENCHMARK(BM_jit_analysis____correlation)
-    ->Name("BM_g:polybench;n:correlation;s:EXTRALARGE;t:jit_analysis;")
-    ->Args({2600, 3000})->Iterations(1)->UseManualTime();
 
 POLYBENCH_BENCHMARK_SPEC(correlation,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
 POLYBENCH_BENCHMARK_SPEC(covariance,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))

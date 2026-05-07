@@ -213,6 +213,11 @@ BENCHMARK(BM_jit_overhead_tpch_q3)->Name("BM_g:db/sqlite3/tpch;n:tpch_q3;t:jit_o
 void BM_specialized_exec_tpch_q3(benchmark::State& state) { phaseSpecializedExec(state, getQuery(3).c_str()); }
 BENCHMARK(BM_specialized_exec_tpch_q3)->Name("BM_g:db/sqlite3/tpch;n:tpch_q3;t:specialized_exec;")->MinTime(1.0);
 
+void BM_jit_analysis_tpch_q3(benchmark::State& state) { phaseJITAnalysis(state, getQuery(3).c_str()); }
+BENCHMARK(BM_jit_analysis_tpch_q3)
+    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q3;t:jit_analysis;")
+    ->Iterations(1)->UseManualTime();
+
 // ── Q4: Order Priority Checking ───────────────────────────────────────────────
 
 void BM_unspecialized_tpch_q4(benchmark::State& state) { phaseUnspecialized(state, getQuery(4).c_str()); }
@@ -255,6 +260,11 @@ BENCHMARK(BM_jit_overhead_tpch_q6)->Name("BM_g:db/sqlite3/tpch;n:tpch_q6;t:jit_o
 
 void BM_specialized_exec_tpch_q6(benchmark::State& state) { phaseSpecializedExec(state, getQuery(6).c_str()); }
 BENCHMARK(BM_specialized_exec_tpch_q6)->Name("BM_g:db/sqlite3/tpch;n:tpch_q6;t:specialized_exec;")->MinTime(1.0);
+
+void BM_jit_analysis_tpch_q6(benchmark::State& state) { phaseJITAnalysis(state, getQuery(6).c_str()); }
+BENCHMARK(BM_jit_analysis_tpch_q6)
+    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q6;t:jit_analysis;")
+    ->Iterations(1)->UseManualTime();
 
 // ── Q7: Volume Shipping ───────────────────────────────────────────────────────
 
