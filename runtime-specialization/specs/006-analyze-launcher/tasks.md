@@ -37,7 +37,7 @@
 - [X] T008 [US1] Implement `create_report_dir(cwd)` in `analyze.py` — creates `reports/<YYYYMMDD-hhmmss>-analysis/` and `_staging/{asm,pass_trace,chrome_trace}/` subdirs; returns paths
 - [X] T009 [US1] Implement `run_benchmarks(binary, names, staging, config)` in `analyze.py` — builds `|`-joined filter, sets `CRS_*` env vars, calls subprocess with timeout; returns `(returncode, elapsed_s, stderr)`
 - [X] T010 [US1] Implement `extract_orig_asm(binary, func_name, out_path, objdump)` in `analyze.py` — runs objdump, extracts function section via regex, normalizes, writes `out_path`
-- [X] T011 [US1] Implement `normalize_asm(text)` and `write_diff(orig_path, spec_path, diff_path)` in `analyze.py`
+- [X] T011 [US1] Implement `normalize_asm(text)`, `_parse_all_functions(output)`, `_find_callees(lines)` in `analyze.py` — transitive callee extraction; no diff generation
 - [X] T012 [US1] Implement `route_artifacts(staging, report_dir, benchmarks, config)` in `analyze.py` — for each benchmark: move pass trace JSON, chrome trace JSON; match+copy ASM files; call `extract_orig_asm`; write diff; call `plot_from_json` if pass_trace enabled
 - [X] T013 [US1] Implement `write_summary(report_dir, results)` in `analyze.py` — writes `summary.md` table after all benchmarks complete
 - [X] T014 [US1] Implement progress printing in main loop — `[i/N] Running <name>... done (2.3s)` pattern (FR-014)

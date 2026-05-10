@@ -766,6 +766,14 @@ namespace clangRuntimeSpecializer {
 
     std::string AsmText;
     llvm::raw_string_ostream OS(AsmText);
+
+    // Strip leading '&' if present (function name annotation convention)
+    std::string CleanName = OrigFuncName;
+    if (!CleanName.empty() && CleanName.front() == '&')
+      CleanName.erase(0, 1);
+
+    OS << "<" << CleanName << ">:\n";
+
     const uint8_t* Bytes = reinterpret_cast<const uint8_t*>(Addr);
     uint64_t PC = 0;
     for (int I = 0; I < 512; ++I) {
@@ -780,11 +788,6 @@ namespace clangRuntimeSpecializer {
       PC += Size;
       if (IsRet) break;
     }
-
-    // Strip leading '&' if present (function name annotation convention)
-    std::string CleanName = OrigFuncName;
-    if (!CleanName.empty() && CleanName.front() == '&')
-      CleanName.erase(0, 1);
 
     std::string Path = std::string(DumpDir) + "/" + CleanName + "__specialized.asm";
     if (FILE* F = std::fopen(Path.c_str(), "w")) {

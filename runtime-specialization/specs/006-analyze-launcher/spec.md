@@ -84,7 +84,7 @@ A developer runs analyze.py multiple times (e.g., before and after a code change
 - **FR-003**: The tool MUST run the selected jit_analysis benchmarks as a single invocation using a combined filter of their fully-qualified names, so each analysis benchmark executes exactly once per `./analyze.py` invocation.
 - **FR-004**: The tool MUST write all output into a subdirectory of `reports/` named `YYYYMMDD-hhmmss-analysis`, relative to the working directory where the tool is invoked.
 - **FR-005**: For each executed jit_analysis benchmark, the tool MUST create a subdirectory within the report directory named by replacing all non-alphanumeric characters in the fully-qualified benchmark name with underscores (e.g., `BM_g_polybench_n_correlation_s_EXTRALARGE_t_jit_analysis_`), and place all artifacts for that benchmark there.
-- **FR-006**: When ASM dumping is enabled (default), the tool MUST: (a) capture specialized ASM by directing JIT output to the benchmark subdirectory; (b) for each `*__specialized.asm` file found (one or more), derive the function name from the filename; (c) extract the corresponding original ASM from the binary for each function; (d) write a normalized diff for each (orig, spec) pair. All pairs are placed in the same benchmark subdirectory.
+- **FR-006**: When ASM dumping is enabled (default), the tool MUST: (a) capture specialized ASM by directing JIT output to the benchmark subdirectory; (b) for each `*__specialized.asm` file found (one or more), derive the function name from the filename; (c) extract the corresponding original ASM from the binary for each function, including all functions it transitively calls/jumps to (BFS up to 50 functions). All pairs are placed in the same benchmark subdirectory.
 - **FR-007**: When pass trace is enabled (default), the tool MUST direct pass trace JSON output to the benchmark subdirectory and generate a rendered pass trace plot in that subdirectory.
 - **FR-008**: When chrome trace is enabled (default), the tool MUST direct chrome trace JSON output to the benchmark subdirectory.
 - **FR-009**: The tool MUST support `--no-asm-dump`, `--no-pass-trace`, and `--no-chrome-trace` flags to disable individual analysis components independently.
@@ -100,7 +100,7 @@ A developer runs analyze.py multiple times (e.g., before and after a code change
 - **Benchmark subdirectory**: Named after the fully-qualified benchmark name with all non-alphanumeric characters (semicolons, colons, spaces) replaced by underscores (e.g., `BM_g_polybench_n_correlation_s_EXTRALARGE_t_jit_analysis_`); holds all artifacts for that benchmark.
 - **Specialized ASM**: Disassembly of the JIT-compiled, runtime-specialized version of the target function.
 - **Original ASM**: Disassembly of the AOT-compiled version of the same function extracted from the benchmark binary's ELF symbol table.
-- **Normalized diff**: A unified diff of both ASM files after stripping addresses and collapsing whitespace to highlight structural changes.
+- **Original ASM**: Disassembly of the AOT-compiled version of the same function extracted from the benchmark binary's ELF symbol table, including all functions it transitively calls or tail-calls (BFS, cap 50).
 - **Pass trace plot**: A rendered visual showing per-pass instruction/function/BB counts and timings across the JIT pipeline.
 - **Chrome trace**: A JSON file compatible with Chrome's tracing viewer showing JIT pipeline timing in a flame-graph format.
 - **Summary file** (`summary.md`): Markdown index at the report root listing every benchmark run, its pass/fail status, elapsed time, and artifact counts. Written after all benchmarks complete.
@@ -110,7 +110,7 @@ A developer runs analyze.py multiple times (e.g., before and after a code change
 ### Measurable Outcomes
 
 - **SC-001**: A developer can run a full multi-benchmark analysis for a benchmark group with a single command and without specifying any function symbol names manually.
-- **SC-002**: Each benchmark produces a complete set of enabled artifacts (original ASM, specialized ASM, normalized diff, pass trace plot, chrome trace) in the correct subdirectory without manual post-processing.
+- **SC-002**: Each benchmark produces a complete set of enabled artifacts (original ASM with callees, specialized ASM with function header, pass trace plot, chrome trace) in the correct subdirectory without manual post-processing.
 - **SC-003**: Running the tool twice in succession produces two independent, non-overlapping report directories with distinct timestamps.
 - **SC-004**: When one benchmark fails, the remaining benchmarks still produce their full artifact sets (failure isolation: zero cross-benchmark contamination).
 - **SC-005**: The tool completes benchmark discovery, filter construction, and report-directory setup in under 5 seconds before the first benchmark invocation begins.

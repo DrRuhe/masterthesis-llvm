@@ -13,7 +13,6 @@ Usage:
 
 import argparse
 import dataclasses
-import difflib
 import os
 import re
 import shutil
@@ -184,20 +183,56 @@ def run_benchmarks(
 # ---------------------------------------------------------------------------
 
 def normalize_asm(text: str) -> str:
-    """Strip leading address+colon, collapse whitespace, drop blank lines."""
+    """Strip addresses, collapse whitespace, drop blank lines."""
     lines = []
     for line in text.splitlines():
+        # Strip address from instruction lines: "   1234:  pushq" → "pushq"
         line = re.sub(r"^\s*[0-9a-f]+:\s*", "", line)
+        # Strip leading hex address from function header lines: "000012345 <funcA>:" → "<funcA>:"
+        line = re.sub(r"^[0-9a-f]{4,}\s+(<)", r"\1", line)
         line = re.sub(r"\s+", " ", line).strip()
         if line:
             lines.append(line)
     return "\n".join(lines)
 
 
-def extract_orig_asm(binary: Path, func_name: str, out_path: Path, objdump: str) -> bool:
-    """Extract and normalize func_name from binary ELF using objdump.
+def _parse_all_functions(objdump_output: str) -> dict[str, list[str]]:
+    """Parse objdump -d output into {func_name: raw_lines} dict."""
+    funcs: dict[str, list[str]] = {}
+    current_name: Optional[str] = None
+    current_lines: list[str] = []
+    header_re = re.compile(r"^\S.*<([^>]+)>:")
 
-    Writes normalized text to out_path. Returns True if a non-empty section was found.
+    for line in objdump_output.splitlines():
+        m = header_re.match(line)
+        if m:
+            if current_name is not None:
+                funcs[current_name] = current_lines
+            current_name = m.group(1)
+            current_lines = [line]
+        elif current_name is not None:
+            current_lines.append(line)
+
+    if current_name is not None and current_lines:
+        funcs[current_name] = current_lines
+    return funcs
+
+
+def _find_callees(lines: list[str]) -> set[str]:
+    """Return function names referenced by call/jmp instructions (no offset, no PLT)."""
+    callees: set[str] = set()
+    target_re = re.compile(r"\b(?:call[ql]?|jmp[ql]?)\b.*<([^>+@]+)>")
+    for line in lines:
+        m = target_re.search(line)
+        if m:
+            callees.add(m.group(1))
+    return callees
+
+
+def extract_orig_asm(binary: Path, func_name: str, out_path: Path, objdump: str) -> bool:
+    """Extract func_name and all transitively called functions from binary ELF.
+
+    Writes normalized text to out_path. Returns True if func_name was found.
     """
     try:
         result = subprocess.run(
@@ -209,36 +244,34 @@ def extract_orig_asm(binary: Path, func_name: str, out_path: Path, objdump: str)
         out_path.write_text("")
         return False
 
-    raw_lines: list[str] = []
-    in_func   = False
-    func_re   = re.compile(r"^\S.*<" + re.escape(func_name) + r">:")
-    other_re  = re.compile(r"^\S.*<[^>]+>:")
-    for line in result.stdout.splitlines():
-        if func_re.match(line):
-            in_func = True
-            raw_lines.append(line)
-            continue
-        if in_func:
-            if other_re.match(line) and func_name not in line:
-                break
-            raw_lines.append(line)
+    all_funcs = _parse_all_functions(result.stdout)
 
-    normalized = normalize_asm("\n".join(raw_lines))
-    out_path.write_text(normalized)
-    if not normalized:
+    if func_name not in all_funcs:
+        out_path.write_text("")
         print(f"  WARNING: symbol '{func_name}' not found in ELF (inline or stripped). "
               "Empty placeholder written.", file=sys.stderr)
         return False
+
+    # BFS: collect the target function and all transitively called functions (cap at 50)
+    visited: list[str] = []
+    visited_set: set[str] = set()
+    queue = [func_name]
+    while queue and len(visited) < 50:
+        fn = queue.pop(0)
+        if fn in visited_set:
+            continue
+        visited_set.add(fn)
+        if fn not in all_funcs:
+            continue
+        visited.append(fn)
+        for callee in sorted(_find_callees(all_funcs[fn])):
+            if callee not in visited_set:
+                queue.append(callee)
+
+    sections = "\n\n".join("\n".join(all_funcs[fn]) for fn in visited if fn in all_funcs)
+    normalized = normalize_asm(sections)
+    out_path.write_text(normalized)
     return True
-
-
-def write_diff(orig_path: Path, spec_path: Path, diff_path: Path) -> None:
-    """Write a unified diff of normalized original vs. specialized ASM."""
-    orig_lines = orig_path.read_text().splitlines(keepends=True)
-    spec_lines = spec_path.read_text().splitlines(keepends=True)
-    diff = list(difflib.unified_diff(orig_lines, spec_lines,
-                                     fromfile="original", tofile="specialized"))
-    diff_path.write_text("".join(diff))
 
 # ---------------------------------------------------------------------------
 # Artifact routing
@@ -291,7 +324,7 @@ def route_artifacts(
             else:
                 print(f"  WARNING: chrome trace JSON not found: {src.name}", file=sys.stderr)
 
-        # ── Specialized ASM + original ASM + diff ────────────────────
+        # ── Specialized ASM + original ASM (with callees) ────────────
         if config.asm and objdump:
             spec_files = _find_asm_for_kernel(kernel_tag, staging["asm"])
             if not spec_files and not kernel_tag:
@@ -306,11 +339,6 @@ def route_artifacts(
                 ok = extract_orig_asm(config.binary, func_name, orig_dst, objdump)
                 if ok:
                     run.artifacts.append(orig_dst)
-
-                if orig_dst.exists() and spec_dst.exists():
-                    diff_dst = run.subdir / f"diff_{func_name}.diff"
-                    write_diff(orig_dst, spec_dst, diff_dst)
-                    run.artifacts.append(diff_dst)
 
 # ---------------------------------------------------------------------------
 # Summary
