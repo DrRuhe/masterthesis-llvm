@@ -72,7 +72,55 @@ namespace clangRuntimeSpecializer {
     // Lives outside the header to avoid pulling LLVM RTTI symbols into user translation units.
     void removeJITDylibNoexcept(llvm::orc::ExecutionSession* ES,
                                 llvm::orc::JITDylib* Dylib) noexcept;
-  }
+
+    // T002: Extract return type and explicit arg types from a lambda's operator().
+    // Primary template — triggers static_assert for generic lambdas or non-callables.
+    template <class F> struct LambdaTraits {
+      static_assert(sizeof(F) == 0,
+        "specializeLambda: Lambda must have a single non-generic operator(). "
+        "Generic lambdas (auto params) are not supported.");
+    };
+    template <class L, class R, class... Args>
+    struct LambdaTraits<R (L::*)(Args...) const> {
+      using RetType   = R;
+      using ArgTypes  = std::tuple<Args...>;
+      using FnPtrType = R(*)(Args...);
+    };
+    template <class L, class R, class... Args>
+    struct LambdaTraits<R (L::*)(Args...)> {  // mutable lambda
+      using RetType   = R;
+      using ArgTypes  = std::tuple<Args...>;
+      using FnPtrType = R(*)(Args...);
+    };
+
+    // Convenience alias: tuple of explicit arg types of Lambda::operator().
+    template <class Lambda>
+    using LambdaExplicitArgs =
+        typename LambdaTraits<decltype(&Lambda::operator())>::ArgTypes;
+
+    // T003: Map a C++ type to its LLVM IR Type* without needing a runtime value.
+    template <class T>
+    static llvm::Type* serializeTypeToLLVM(llvm::LLVMContext& Ctx) {
+      using D = std::decay_t<T>;
+      if constexpr (std::is_same_v<D, bool>)
+        return llvm::Type::getInt1Ty(Ctx);
+      else if constexpr (std::is_integral_v<D>)
+        return llvm::Type::getIntNTy(Ctx, static_cast<unsigned>(sizeof(D) * 8));
+      else if constexpr (std::is_same_v<D, float>)
+        return llvm::Type::getFloatTy(Ctx);
+      else if constexpr (std::is_floating_point_v<D>)
+        return llvm::Type::getDoubleTy(Ctx);
+      else  // pointer or class → opaque pointer
+        return llvm::PointerType::getUnqual(Ctx);
+    }
+
+    // Expand a std::tuple<T0, T1, ...> into a vector of LLVM Type*.
+    template <class Tuple, std::size_t... I>
+    std::vector<llvm::Type*> tupleToLLVMTypes(llvm::LLVMContext& Ctx,
+                                              std::index_sequence<I...>) {
+      return { serializeTypeToLLVM<std::tuple_element_t<I, Tuple>>(Ctx)... };
+    }
+  } // namespace detail
 
   /// RAII wrapper for a JIT-compiled specialization.
   /// Owns the associated JITDylib — frees compiled machine code on destruction.
@@ -118,6 +166,59 @@ namespace clangRuntimeSpecializer {
     }
 
     R(*FnPtr)()                   = nullptr;
+    llvm::orc::JITDylib*          Dylib = nullptr;
+    llvm::orc::ExecutionSession*  ES    = nullptr;
+  };
+
+  // T004: RAII wrapper for a partially-specialized lambda.
+  // Owns the JITDylib; frees compiled machine code on destruction.
+  // operator()(Args...) calls the JIT-compiled function with runtime args.
+  template <class R, class... Args>
+  class SpecializedLambda {
+    friend class ClangRuntimeSpecializer;
+
+    SpecializedLambda(R(*fp)(Args...), llvm::orc::JITDylib& dylib,
+                      llvm::orc::ExecutionSession& es) noexcept
+        : FnPtr(fp), Dylib(&dylib), ES(&es) {}
+
+  public:
+    SpecializedLambda() noexcept = default;
+
+    SpecializedLambda(SpecializedLambda&& o) noexcept
+        : FnPtr(o.FnPtr), Dylib(o.Dylib), ES(o.ES)
+    { o.FnPtr = nullptr; o.Dylib = nullptr; o.ES = nullptr; }
+
+    SpecializedLambda& operator=(SpecializedLambda&& o) noexcept {
+        if (this != &o) {
+            cleanup();
+            FnPtr = o.FnPtr; Dylib = o.Dylib; ES = o.ES;
+            o.FnPtr = nullptr; o.Dylib = nullptr; o.ES = nullptr;
+        }
+        return *this;
+    }
+
+    SpecializedLambda(const SpecializedLambda&) = delete;
+    SpecializedLambda& operator=(const SpecializedLambda&) = delete;
+
+    ~SpecializedLambda() { cleanup(); }
+
+    R operator()(Args... args) const {
+        if (!FnPtr)
+            throw ClangRuntimeSpecializerError("SpecializedLambda: not initialized or timed out");
+        return FnPtr(std::forward<Args>(args)...);
+    }
+    R call(Args... args) const { return operator()(std::forward<Args>(args)...); }
+
+    explicit operator bool() const noexcept { return FnPtr != nullptr; }
+
+  private:
+    void cleanup() noexcept {
+        if (Dylib && ES)
+            detail::removeJITDylibNoexcept(ES, Dylib);
+        FnPtr = nullptr; Dylib = nullptr; ES = nullptr;
+    }
+
+    R(*FnPtr)(Args...)             = nullptr;
     llvm::orc::JITDylib*          Dylib = nullptr;
     llvm::orc::ExecutionSession*  ES    = nullptr;
   };
@@ -355,6 +456,20 @@ namespace clangRuntimeSpecializer {
       return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
     }
 
+    // T006: specializeLambda member overloads — bake in lambda closure, keep explicit args variable.
+    template <class R, class Lambda,
+              std::enable_if_t<FirstArgIsNotOptions<Lambda>::value, int> = 0>
+    __attribute__((noinline))
+    auto specializeLambda(const char* funcName, Lambda& lambda) {
+      return specializeLambdaWithOpts<R>(funcName, lambda, CurrentOptions);
+    }
+
+    template <class R, class Lambda>
+    __attribute__((noinline))
+    auto specializeLambda(const char* funcName, Lambda& lambda, const Options& opts) {
+      return specializeLambdaWithOpts<R>(funcName, lambda, opts);
+    }
+
     ~ClangRuntimeSpecializer();
 
   private:
@@ -516,6 +631,106 @@ namespace clangRuntimeSpecializer {
                                   const std::string& OrigFuncName = {});
     uint64_t dumpJITAssembly(const std::string& OrigFuncName, uintptr_t Addr);
     static void encourageInlining(llvm::Function* F);
+
+    // T005: Partial specialization — lambda closure is baked in; explicit arg types remain variable.
+    // Returns JITResult containing function pointer of type R(*)(ExplicitArgs...).
+    template <class Lambda>
+    JITResult specializeLambdaImpl(const char* funcName, Lambda& lambda, const Options& Opts) {
+      using ArgTuple = detail::LambdaExplicitArgs<Lambda>;
+      constexpr std::size_t NArgs = std::tuple_size_v<ArgTuple>;
+
+      checkInitialization(funcName);
+      llvm::Function* TargetFunc = getTargetFunction(funcName);
+
+      // The lambda closure is the single constant arg; the explicit args stay variable.
+      // So the kernel is expected to have NArgs+1 parameters total.
+      validateArgs(TargetFunc, NArgs + 1);
+
+      log(LogLevel::Info, (llvm::Twine("Specializing lambda call to: ") + funcName).str());
+
+      std::string UniqueWrapperName = createUniqueWrapperName() + "_lambda" +
+                                       (Opts.Optimize ? "" : "_no_opt");
+
+      std::unique_ptr<llvm::Module> NewModule;
+#ifndef NDEBUG
+      auto FreshLLVMCtx = std::make_unique<llvm::LLVMContext>();
+      llvm::LLVMContext* FreshCtxPtr = FreshLLVMCtx.get();
+      llvm::orc::ThreadSafeContext NewTSCtx(std::move(FreshLLVMCtx));
+      {
+        llvm::SmallVector<char, 0> BC;
+        llvm::raw_svector_ostream OS(BC);
+        llvm::WriteBitcodeToFile(*TargetFunc->getParent(), OS);
+        auto Buf = llvm::MemoryBuffer::getMemBufferCopy(
+            llvm::StringRef(BC.data(), BC.size()),
+            TargetFunc->getParent()->getName());
+        llvm::SMDiagnostic Err;
+        NewModule = llvm::parseIR(*Buf, Err, *FreshCtxPtr);
+        if (!NewModule)
+          llvm::report_fatal_error("specializeLambdaImpl: bitcode re-parse failed");
+      }
+#else
+      llvm::orc::ThreadSafeContext NewTSCtx = TSCtx;
+      NewModule = llvm::CloneModule(*TargetFunc->getParent());
+#endif
+      auto* TargetFuncInNewModule = NewModule->getFunction(TargetFunc->getName());
+      encourageInlining(TargetFuncInNewModule);
+
+      llvm::LLVMContext& Ctx = NewModule->getContext();
+
+      // Build wrapper function type: R(ExplicitArgType0, ExplicitArgType1, ...)
+      std::vector<llvm::Type*> ParamTys =
+          detail::tupleToLLVMTypes<ArgTuple>(Ctx, std::make_index_sequence<NArgs>{});
+      llvm::FunctionType* WrapperTy =
+          llvm::FunctionType::get(TargetFuncInNewModule->getReturnType(), ParamTys, false);
+      llvm::Function* WrapperFn = llvm::Function::Create(
+          WrapperTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
+      if (!Opts.Optimize)
+        WrapperFn->addFnAttr("force-no-optimize");
+
+      llvm::BasicBlock* BB = llvm::BasicBlock::Create(Ctx, "entry", WrapperFn);
+      llvm::IRBuilder<> Builder(BB);
+
+      // Serialize the lambda object (closure struct) as the first constant arg.
+      std::vector<llvm::Value*> CallArgs;
+      CallArgs.push_back(serializeArgumentToIR(Builder, lambda));
+
+      // Forward the wrapper's live parameters (the explicit args) unchanged.
+      for (auto& Arg : WrapperFn->args())
+        CallArgs.push_back(&Arg);
+
+      auto* CI = Builder.CreateCall(TargetFuncInNewModule->getFunctionType(),
+                                    TargetFuncInNewModule, CallArgs);
+      CI->setAttributes(TargetFuncInNewModule->getAttributes());
+      CI->addFnAttr(llvm::Attribute::AlwaysInline);
+
+      if (TargetFuncInNewModule->getReturnType()->isVoidTy())
+        Builder.CreateRetVoid();
+      else
+        Builder.CreateRet(CI);
+
+      prepareModuleForJIT(*NewModule, UniqueWrapperName);
+
+      auto TSM = llvm::orc::ThreadSafeModule(std::move(NewModule), std::move(NewTSCtx));
+      CurrentCallOptions = Opts;
+
+      return addModuleAndLookup(std::move(TSM), UniqueWrapperName, std::string(funcName));
+    }
+
+    // Unpack ArgTuple into SpecializedLambda<R, Args...> using tag dispatch.
+    template <class R, class... Args>
+    SpecializedLambda<R, Args...> makeSpecLambda(JITResult Res, std::tuple<Args...>*) {
+      if (Res.TimedOut || !Res.Addr) return {};
+      using FP = R(*)(Args...);
+      return SpecializedLambda<R, Args...>(
+          reinterpret_cast<FP>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
+    }
+
+    template <class R, class Lambda>
+    auto specializeLambdaWithOpts(const char* funcName, Lambda& lambda, const Options& opts) {
+      using ArgTuple = detail::LambdaExplicitArgs<Lambda>;
+      auto Res = specializeLambdaImpl<Lambda>(funcName, lambda, opts);
+      return makeSpecLambda<R>(Res, static_cast<ArgTuple*>(nullptr));
+    }
 
     explicit ClangRuntimeSpecializer();
 
@@ -686,6 +901,43 @@ namespace clangRuntimeSpecializer {
     After = RS->getCurrentCounters();
 
     ClangRuntimeSpecializer::printComparisonTable(funcName, Before, After);
+  }
+
+  // T006: assertSpecializedLambdaIsEquivalent — calls specializeLambda once, checks all inputs.
+  // Throws ClangRuntimeSpecializerChangesBehaviorError on return-value mismatch.
+  template <class R, class Lambda, class InputRange>
+  __attribute__((always_inline))
+  void assertSpecializedLambdaIsEquivalent(const char* funcName, Lambda& lambda,
+                                           const InputRange& inputs) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    auto spec = RS->specializeLambda<R>(funcName, lambda);
+    for (const auto& args : inputs) {
+      R expected = std::apply(lambda, args);
+      R actual   = std::apply(spec,   args);
+      if constexpr (HasEqualityOperator<R>::value) {
+        if (expected != actual)
+          throw ClangRuntimeSpecializerChangesBehaviorError(
+              (llvm::Twine("assertSpecializedLambdaIsEquivalent: result mismatch for ") +
+               funcName).str());
+      }
+    }
+    CRS_LOG(Info, (llvm::Twine("assertSpecializedLambdaIsEquivalent passed for: ") + funcName).str());
+  }
+
+  // funcName must name a kernel whose first parameter accepts a pointer to Lambda's closure struct; remaining parameters match Lambda::operator() in order.
+  template <class R, class Lambda>
+  __attribute__((noinline))
+  auto specializeLambda(const char* funcName, Lambda& lambda) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->specializeLambda<R>(funcName, lambda);
+  }
+
+  template <class R, class Lambda>
+  __attribute__((noinline))
+  auto specializeLambda(const char* funcName, Lambda& lambda,
+                        const ClangRuntimeSpecializer::Options& opts) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->specializeLambda<R>(funcName, lambda, opts);
   }
 
 } // namespace clangRuntimeSpecializer
