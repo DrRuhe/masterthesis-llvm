@@ -4,6 +4,18 @@
 **Created**: 2026-05-10  
 **Status**: Draft  
 
+## Clarifications
+
+### Session 2026-05-13
+
+- Q: How should the UC7 DFA transition table be constructed? → A: Programmatic at startup — a small builder function fills `g_dfa_table` once (e.g., via a static initializer or `__attribute__((constructor))`); no external regex library.
+- Q: Which sorting algorithm should `generic_sort` implement? → A: Quicksort with median-of-three pivot selection.
+- Q: Should `convolve2d` use separable (two-pass 1D) or non-separable (direct 2D) convolution? → A: Separable two-pass (horizontal then vertical 1D pass) to maximize constant-folding payoff when `ksize` is baked in.
+- Q: How should UC14 re-shuffle between iterations? → A: Call `state.PauseTiming()` before `std::shuffle` and `state.ResumeTiming()` after, so only the sort itself is timed.
+- Q: Should the six benchmarks be separate binaries or a combined binary? → A: One separate `add_benchmark` target per use case (satisfying FR-006), AND all six kernel and benchmark objects are added to the existing `AllBenchmarks` target.
+
+---
+
 ## Overview
 
 This feature adds six self-contained C++ benchmark workloads that exercise the
@@ -124,10 +136,10 @@ themselves (User Story 1) already deliver value without it.
 
 - **FR-001**: Each benchmark MUST follow the TU separation pattern: the kernel function(s) live in a dedicated `*Kernels.cpp` file (no Google Benchmark headers, no `ClangRuntimeSpecializerBenchmark.h`); the benchmark registration and harness live in a separate `*Benchmark.cpp` file.
 - **FR-002**: Each benchmark binary MUST register at least three measurement phases per benchmark variant: `unspecialized` (baseline, repeated across iterations), `jit_overhead` (first-call specialization cost, `Iterations(1)`), and `specialized_exec` (execution of the specialized result, `Iterations(N)`).
-- **FR-003**: Each benchmark MUST use the `benchmarkJITOverhead` or `benchmarkJITAnalysis` helper macros from `ClangRuntimeSpecializerBenchmark.h` to ensure consistent phase naming and DuckDB schema compatibility.
+- **FR-003**: Each benchmark MUST follow the phase naming convention (`t:unspecialized`, `t:jit_overhead`, `t:specialized_exec`) required by `record_benchmark.py`. Because these benchmarks use the spec 010 `specializeLambda` API (via factory functions) rather than the `funcName`-based `benchmarkJITOverhead` helper, phases are registered manually with `->Name("BM_g:<group>;n:<name>;t:<phase>;")`. The naming convention and DuckDB schema compatibility are preserved.
 - **FR-004**: The "constant" parameters for each kernel MUST be clearly commented in the `*Kernels.h` header as `// specialization constant` so it is evident which arguments are fixed at JIT time.
-- **FR-005**: Each benchmark MUST compile successfully under the project's release build (`ninja -C llvm/build/release`) and pass `assertSpecializedIsEquivalent` for at least one test input before the benchmark runs.
-- **FR-006**: Each benchmark binary MUST be registered in the project's CMake as a separate `add_benchmark` target following the pattern established by `polybench_bench` and `tpch_bench`.
+- **FR-005**: Each benchmark MUST compile successfully under the project's release build (`ninja -C llvm/build/release`) and pass `assertSpecializedLambdaIsEquivalent` for at least one test input before the benchmark runs (called via the factory function, comparing the unspecialized kernel result against the `SpecializedLambda` result).
+- **FR-006**: Each benchmark binary MUST be registered in the project's CMake as a separate `add_benchmark` target following the pattern established by `polybench_bench` and `tpch_bench`. Additionally, all six kernel and benchmark object files MUST be added to the existing `AllBenchmarks` target so a single binary covers the full benchmark suite.
 
 **UC1 — SQL Expression Evaluation**
 
@@ -137,7 +149,7 @@ themselves (User Story 1) already deliver value without it.
 
 **UC2 — Image Convolution with Fixed Kernel**
 
-- **FR-013**: The kernel TU MUST implement `convolve2d(const float* src, float* dst, int width, int height, const float* kernel_coeffs, int ksize)` performing a separable or non-separable 2D convolution.
+- **FR-013**: The kernel TU MUST implement `convolve2d(const float* src, float* dst, int width, int height, const float* kernel_coeffs, int ksize)` performing a **separable two-pass** 2D convolution (one horizontal 1D pass followed by one vertical 1D pass), so that specializing `ksize` eliminates O(ksize²) multiplications per pixel and allows the JIT to fully unroll both inner loops.
 - **FR-014**: The specialization constants MUST be `kernel_coeffs` (pointer to a global coefficient array in the kernel TU), `ksize`, `width`, and `height`; `src` and `dst` are per-call variables.
 - **FR-015**: The default benchmark instance MUST use a 5×5 Gaussian kernel and a 1920×1080 image. The kernel coefficients array MUST be a non-`static` global in the kernel TU so the IRDumpingPass blob serializes it.
 
@@ -145,7 +157,7 @@ themselves (User Story 1) already deliver value without it.
 
 - **FR-016**: The kernel TU MUST implement `dfa_match(const char* haystack, int64_t len, const int* dfa_table, int n_states, int n_chars, int start_state, int accept_mask)` performing DFA-based substring search.
 - **FR-017**: The specialization constants MUST be `dfa_table` (pointer to a global DFA transition table), `n_states`, `n_chars`, `start_state`, and `accept_mask`; `haystack` and `len` are per-call variables.
-- **FR-018**: The default benchmark instance MUST use a DFA compiled from the pattern `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` (email address) applied to a ≥ 50 MB synthetic text corpus. The DFA table MUST be a non-`static` global in the kernel TU.
+- **FR-018**: The default benchmark instance MUST use a DFA compiled from the pattern `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` (email address) applied to a ≥ 50 MB synthetic text corpus. The DFA table MUST be a non-`static` global `int` array in the kernel TU, filled programmatically at binary startup by a builder function (e.g., invoked via `__attribute__((constructor))` or a static initializer object) — no external regex library is permitted in the kernel TU.
 
 **UC8 — Incremental View Maintenance**
 
@@ -161,16 +173,16 @@ themselves (User Story 1) already deliver value without it.
 
 **UC14 — Sort with Fixed Comparator**
 
-- **FR-025**: The kernel TU MUST implement `generic_sort(void* data, int64_t n_elements, int element_size, int (*comparator)(const void*, const void*))` performing an in-place sort using the provided comparator.
+- **FR-025**: The kernel TU MUST implement `generic_sort(void* data, int64_t n_elements, int element_size, int (*comparator)(const void*, const void*))` performing an in-place **quicksort with median-of-three pivot selection**, so the comparator appears in the partition hot path and its inlining (after JIT specialization) produces a measurable speedup.
 - **FR-026**: The specialization constants MUST be `comparator` (a function pointer to a comparator defined in the same kernel TU) and `element_size`; `data` and `n_elements` are per-call variables.
-- **FR-027**: The default benchmark instance MUST sort arrays of ≥ 1 million `int64_t` values using an ascending comparator. The array MUST be re-shuffled between iterations to ensure each call performs a real sort.
+- **FR-027**: The default benchmark instance MUST sort arrays of ≥ 1 million `int64_t` values using an ascending comparator. The array MUST be re-shuffled between iterations (using `std::shuffle` with a fixed seed) to ensure each call performs a real sort. The shuffle MUST be excluded from benchmark timing by wrapping it with `state.PauseTiming()` / `state.ResumeTiming()`.
 - **FR-028**: The kernel TU MUST define the comparator function as a non-`static` non-`inline` symbol so the IRDumpingPass blob serializes it and IPSCCP can substitute it at JIT time.
 
 ### Key Entities
 
 - **Kernel TU**: A `.cpp` file containing only the target function(s) and any globals they access. Compiled with `-fpass-plugin=IRDumpingPass.so` so the bitcode blob is embedded in the binary. Contains no benchmark infrastructure.
 - **Benchmark TU**: A `.cpp` file that includes `ClangRuntimeSpecializerBenchmark.h` and the kernel's `.h` header, registers Google Benchmark cases, and calls the specialization helpers. Not compiled with IRDumpingPass.
-- **Specialization constant**: A function argument whose value is fixed for a "session" (e.g., one compiled query, one image filter session) and therefore passed as a JIT-time constant to `callSpecialized` or `specializeOnly`.
+- **Specialization constant**: A function argument whose value is fixed for a "session" (e.g., one compiled query, one image filter session) and therefore captured by the lambda passed to `specializeLambda`, becoming an LLVM IR constant in the JIT wrapper.
 - **Benchmark variant**: A single named Google Benchmark instance (e.g., `BM_UC1_predicate_10M_unspecialized`), characterizing one combination of dataset size, constant set, and phase (unspecialized / jit_overhead / specialized_exec).
 
 ---
@@ -183,7 +195,7 @@ themselves (User Story 1) already deliver value without it.
 - **SC-002**: For each benchmark, `record_benchmark.py` successfully inserts at least one row per phase (`unspecialized`, `jit_overhead`, `specialized_exec`) into the DuckDB database.
 - **SC-003**: At least two of the six benchmarks achieve a measured `specialized_exec_ns / unspecialized_exec_ns` ratio ≤ 0.90 (≥ 10% speedup) under `Options::Default()` in a release build on the development machine.
 - **SC-004**: Each benchmark binary runs to completion (no crash, no sanitizer error in an asan/ubsan build) when called with the default benchmark filter.
-- **SC-005**: `assertSpecializedIsEquivalent` passes for at least one test input per kernel, confirming correctness before any performance claim is made.
+- **SC-005**: `assertSpecializedLambdaIsEquivalent` passes for at least one test input per kernel via the factory function, confirming correctness before any performance claim is made.
 - **SC-006**: The benchmarks are compatible with `optimize_benchmarks.py` without code changes to that tool (verified by running at least one 5-trial Optuna study per benchmark).
 
 ---
