@@ -2,7 +2,7 @@ set(LLVM_LINK_COMPONENTS)
 
 set(KERNELS_OBJ "${CMAKE_CURRENT_BINARY_DIR}/UC8Kernels.o")
 add_custom_command(OUTPUT ${KERNELS_OBJ}
-    COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
+    COMMAND ${CLANG_EXE} -x c++ -g -O0 ${CXX_FLAGS_LIST}
             -I${CMAKE_CURRENT_SOURCE_DIR}
             -I${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime/ClangRuntimeSpecializer
             -I${LLVM_MAIN_INCLUDE_DIR}
