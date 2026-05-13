@@ -42,7 +42,7 @@ public:
 namespace clangRuntimeSpecializer {
 
 // Phase 1: Measure unspecialized execution only.
-template <const char* funcName, class Fn, class Tuple>
+template <class Fn, class Tuple>
 __attribute__((always_inline))
 void benchmarkUnspecialized(
     benchmark::State& state,
@@ -64,7 +64,7 @@ void benchmarkUnspecialized(
 }
 
 // Phase 2: Measure JIT compilation overhead only.
-template <const char* funcName, class Fn, class Tuple>
+template <class Fn, class Tuple>
 __attribute__((always_inline))
 void benchmarkJITOverhead(
     benchmark::State& state,
@@ -85,7 +85,7 @@ void benchmarkJITOverhead(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<R>(funcName, opts, std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnly<R>(F, opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
@@ -99,7 +99,7 @@ void benchmarkJITOverhead(
 }
 
 // Phase 3: Measure specialized execution only (setup: compile once before loop).
-template <const char* funcName, class Fn, class Tuple>
+template <class Fn, class Tuple>
 __attribute__((always_inline))
 void benchmarkSpecializedExec(
     benchmark::State& state,
@@ -118,7 +118,7 @@ void benchmarkSpecializedExec(
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     auto SpecFnPtr = std::apply([&](auto&&... A) {
-        return RS->template specializeOnly<R>(funcName, opts, std::forward<decltype(A)>(A)...);
+        return RS->template specializeOnly<R>(F, opts, std::forward<decltype(A)>(A)...);
     }, specArgs);
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
 
@@ -178,7 +178,7 @@ inline void writePassTraceJSON(const std::string& BenchmarkName,
 // Single-invocation analysis benchmark: measures JIT time once, then writes a
 // per-pass trace JSON alongside the benchmark output.
 // Register with: ->Iterations(1)->UseManualTime()
-template <const char* funcName, class Fn, class Tuple>
+template <class Fn, class Tuple>
 __attribute__((always_inline))
 void benchmarkJITAnalysis(
     benchmark::State& state,
@@ -211,7 +211,7 @@ void benchmarkJITAnalysis(
     for (auto _ : state) {
         auto T0 = std::chrono::steady_clock::now();
         benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<R>(funcName, opts, std::forward<decltype(A)>(A)...);
+            return RS->template specializeOnly<R>(F, opts, std::forward<decltype(A)>(A)...);
         }, specArgs));
         double Ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - T0).count();
@@ -251,7 +251,7 @@ inline int64_t measureMedianCallNs(Fn F, Tuple args) {
 //
 // Scale factors are expressed in basis points (100 = 1.0x, 316 ≈ 3.16x, 1000 = 10x).
 // The ->Ranges({{10, 5000}}) produces a geometric sweep: 10, 31, 100, 316, 1000, 3162, 5000.
-template <const char* funcName, class Fn, class Tuple>
+template <class Fn, class Tuple>
 void registerBudgetBenchmarks(
     const std::string& group,
     const std::string& name,
@@ -288,7 +288,7 @@ void registerBudgetBenchmarks(
             if (ns == 0) ns = measureMedianCallNs(F, normalArgs);
             double scale = state.range(0) / 100.0;
             auto opts = CRS::Options::FromExpectedRuntime(static_cast<double>(ns), scale);
-            benchmarkJITOverhead<funcName>(state, F, normalArgs, specArgs, opts);
+            benchmarkJITOverhead(state, F, normalArgs, specArgs, opts);
             state.counters["expected_call_ns"] = static_cast<double>(ns);
             state.counters["budget_scale"]     = scale;
             state.counters["budget_fixpoint"]  = static_cast<double>(opts.MaxFixpointIterations);
@@ -303,7 +303,7 @@ void registerBudgetBenchmarks(
             if (ns == 0) ns = measureMedianCallNs(F, specArgs);
             double scale = state.range(0) / 100.0;
             auto opts = CRS::Options::FromExpectedRuntime(static_cast<double>(ns), scale);
-            benchmarkSpecializedExec<funcName>(state, F, specArgs, opts);
+            benchmarkSpecializedExec(state, F, specArgs, opts);
             state.counters["expected_call_ns"] = static_cast<double>(ns);
             state.counters["budget_scale"]     = scale;
             state.counters["budget_fixpoint"]  = static_cast<double>(opts.MaxFixpointIterations);

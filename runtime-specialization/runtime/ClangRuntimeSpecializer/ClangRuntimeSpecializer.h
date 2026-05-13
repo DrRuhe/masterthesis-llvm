@@ -826,6 +826,7 @@ namespace clangRuntimeSpecializer {
     }
 
     template <class R, class F, class... ARGS>
+    __attribute__((noinline))
     auto specializeOnlyResolved(const char* resolvedName, F* /*unused*/, ARGS&&... Args) -> SpecializedFunction<R> {
       if (!resolvedName)
         throw ClangRuntimeSpecializerDumpedIRError(
@@ -836,6 +837,7 @@ namespace clangRuntimeSpecializer {
     }
 
     template <class R, class F, class... ARGS>
+    __attribute__((noinline))
     auto specializeOnlyResolved(const char* resolvedName, F* /*unused*/, const Options& opts, ARGS&&... Args) -> SpecializedFunction<R> {
       if (!resolvedName)
         throw ClangRuntimeSpecializerDumpedIRError(
@@ -846,6 +848,7 @@ namespace clangRuntimeSpecializer {
     }
 
     template <class R, class F, class... ARGS>
+    __attribute__((noinline))
     R callSpecializedResolved(const char* resolvedName, F* /*unused*/, ARGS&&... Args) {
       if (!resolvedName)
         throw ClangRuntimeSpecializerDumpedIRError(
@@ -854,6 +857,7 @@ namespace clangRuntimeSpecializer {
     }
 
     template <class R, class F, class... ARGS>
+    __attribute__((noinline))
     R callSpecializedResolved(const char* resolvedName, F* /*unused*/, const Options& opts, ARGS&&... Args) {
       if (!resolvedName)
         throw ClangRuntimeSpecializerDumpedIRError(

@@ -15,7 +15,6 @@ namespace CRS = clangRuntimeSpecializer;
 struct Vdbe;
 extern "C" int sqlite3VdbeExec(Vdbe* p);
 
-inline constexpr char Fn_sqlite3VdbeExec[] = "sqlite3VdbeExec";
 
 // ── TPC-H query strings ───────────────────────────────────────────────────────
 
@@ -81,14 +80,14 @@ volatile bool g_tpch_dummy_trigger = false;
 extern "C" __attribute__((used)) void tpch_dummy_registration() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_tpch_dummy_trigger)
-        RS->callSpecialized<int>(Fn_sqlite3VdbeExec, (Vdbe*)nullptr);
+        RS->callSpecialized<int>(sqlite3VdbeExec, (Vdbe*)nullptr);
 }
 #else
 volatile bool g_tpch_dummy_trigger_tpch = false;
 extern "C" __attribute__((used)) void tpch_dummy_registration_tpch() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_tpch_dummy_trigger_tpch)
-        RS->callSpecialized<int>(Fn_sqlite3VdbeExec, (Vdbe*)nullptr);
+        RS->callSpecialized<int>(sqlite3VdbeExec, (Vdbe*)nullptr);
 }
 #endif
 
@@ -148,7 +147,7 @@ static void phaseJITOverhead(benchmark::State& state, const char* sql) {
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state)
-        benchmark::DoNotOptimize(RS->specializeOnly<int>(Fn_sqlite3VdbeExec, vdbe));
+        benchmark::DoNotOptimize(RS->specializeOnly<int>(sqlite3VdbeExec, vdbe));
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
     auto txStats = CRS::ClangRuntimeSpecializer::getLastTransformStats();
 
@@ -175,7 +174,7 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql,
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
-    auto SpecFn = RS->specializeOnly<int>(Fn_sqlite3VdbeExec, opts, vdbe);
+    auto SpecFn = RS->specializeOnly<int>(sqlite3VdbeExec, opts, vdbe);
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
 
     for (auto _ : state) {
@@ -209,7 +208,7 @@ void BM_jit_analysis_tpch_q1(benchmark::State& state) {
     sqlite3* db = openDB();
     sqlite3_stmt* stmt = prepareQuery(db, TPCH_Q1);
     auto* vdbe = reinterpret_cast<Vdbe*>(stmt);
-    clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_sqlite3VdbeExec>(
+    clangRuntimeSpecializer::benchmarkJITAnalysis(
         state, sqlite3VdbeExec, std::make_tuple(vdbe));
     sqlite3_finalize(stmt);
     sqlite3_close(db);

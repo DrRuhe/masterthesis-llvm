@@ -14,7 +14,6 @@ namespace CRS = clangRuntimeSpecializer;
 extern "C" duckdb_state duckdb_execute_prepared(duckdb_prepared_statement prepared_statement,
                                                  duckdb_result* out_result);
 
-inline constexpr char Fn_duckdb_execute_prepared[] = "duckdb_execute_prepared";
 
 // ── Global result slot ────────────────────────────────────────────────────────
 static duckdb_result g_duckdb_exec_result;
@@ -72,7 +71,7 @@ volatile bool g_duckdb_tpch_dummy_trigger = false;
 extern "C" __attribute__((used)) void duckdb_tpch_dummy_registration() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_duckdb_tpch_dummy_trigger)
-        RS->callSpecialized<duckdb_state>(Fn_duckdb_execute_prepared,
+        RS->callSpecialized<duckdb_state>(duckdb_execute_prepared,
                                           (duckdb_prepared_statement) nullptr,
                                           &g_duckdb_exec_result);
 }
@@ -81,7 +80,7 @@ volatile bool g_duckdb_tpch_dummy_trigger_duckdb = false;
 extern "C" __attribute__((used)) void duckdb_tpch_dummy_registration_duckdb() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_duckdb_tpch_dummy_trigger_duckdb)
-        RS->callSpecialized<duckdb_state>(Fn_duckdb_execute_prepared,
+        RS->callSpecialized<duckdb_state>(duckdb_execute_prepared,
                                           (duckdb_prepared_statement) nullptr,
                                           &g_duckdb_exec_result);
 }
@@ -148,7 +147,7 @@ static void phaseJITOverhead(benchmark::State& state, const char* sql) {
     auto opts = CRS::ClangRuntimeSpecializer::Options::Default().withJITTimeoutSeconds(60);
     CRS::SpecializedFunction<duckdb_state> specFn;
     for (auto _ : state)
-        specFn = RS->specializeOnly<duckdb_state>(Fn_duckdb_execute_prepared, opts,
+        specFn = RS->specializeOnly<duckdb_state>(duckdb_execute_prepared, opts,
                                                   stmt, &g_duckdb_exec_result);
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
 
@@ -177,7 +176,7 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
-    auto SpecFn = RS->specializeOnly<duckdb_state>(Fn_duckdb_execute_prepared,
+    auto SpecFn = RS->specializeOnly<duckdb_state>(duckdb_execute_prepared,
                                                     stmt, &g_duckdb_exec_result);
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
 
@@ -222,7 +221,7 @@ static void phaseJITAnalysis(benchmark::State& state, const char* sql) {
     duckdb_connection con = connectAndLoad(db);
     duckdb_prepared_statement stmt = prepareQuery(con, sql);
 
-    clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_duckdb_execute_prepared>(
+    clangRuntimeSpecializer::benchmarkJITAnalysis(
         state, duckdb_execute_prepared,
         std::make_tuple(stmt, &g_duckdb_exec_result));
 

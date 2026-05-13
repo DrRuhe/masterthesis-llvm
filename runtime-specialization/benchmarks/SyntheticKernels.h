@@ -19,11 +19,6 @@ public:
     __attribute__((noinline)) int add(int a, int b) const __asm__("A::add");
 };
 
-// String keys used to look up the functions in the registered blobs.
-inline constexpr char Fn_mypow[]        = "mypow_bench";
-inline constexpr char Fn_config_count[] = "config_count";
-inline constexpr char Fn_A_add[]        = "A::add";
-
 extern "C" int mypow_bench(int x);
 extern "C" int config_count(Config* cfg, int n);
 

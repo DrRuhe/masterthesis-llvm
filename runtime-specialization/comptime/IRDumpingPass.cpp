@@ -100,11 +100,12 @@ bool isSpecOnlyFuncPtrUserCall(StringRef MangledName) {
 // Look inside a specializeLambda function body for its call to
 // specializeLambdaResolved — that call exists because the user-facing overload
 // calls specializeLambdaResolved(nullptr, lambda) to force template instantiation.
+// Uses CallBase to handle both CallInst and InvokeInst (-fexceptions).
 Function* findResolvedFuncInBody(Function* SpecLambdaFn) {
   for (auto& BB : *SpecLambdaFn)
     for (auto& I : BB)
-      if (auto* CI = dyn_cast<CallInst>(&I))
-        if (auto* F = CI->getCalledFunction())
+      if (auto* CB = dyn_cast<CallBase>(&I))
+        if (auto* F = CB->getCalledFunction())
           if (F->getName().contains("specializeLambdaResolved"))
             return F;
   return nullptr;
@@ -114,11 +115,13 @@ Function* findResolvedFuncInBody(Function* SpecLambdaFn) {
 // (F* func, args...) call site, find the Resolved variant by inspecting the callee's body.
 // The user-facing overload calls specializeOnlyResolved / callSpecializedResolved /
 // specializeOrFallbackResolved / assertSpecializedIsEquivalentResolved inside its body.
+// Uses CallBase (covers both CallInst and InvokeInst) so the check works even when
+// compiled with -fexceptions, which turns throwing calls into InvokeInst.
 Function* findSpecOnlyResolvedInBody(Function* SpecOnlyFn) {
   for (auto& BB : *SpecOnlyFn)
     for (auto& I : BB)
-      if (auto* CI = dyn_cast<CallInst>(&I))
-        if (auto* F = CI->getCalledFunction())
+      if (auto* CB = dyn_cast<CallBase>(&I))
+        if (auto* F = CB->getCalledFunction())
           if (F->getName().contains("specializeOnlyResolved") ||
               F->getName().contains("callSpecializedResolved") ||
               F->getName().contains("specializeOrFallbackResolved") ||

@@ -19,72 +19,72 @@ extern "C" void polybench_free_data(void* p) {
 #define POLYBENCH_IMPL_1(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_2(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_3(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_4(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
 
 #define POLYBENCH_IMPL_5(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkUnspecialized<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkJITOverhead<Fn_##K>(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkSpecializedExec<Fn_##K>(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkJITAnalysis<Fn_##K>(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
 
 
 
@@ -118,7 +118,6 @@ extern "C" void kernel_correlation(int m, int n) {
     __pb_correlation_kernel(m, n, (double)n,
         g_corr_data, g_corr_corr, g_corr_mean, g_corr_stddev);
 }
-inline constexpr char Fn_correlation[] = "kernel_correlation";
 POLYBENCH_IMPL_2(correlation)
 
 // ── covariance ────────────────────────────────────────────────────────────────
@@ -142,7 +141,6 @@ extern "C" void kernel_covariance(int m, int n) {
     __pb_covariance_kernel(m, n, (double)n,
         g_cov_data, g_cov_cov, g_cov_mean);
 }
-inline constexpr char Fn_covariance[] = "kernel_covariance";
 POLYBENCH_IMPL_2(covariance)
 
 // ── 2mm ───────────────────────────────────────────────────────────────────────
@@ -171,7 +169,6 @@ extern "C" void kernel_2mm(int ni, int nj, int nk, int nl) {
     __pb_2mm_kernel(ni, nj, nk, nl, 1.5, 1.2,
         g_2mm_tmp, g_2mm_A, g_2mm_B, g_2mm_C, g_2mm_D);
 }
-inline constexpr char Fn_2mm[] = "kernel_2mm";
 POLYBENCH_IMPL_4(2mm)
 
 // ── 3mm ───────────────────────────────────────────────────────────────────────
@@ -204,7 +201,6 @@ extern "C" void kernel_3mm(int ni, int nj, int nk, int nl, int nm) {
     __pb_3mm_kernel(ni, nj, nk, nl, nm,
         g_3mm_E, g_3mm_A, g_3mm_B, g_3mm_F, g_3mm_C, g_3mm_D, g_3mm_G);
 }
-inline constexpr char Fn_3mm[] = "kernel_3mm";
 POLYBENCH_IMPL_5(3mm)
 
 // ── atax ──────────────────────────────────────────────────────────────────────
@@ -227,7 +223,6 @@ extern "C" void kernel_atax(int m, int n) __asm__("kernel_atax");
 extern "C" void kernel_atax(int m, int n) {
     __pb_atax_kernel(m, n, g_atax_A, g_atax_x, g_atax_y, g_atax_tmp);
 }
-inline constexpr char Fn_atax[] = "kernel_atax";
 POLYBENCH_IMPL_2(atax)
 
 // ── bicg ──────────────────────────────────────────────────────────────────────
@@ -253,7 +248,6 @@ extern "C" void kernel_bicg(int m, int n) __asm__("kernel_bicg");
 extern "C" void kernel_bicg(int m, int n) {
     __pb_bicg_kernel(m, n, g_bicg_A, g_bicg_s, g_bicg_q, g_bicg_p, g_bicg_r);
 }
-inline constexpr char Fn_bicg[] = "kernel_bicg";
 POLYBENCH_IMPL_2(bicg)
 
 // ── doitgen ───────────────────────────────────────────────────────────────────
@@ -279,7 +273,6 @@ extern "C" void kernel_doitgen(int nq, int nr, int np) __asm__("kernel_doitgen")
 extern "C" void kernel_doitgen(int nq, int nr, int np) {
     __pb_doitgen_kernel(nr, nq, np, g_doitgen_A, g_doitgen_C4, g_doitgen_sum);
 }
-inline constexpr char Fn_doitgen[] = "kernel_doitgen";
 POLYBENCH_IMPL_3(doitgen)
 
 // ── mvt ───────────────────────────────────────────────────────────────────────
@@ -301,7 +294,6 @@ extern "C" void kernel_mvt(int n) __asm__("kernel_mvt");
 extern "C" void kernel_mvt(int n) {
     __pb_mvt_kernel(n, g_mvt_x1, g_mvt_x2, g_mvt_y1, g_mvt_y2, g_mvt_A);
 }
-inline constexpr char Fn_mvt[] = "kernel_mvt";
 POLYBENCH_IMPL_1(mvt)
 
 // ── gemm ──────────────────────────────────────────────────────────────────────
@@ -325,7 +317,6 @@ extern "C" void kernel_gemm(int ni, int nj, int nk) __asm__("kernel_gemm");
 extern "C" void kernel_gemm(int ni, int nj, int nk) {
     __pb_gemm_kernel(ni, nj, nk, 1.5, 1.2, g_gemm_C, g_gemm_A, g_gemm_B);
 }
-inline constexpr char Fn_gemm[] = "kernel_gemm";
 POLYBENCH_IMPL_3(gemm)
 
 // ── gemver ────────────────────────────────────────────────────────────────────
@@ -353,7 +344,6 @@ extern "C" void kernel_gemver(int n) {
         g_gemver_A, g_gemver_u1, g_gemver_v1, g_gemver_u2, g_gemver_v2,
         g_gemver_w, g_gemver_x, g_gemver_y, g_gemver_z);
 }
-inline constexpr char Fn_gemver[] = "kernel_gemver";
 POLYBENCH_IMPL_1(gemver)
 
 // ── gesummv ───────────────────────────────────────────────────────────────────
@@ -379,7 +369,6 @@ extern "C" void kernel_gesummv(int n) {
     __pb_gesummv_kernel(n, 1.5, 1.2,
         g_gesummv_A, g_gesummv_B, g_gesummv_tmp, g_gesummv_x, g_gesummv_y);
 }
-inline constexpr char Fn_gesummv[] = "kernel_gesummv";
 POLYBENCH_IMPL_1(gesummv)
 
 // ── symm ──────────────────────────────────────────────────────────────────────
@@ -403,7 +392,6 @@ extern "C" void kernel_symm(int m, int n) __asm__("kernel_symm");
 extern "C" void kernel_symm(int m, int n) {
     __pb_symm_kernel(m, n, 1.5, 1.2, g_symm_C, g_symm_A, g_symm_B);
 }
-inline constexpr char Fn_symm[] = "kernel_symm";
 POLYBENCH_IMPL_2(symm)
 
 // ── syr2k ─────────────────────────────────────────────────────────────────────
@@ -430,7 +418,6 @@ extern "C" void kernel_syr2k(int spec_m, int spec_n) {
     __pb_syr2k_kernel(spec_n, spec_m, 1.5, 1.2,
         g_syr2k_C, g_syr2k_A, g_syr2k_B);
 }
-inline constexpr char Fn_syr2k[] = "kernel_syr2k";
 POLYBENCH_IMPL_2(syr2k)
 
 // ── syrk ──────────────────────────────────────────────────────────────────────
@@ -454,7 +441,6 @@ extern "C" void kernel_syrk(int spec_m, int spec_n) __asm__("kernel_syrk");
 extern "C" void kernel_syrk(int spec_m, int spec_n) {
     __pb_syrk_kernel(spec_n, spec_m, 1.5, 1.2, g_syrk_C, g_syrk_A);
 }
-inline constexpr char Fn_syrk[] = "kernel_syrk";
 POLYBENCH_IMPL_2(syrk)
 
 // ── trmm ──────────────────────────────────────────────────────────────────────
@@ -476,7 +462,6 @@ extern "C" void kernel_trmm(int m, int n) __asm__("kernel_trmm");
 extern "C" void kernel_trmm(int m, int n) {
     __pb_trmm_kernel(m, n, 1.5, g_trmm_A, g_trmm_B);
 }
-inline constexpr char Fn_trmm[] = "kernel_trmm";
 POLYBENCH_IMPL_2(trmm)
 
 // ── cholesky ──────────────────────────────────────────────────────────────────
@@ -494,7 +479,6 @@ extern "C" void kernel_cholesky(int n) __asm__("kernel_cholesky");
 extern "C" void kernel_cholesky(int n) {
     __pb_cholesky_kernel(n, g_cholesky_A);
 }
-inline constexpr char Fn_cholesky[] = "kernel_cholesky";
 POLYBENCH_IMPL_1(cholesky)
 
 // ── durbin ────────────────────────────────────────────────────────────────────
@@ -510,7 +494,6 @@ extern "C" void kernel_durbin(int n) __asm__("kernel_durbin");
 extern "C" void kernel_durbin(int n) {
     __pb_durbin_kernel(n, g_durbin_r, g_durbin_y);
 }
-inline constexpr char Fn_durbin[] = "kernel_durbin";
 POLYBENCH_IMPL_1(durbin)
 
 // ── gramschmidt ───────────────────────────────────────────────────────────────
@@ -535,7 +518,6 @@ extern "C" void kernel_gramschmidt(int m, int n) {
     __pb_gramschmidt_kernel(m, n,
         g_gramschmidt_A, g_gramschmidt_R, g_gramschmidt_Q);
 }
-inline constexpr char Fn_gramschmidt[] = "kernel_gramschmidt";
 POLYBENCH_IMPL_2(gramschmidt)
 
 // ── lu ────────────────────────────────────────────────────────────────────────
@@ -553,7 +535,6 @@ extern "C" void kernel_lu(int n) __asm__("kernel_lu");
 extern "C" void kernel_lu(int n) {
     __pb_lu_kernel(n, g_lu_A);
 }
-inline constexpr char Fn_lu[] = "kernel_lu";
 POLYBENCH_IMPL_1(lu)
 
 // ── ludcmp ────────────────────────────────────────────────────────────────────
@@ -574,7 +555,6 @@ extern "C" void kernel_ludcmp(int n) __asm__("kernel_ludcmp");
 extern "C" void kernel_ludcmp(int n) {
     __pb_ludcmp_kernel(n, g_ludcmp_A, g_ludcmp_b, g_ludcmp_x, g_ludcmp_y);
 }
-inline constexpr char Fn_ludcmp[] = "kernel_ludcmp";
 POLYBENCH_IMPL_1(ludcmp)
 
 // ── trisolv ───────────────────────────────────────────────────────────────────
@@ -594,7 +574,6 @@ extern "C" void kernel_trisolv(int n) __asm__("kernel_trisolv");
 extern "C" void kernel_trisolv(int n) {
     __pb_trisolv_kernel(n, g_trisolv_L, g_trisolv_x, g_trisolv_b);
 }
-inline constexpr char Fn_trisolv[] = "kernel_trisolv";
 POLYBENCH_IMPL_1(trisolv)
 
 // ── deriche ───────────────────────────────────────────────────────────────────
@@ -622,7 +601,6 @@ extern "C" void kernel_deriche(int w, int h) {
     __pb_deriche_kernel(w, h, 0.25f,
         g_deriche_imgIn, g_deriche_imgOut, g_deriche_y1, g_deriche_y2);
 }
-inline constexpr char Fn_deriche[] = "kernel_deriche";
 POLYBENCH_IMPL_2(deriche)
 
 // ── floyd-warshall ────────────────────────────────────────────────────────────
@@ -642,7 +620,6 @@ extern "C" void kernel_floyd_warshall(int n) __asm__("kernel_floyd_warshall");
 extern "C" void kernel_floyd_warshall(int n) {
     __pb_fw_kernel(n, g_fw_path);
 }
-inline constexpr char Fn_floyd_warshall[] = "kernel_floyd_warshall";
 POLYBENCH_IMPL_1(floyd_warshall)
 
 // ── nussinov ──────────────────────────────────────────────────────────────────
@@ -665,7 +642,6 @@ extern "C" void kernel_nussinov(int n) __asm__("kernel_nussinov");
 extern "C" void kernel_nussinov(int n) {
     __pb_nussinov_kernel(n, g_nussinov_seq, g_nussinov_table);
 }
-inline constexpr char Fn_nussinov[] = "kernel_nussinov";
 POLYBENCH_IMPL_1(nussinov)
 
 // ── adi ───────────────────────────────────────────────────────────────────────
@@ -691,7 +667,6 @@ extern "C" void kernel_adi(int tsteps, int n) __asm__("kernel_adi");
 extern "C" void kernel_adi(int tsteps, int n) {
     __pb_adi_kernel(tsteps, n, g_adi_u, g_adi_v, g_adi_p, g_adi_q);
 }
-inline constexpr char Fn_adi[] = "kernel_adi";
 POLYBENCH_IMPL_2(adi)
 
 // ── fdtd-2d ───────────────────────────────────────────────────────────────────
@@ -718,7 +693,6 @@ extern "C" void kernel_fdtd_2d(int tmax, int nx, int ny) {
     __pb_fdtd2d_kernel(tmax, nx, ny,
         g_fdtd2d_ex, g_fdtd2d_ey, g_fdtd2d_hz, g_fdtd2d_fict);
 }
-inline constexpr char Fn_fdtd_2d[] = "kernel_fdtd_2d";
 POLYBENCH_IMPL_3(fdtd_2d)
 
 // ── heat-3d ───────────────────────────────────────────────────────────────────
@@ -741,7 +715,6 @@ extern "C" void kernel_heat_3d(int tsteps, int n) __asm__("kernel_heat_3d");
 extern "C" void kernel_heat_3d(int tsteps, int n) {
     __pb_heat3d_kernel(tsteps, n, g_heat3d_A, g_heat3d_B);
 }
-inline constexpr char Fn_heat_3d[] = "kernel_heat_3d";
 POLYBENCH_IMPL_2(heat_3d)
 
 // ── jacobi-1d ─────────────────────────────────────────────────────────────────
@@ -758,7 +731,6 @@ extern "C" void kernel_jacobi_1d(int tsteps, int n) __asm__("kernel_jacobi_1d");
 extern "C" void kernel_jacobi_1d(int tsteps, int n) {
     __pb_jacobi1d_kernel(tsteps, n, g_jacobi1d_A, g_jacobi1d_B);
 }
-inline constexpr char Fn_jacobi_1d[] = "kernel_jacobi_1d";
 POLYBENCH_IMPL_2(jacobi_1d)
 
 // ── jacobi-2d ─────────────────────────────────────────────────────────────────
@@ -781,7 +753,6 @@ extern "C" void kernel_jacobi_2d(int tsteps, int n) __asm__("kernel_jacobi_2d");
 extern "C" void kernel_jacobi_2d(int tsteps, int n) {
     __pb_jacobi2d_kernel(tsteps, n, g_jacobi2d_A, g_jacobi2d_B);
 }
-inline constexpr char Fn_jacobi_2d[] = "kernel_jacobi_2d";
 POLYBENCH_IMPL_2(jacobi_2d)
 
 // ── seidel-2d ─────────────────────────────────────────────────────────────────
@@ -800,7 +771,6 @@ extern "C" void kernel_seidel_2d(int tsteps, int n) __asm__("kernel_seidel_2d");
 extern "C" void kernel_seidel_2d(int tsteps, int n) {
     __pb_seidel2d_kernel(tsteps, n, g_seidel2d_A);
 }
-inline constexpr char Fn_seidel_2d[] = "kernel_seidel_2d";
 POLYBENCH_IMPL_2(seidel_2d)
 
 
@@ -869,36 +839,36 @@ volatile bool g_polybench_dummy_trigger = false;
 extern "C" __attribute__((used)) void polybench_dummy_registration() {
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     if (g_polybench_dummy_trigger) {
-        RS->callSpecialized<void>(Fn_correlation, 0, 0);
-        RS->callSpecialized<void>(Fn_covariance, 0, 0);
-        RS->callSpecialized<void>(Fn_2mm, 0, 0, 0, 0);
-        RS->callSpecialized<void>(Fn_3mm, 0, 0, 0, 0, 0);
-        RS->callSpecialized<void>(Fn_atax, 0, 0);
-        RS->callSpecialized<void>(Fn_bicg, 0, 0);
-        RS->callSpecialized<void>(Fn_doitgen, 0, 0, 0);
-        RS->callSpecialized<void>(Fn_mvt, 0);
-        RS->callSpecialized<void>(Fn_gemm, 0, 0, 0);
-        RS->callSpecialized<void>(Fn_gemver, 0);
-        RS->callSpecialized<void>(Fn_gesummv, 0);
-        RS->callSpecialized<void>(Fn_symm, 0, 0);
-        RS->callSpecialized<void>(Fn_syr2k, 0, 0);
-        RS->callSpecialized<void>(Fn_syrk, 0, 0);
-        RS->callSpecialized<void>(Fn_trmm, 0, 0);
-        RS->callSpecialized<void>(Fn_cholesky, 0);
-        RS->callSpecialized<void>(Fn_durbin, 0);
-        RS->callSpecialized<void>(Fn_gramschmidt, 0, 0);
-        RS->callSpecialized<void>(Fn_lu, 0);
-        RS->callSpecialized<void>(Fn_ludcmp, 0);
-        RS->callSpecialized<void>(Fn_trisolv, 0);
-        RS->callSpecialized<void>(Fn_deriche, 0, 0);
-        RS->callSpecialized<void>(Fn_floyd_warshall, 0);
-        RS->callSpecialized<void>(Fn_nussinov, 0);
-        RS->callSpecialized<void>(Fn_adi, 0, 0);
-        RS->callSpecialized<void>(Fn_fdtd_2d, 0, 0, 0);
-        RS->callSpecialized<void>(Fn_heat_3d, 0, 0);
-        RS->callSpecialized<void>(Fn_jacobi_1d, 0, 0);
-        RS->callSpecialized<void>(Fn_jacobi_2d, 0, 0);
-        RS->callSpecialized<void>(Fn_seidel_2d, 0, 0);
+        RS->callSpecialized<void>(kernel_correlation, 0, 0);
+        RS->callSpecialized<void>(kernel_covariance, 0, 0);
+        RS->callSpecialized<void>(kernel_2mm, 0, 0, 0, 0);
+        RS->callSpecialized<void>(kernel_3mm, 0, 0, 0, 0, 0);
+        RS->callSpecialized<void>(kernel_atax, 0, 0);
+        RS->callSpecialized<void>(kernel_bicg, 0, 0);
+        RS->callSpecialized<void>(kernel_doitgen, 0, 0, 0);
+        RS->callSpecialized<void>(kernel_mvt, 0);
+        RS->callSpecialized<void>(kernel_gemm, 0, 0, 0);
+        RS->callSpecialized<void>(kernel_gemver, 0);
+        RS->callSpecialized<void>(kernel_gesummv, 0);
+        RS->callSpecialized<void>(kernel_symm, 0, 0);
+        RS->callSpecialized<void>(kernel_syr2k, 0, 0);
+        RS->callSpecialized<void>(kernel_syrk, 0, 0);
+        RS->callSpecialized<void>(kernel_trmm, 0, 0);
+        RS->callSpecialized<void>(kernel_cholesky, 0);
+        RS->callSpecialized<void>(kernel_durbin, 0);
+        RS->callSpecialized<void>(kernel_gramschmidt, 0, 0);
+        RS->callSpecialized<void>(kernel_lu, 0);
+        RS->callSpecialized<void>(kernel_ludcmp, 0);
+        RS->callSpecialized<void>(kernel_trisolv, 0);
+        RS->callSpecialized<void>(kernel_deriche, 0, 0);
+        RS->callSpecialized<void>(kernel_floyd_warshall, 0);
+        RS->callSpecialized<void>(kernel_nussinov, 0);
+        RS->callSpecialized<void>(kernel_adi, 0, 0);
+        RS->callSpecialized<void>(kernel_fdtd_2d, 0, 0, 0);
+        RS->callSpecialized<void>(kernel_heat_3d, 0, 0);
+        RS->callSpecialized<void>(kernel_jacobi_1d, 0, 0);
+        RS->callSpecialized<void>(kernel_jacobi_2d, 0, 0);
+        RS->callSpecialized<void>(kernel_seidel_2d, 0, 0);
     }
 }
 

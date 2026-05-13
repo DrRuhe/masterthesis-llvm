@@ -51,7 +51,6 @@ public:
 extern "C" int execute_query(Operator* op) __asm__("execute_query");
 int execute_query(Operator* op) { return op->next(); }
 
-inline constexpr char Fn_execute_query[] = "execute_query";
 
 // ── IR embedding trigger ─────────────────────────────────────────────────────
 
@@ -68,7 +67,7 @@ extern "C" __attribute__((used)) void dummy_registration_db() {
 #else
     if (g_dummy_trigger_db)
 #endif
-        RS->callSpecialized<int>(Fn_execute_query, (Operator*)nullptr);
+        RS->callSpecialized<int>(&execute_query, (Operator*)nullptr);
 }
 
 // ── Operator pipeline instances ───────────────────────────────────────────────
@@ -92,7 +91,7 @@ static void phaseUnspecialized(benchmark::State& state, Operator* op) {
 
 // Phase 2: JIT overhead — measures specialization compilation cost per call.
 static void phaseJITOverhead(benchmark::State& state, Operator* op) {
-    clangRuntimeSpecializer::benchmarkJITOverhead<Fn_execute_query>(
+    clangRuntimeSpecializer::benchmarkJITOverhead(
         state,
         execute_query,
         std::make_tuple(op),
@@ -107,7 +106,7 @@ static void phaseSpecializedExec(benchmark::State& state, Operator* op) {
     auto Prev = clangRuntimeSpecializer::ClangRuntimeSpecializer::getLogLevel();
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(
         clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::None);
-    auto Fn = RS->specializeOnly<int>(Fn_execute_query, op);
+    auto Fn = RS->specializeOnly<int>(execute_query, op);
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(Prev);
     for (auto _ : state)
         benchmark::DoNotOptimize(Fn());
@@ -133,7 +132,7 @@ BENCHMARK(BM_specialized_exec_single_filter)->Name("BM_g:db_operators;n:single_f
 // ── Analysis benchmarks (single JIT call + pass-trace JSON) ──────────────────
 
 void BM_jit_analysis_single_filter(benchmark::State& state) {
-    clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_execute_query>(
+    clangRuntimeSpecializer::benchmarkJITAnalysis(
         state, execute_query, std::make_tuple((Operator*)&g_single_filter));
 }
 BENCHMARK(BM_jit_analysis_single_filter)
@@ -141,7 +140,7 @@ BENCHMARK(BM_jit_analysis_single_filter)
     ->Iterations(1)->UseManualTime();
 
 void BM_jit_analysis_chained_filter(benchmark::State& state) {
-    clangRuntimeSpecializer::benchmarkJITAnalysis<Fn_execute_query>(
+    clangRuntimeSpecializer::benchmarkJITAnalysis(
         state, execute_query, std::make_tuple((Operator*)&g_outer_filter));
 }
 BENCHMARK(BM_jit_analysis_chained_filter)
