@@ -6,7 +6,6 @@
 
 struct Ctx { int val; };
 
-// Simple identity kernel: first param = closure ptr (Ctx*); second = int input.
 extern "C" int identity(const Ctx* ctx, int x) __asm__("identity");
 int identity(const Ctx* ctx, int x) {
   (void)ctx;
@@ -24,7 +23,7 @@ int main() {
       return identity(&ctx, x);
     };
     // Construct SpecializedLambda, call it, then let it go out of scope (RAII).
-    auto spec = clangRuntimeSpecializer::specializeLambda<int>("identity", lambda);
+    auto spec = clangRuntimeSpecializer::specializeLambda<int>(lambda);
     sum += spec(i);
     // spec destroyed here → JITDylib released
   }

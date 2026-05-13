@@ -4,9 +4,7 @@
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
 
-// Kernel: first param = pointer to lambda closure (Ctx struct); remaining = explicit args.
-// The lambda [ctx](int x, bool negate) captures Ctx by value; closure layout = {Ctx ctx}.
-// &lambda == pointer to that Ctx copy, so kernel receives Ctx*.
+// Kernel called by the lambda body (still present in the blob via DCE reachability).
 struct Ctx { int base; };
 
 extern "C" int add_with_ctx(const Ctx* ctx, int x, bool negate) __asm__("add_with_ctx");
@@ -19,13 +17,13 @@ int main() {
       clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Info);
 
   Ctx ctx{10};
-  // Capture ctx by value; closure = {Ctx ctx_copy}; &lambda == Ctx*.
+  // Lambda's operator() is the specialization target; the closure (ctx copy) is baked in.
   auto lambda = [ctx](int x, bool negate) -> int {
     return add_with_ctx(&ctx, x, negate);
   };
 
-  // EXE: INFO: Specializing lambda call to: add_with_ctx
-  auto spec = clangRuntimeSpecializer::specializeLambda<int>("add_with_ctx", lambda);
+  // EXE: INFO: Specializing lambda call to: _Z
+  auto spec = clangRuntimeSpecializer::specializeLambda<int>(lambda);
 
   // EXE: result_false=15
   printf("result_false=%d\n", spec(5, false));
@@ -33,7 +31,6 @@ int main() {
   // EXE: result_true=5
   printf("result_true=%d\n", spec(5, true));
 
-  // Verify equivalence vs direct lambda calls.
   if (spec(5, false) != lambda(5, false))
     printf("FAIL: result mismatch for (5, false)\n");
   if (spec(5, true) != lambda(5, true))
