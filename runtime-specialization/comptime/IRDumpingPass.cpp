@@ -94,7 +94,8 @@ bool isSpecOnlyFuncPtrUserCall(StringRef MangledName) {
   return MangledName.contains("specializeOnly") ||
          MangledName.contains("callSpecialized") ||
          MangledName.contains("specializeOrFallback") ||
-         MangledName.contains("assertSpecializedIsEquivalent");
+         MangledName.contains("assertSpecializedIsEquivalent") ||
+         MangledName.contains("compareFunctionInstructionCounts");
 }
 
 // Look inside a specializeLambda function body for its call to
@@ -125,7 +126,8 @@ Function* findSpecOnlyResolvedInBody(Function* SpecOnlyFn) {
           if (F->getName().contains("specializeOnlyResolved") ||
               F->getName().contains("callSpecializedResolved") ||
               F->getName().contains("specializeOrFallbackResolved") ||
-              F->getName().contains("assertSpecializedIsEquivalentResolved"))
+              F->getName().contains("assertSpecializedIsEquivalentResolved") ||
+              F->getName().contains("compareFunctionInstructionCountsResolved"))
             return F;
   return nullptr;
 }
@@ -269,7 +271,8 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
         F.getName().contains("specializeOnly") ||
         F.getName().contains("callSpecialized") ||
         F.getName().contains("specializeOrFallback") ||
-        F.getName().contains("assertSpecializedIsEquivalent"))
+        F.getName().contains("assertSpecializedIsEquivalent") ||
+        F.getName().contains("compareFunctionInstructionCounts"))
       continue;
 
     for (auto& BB : F) {
