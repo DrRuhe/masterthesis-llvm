@@ -232,10 +232,57 @@ add_custom_command(
     COMMENT "Compiling duckdb_tpch_bench.cpp for AllBenchmarks"
 )
 
+# ── AllBenchmarks Use-Case objects ────────────────────────────────────────────
+# Custom commands must be defined in the same CMakeLists.txt as the consuming
+# target. Source paths are exported from each UC's CMakeLists.txt via
+# PARENT_SCOPE through use-cases/CMakeLists.txt.
+# Kernel TUs compile at -O0 (prevents DAE/inlining from hiding the
+# specializeLambda call from IRDumpingPass). Benchmark TUs compile at -O3.
+
+foreach(UC IN ITEMS UC1 UC2 UC7 UC8 UC12 UC14)
+    set(_KERN_OBJ "${CMAKE_CURRENT_BINARY_DIR}/AllBenchmarks_${UC}Kernels.o")
+    add_custom_command(
+        OUTPUT ${_KERN_OBJ}
+        COMMAND ${CLANG_EXE} -x c++ -g -O0 ${CXX_FLAGS_LIST}
+                -DALL_BENCHMARKS_BUILD=1
+                -I${${UC}_SRC_DIR}
+                -I${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
+                -I${LLVM_MAIN_INCLUDE_DIR}
+                -I${LLVM_BINARY_DIR}/include
+                -fpass-plugin=${PLUGIN_LIB}
+                -fexceptions -frtti
+                -c ${${UC}_KERNELS_SRC}
+                -o ${_KERN_OBJ}
+        DEPENDS ${${UC}_KERNELS_SRC} LLVMRuntimeSpecializationComptimePlugin clang
+        COMMENT "Compiling ${UC}Kernels for AllBenchmarks")
+    list(APPEND _ALL_UC_KERNEL_OBJS ${_KERN_OBJ})
+
+    set(_BENCH_OBJ "${CMAKE_CURRENT_BINARY_DIR}/AllBenchmarks_${UC}Benchmark.o")
+    add_custom_command(
+        OUTPUT ${_BENCH_OBJ}
+        COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
+                -DALL_BENCHMARKS_BUILD=1
+                -I${${UC}_SRC_DIR}
+                -I${CMAKE_CURRENT_SOURCE_DIR}
+                -I${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
+                -I${LLVM_MAIN_INCLUDE_DIR}
+                -I${LLVM_BINARY_DIR}/include
+                -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
+                -fpass-plugin=${PLUGIN_LIB}
+                -fexceptions -frtti
+                -c ${${UC}_BENCH_SRC}
+                -o ${_BENCH_OBJ}
+        DEPENDS ${${UC}_BENCH_SRC} LLVMRuntimeSpecializationComptimePlugin clang
+        COMMENT "Compiling ${UC}Benchmark for AllBenchmarks")
+    list(APPEND _ALL_UC_BENCH_OBJS ${_BENCH_OBJ})
+endforeach()
+
 add_benchmark(AllBenchmarks PARTIAL_SOURCES_INTENDED
     ${KERNELS_OBJ_FILE} ${ALL_OBJ_SPEC} ${ALL_OBJ_DB} ${ALL_OBJ_POLY}
     ${ALL_OBJ_TPCH} ${TPCH_SQLITE3_IR_OBJ}
     ${ALL_OBJ_DUCKDB_TPCH}
+    ${_ALL_UC_KERNEL_OBJS}
+    ${_ALL_UC_BENCH_OBJS}
     AllBenchmarks_main.cpp)
 
 target_include_directories(AllBenchmarks PRIVATE
@@ -247,6 +294,12 @@ target_include_directories(AllBenchmarks PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tpch
     ${TPCH_SQLITE3_SRC_DIR}
     ${DUCKDB_SRC_DIR}
+    ${UC1_SRC_DIR}
+    ${UC2_SRC_DIR}
+    ${UC7_SRC_DIR}
+    ${UC8_SRC_DIR}
+    ${UC12_SRC_DIR}
+    ${UC14_SRC_DIR}
     ${LLVM_MAIN_INCLUDE_DIR}
     ${LLVM_BINARY_DIR}/include
 )
