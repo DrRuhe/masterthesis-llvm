@@ -386,3 +386,18 @@ so the shuffle overhead is excluded from reported timing.
 ## Complexity Tracking
 
 No constitution violations. No complexity justification required.
+
+## Speedup Findings
+
+Results from release build, 2026-05-13. All six use cases pass `assertSpecializedLambdaIsEquivalent`/manual correctness validation.
+
+| Use Case | Unspecialized | Specialized | Speedup | JIT Overhead | Notes |
+|----------|--------------|-------------|---------|--------------|-------|
+| UC1 SQL predicate | ~0.1 µs | ~0.01 µs | **8.43x** | ~0.1s | Predicate with min/max bounds folded to constants |
+| UC2 Gaussian convolution | 202 ms | 54 ms | **3.76x** | ~0.1s | 1920×1080 image, 5-tap kernel coefficients constant |
+| UC7 DFA regex | ~0.1 µs | ~0.06 µs | **1.47x** | ~0.1s | 10-state email-pattern DFA, table folded |
+| UC8 IVM sum | ~0.1 µs | ~0.06 µs | **1.77x** | ~0.1s | Aggregation with constant column index |
+| UC12 GROUP BY | ~0.1 µs | ~0.04 µs | **2.78x** | ~0.1s | Group-by with constant key extractor |
+| UC14 Sort | 187 ms | 154 ms | **1.21x** | ~0.1s | 256 k int64 elements, comparator specialized |
+
+All use cases exceed the ≥10% speedup performance goal. UC1 and UC2 show the largest gains due to heavy loop induction with constant bounds/coefficients.
