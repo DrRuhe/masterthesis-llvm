@@ -4,7 +4,7 @@
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
 
-extern "C" int mypow(int x, int y) __asm__("mypow");
+extern "C" int mypow(int x, int y);
 int mypow(int x, int y) {
     int result = 1;
     for (int i = 0; i < y; i++) {
@@ -13,10 +13,8 @@ int mypow(int x, int y) {
     return result;
 }
 
-inline constexpr char Fn_mypow[] = "mypow";
-
 int main() {
-    // CHECK: Comparing instruction counts from specializing mypow:
+    // CHECK: Comparing instruction counts from specializing
     // CHECK: {{before *after *instruction *change}}
     // CHECK: {{82 *1 *total *-81, -99%}}
     // CHECK-EMPTY:
@@ -28,6 +26,6 @@ int main() {
     // CHECK: {{4 *0 *other *-4, -100%}}
     // CHECK: {{2 *1 *ret *-1, -50%}}
     // CHECK: {{1 *0 *call *-1, -100%}}
-    clangRuntimeSpecializer::compareFunctionInstructionCounts(Fn_mypow, mypow, 3, 5);
+    clangRuntimeSpecializer::compareFunctionInstructionCounts(mypow, 3, 5);
     return 0;
 }
