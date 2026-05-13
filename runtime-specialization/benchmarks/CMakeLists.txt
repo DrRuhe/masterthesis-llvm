@@ -127,6 +127,7 @@ endif()
 
 add_subdirectory(polybench)
 add_subdirectory(tpch)
+add_subdirectory(use-cases)
 
 # ── AllBenchmarks ─────────────────────────────────────────────────────────────
 
