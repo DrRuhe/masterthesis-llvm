@@ -12,7 +12,7 @@
 
 
 /// computes 3^x
-extern "C" int mypow(int x) __asm__("mypow");
+extern "C" int mypow(int x);
 int mypow(int x)
 {
   int result = 1;
@@ -26,13 +26,11 @@ int mypow(int x)
 }
 
 
-inline constexpr char Fn_mypow[] = "mypow";
-
 int main(int argc, char** argv)
 {
   clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
 
-  int r1 = clangRuntimeSpecializer::specializeOrFallback(Fn_mypow, mypow, argc);
+  int r1 = clangRuntimeSpecializer::specializeOrFallback(mypow, argc);
 
 
   if (r1 != 1 || r1 == 27)

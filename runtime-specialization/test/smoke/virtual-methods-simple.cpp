@@ -23,7 +23,7 @@ public:
         : child(child), threshold(threshold), direction(direction) {}
   
     // Iterate until finding and returning a value that matches the condition
-    int next() override __asm__("Filter::next") {
+    int next() override {
         int val;
         while ((val = child->next()) != -1 && ((val >= threshold) != direction));
         return val;
@@ -34,7 +34,7 @@ public:
 class Scan final : public Operator {
     int value = 0;
 public:
-    int next() override __asm__("Scan::next") {
+    int next() override {
         return (value > 100) ? -1 : value++;
     }
 };
@@ -47,15 +47,13 @@ int wrapped(Operator* op)
 }
 
 // Wrapper function to be specialized
-extern "C" int execute_query(int i) __asm__("execute_query");
+extern "C" int execute_query(int i);
 int execute_query(int i) {
     Scan scan;
     Filter op = Filter(&scan, i, true);
     return op.next();
 }
 
-
-inline constexpr char Fn_execute_query[] = "execute_query";
 
 std::string argsToString(int argc, char* argv[]) {
     std::string res;
@@ -99,13 +97,12 @@ int main(int argc, char* argv[]) {
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
 
-    int result = clangRuntimeSpecializer::specializeOrFallback(Fn_execute_query, &execute_query, 5);
+    int result = clangRuntimeSpecializer::specializeOrFallback(&execute_query, 5);
     std::fprintf(stdout, "Operators returned %d \n",result);
     return 0;
 }
 
 // EXE-NOT: ERROR: Specialization failed:
 // EXE: DEBUG: Optimized specialized function IR:
-// EXE-NOT: call noundef i32 @"Filter::next"
 // EXE-NOT: load ptr, ptr %vtable
 // EXE: Operators returned 5

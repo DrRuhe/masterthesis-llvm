@@ -25,7 +25,7 @@ public:
         : child(child), threshold(threshold), direction(direction) {}
   
     // Iterate until finding and returning a value that matches the condition
-    int next() override __asm__("Filter::next") {
+    int next() override {
         int val;
         while ((val = child->next()) != -1 && ((val >= threshold) != direction));
         return val;
@@ -36,7 +36,7 @@ public:
 class Scan final : public Operator {
     int value = 0;
 public:
-    int next() override __asm__("Scan::next") {
+    int next() override {
         int res = (value > 100) ? -1 : value++;
         std::printf("Scan::next() = %d, new value = %d\n", res, value);
         return res;
@@ -51,13 +51,11 @@ int wrapped(Operator* op)
 }
 
 // Wrapper function to be specialized
-extern "C" int execute_query(Operator* op) __asm__("execute_query");
+extern "C" int execute_query(Operator* op);
 int execute_query(Operator* op) {
     return op->next();
 }
 
-
-inline constexpr char Fn_execute_query[] = "execute_query";
 
 std::string argsToString(int argc, char* argv[]) {
     std::string res;
@@ -104,7 +102,7 @@ int main(int argc, char* argv[]) {
 
     Operator* query_plan2 = SqlParser::parse(sql_query);
     auto comp = [&]() {};
-    clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_execute_query, execute_query, std::tie(query_plan), std::tie(query_plan2), comp);
+    clangRuntimeSpecializer::assertSpecializedIsEquivalent(execute_query, std::tie(query_plan), std::tie(query_plan2), comp);
 
     return 0;
 }

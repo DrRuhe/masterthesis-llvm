@@ -14,20 +14,17 @@ class A {
 public:
   A(int val) : value(val) {}
 
-  int getMod2() const __asm__("A::getMod2") {
+  int getMod2() const {
     int result = value % 2;
     return result;
   }
 
-  int add(int a, int b) const __asm__("A::add")
+  int add(int a, int b) const
   {
     int result = value + a + b;
     return result;
   }
 };
-
-inline constexpr char Fn_A_getMod2[] = "A::getMod2";
-inline constexpr char Fn_A_add[] = "A::add";
 
 int main(int argc, char** argv) {
   clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
@@ -35,29 +32,25 @@ int main(int argc, char** argv) {
 
   A instance(argc);
 
-  // EXE: INFO: Specializing call to: A::getMod2
-  // EXE: DEBUG: Serializing value of type pointer or class
-  // EXE: DEBUG: Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
-
   // EXE: DEBUG: Optimized specialized function IR:
   // EXE: entry:
   // EXE:   ret i32 0
   // EXE: }
-  int r1 = clangRuntimeSpecializer::specializeOrFallback(Fn_A_getMod2, &A::getMod2, instance);
-
-  // EXE: INFO: Specializing call to: A::add
-  // EXE: DEBUG: Serializing value of type pointer or class
-  // EXE: DEBUG: Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
-  // EXE: DEBUG: Serializing value of type i32
-  // EXE: DEBUG: Arg Serialized to: i32 7
-  // EXE: DEBUG: Serializing value of type i32
-  // EXE: DEBUG: Arg Serialized to: i32 11
+  int r1 = [&]() -> int {
+    auto lambda1 = [&instance]() -> int { return instance.getMod2(); };
+    auto spec = clangRuntimeSpecializer::ClangRuntimeSpecializer::init()->specializeLambda<int>(lambda1);
+    return spec();
+  }();
 
   // EXE: DEBUG: Optimized specialized function IR:
   // EXE: entry:
   // EXE:   ret i32 20
   // EXE: }
-  int r2 = clangRuntimeSpecializer::specializeOrFallback(Fn_A_add, &A::add, instance,7, 11);
+  int r2 = [&]() -> int {
+    auto lambda2 = [&instance]() -> int { return instance.add(7, 11); };
+    auto spec = clangRuntimeSpecializer::ClangRuntimeSpecializer::init()->specializeLambda<int>(lambda2);
+    return spec();
+  }();
 
 
   int r3 = instance.getMod2();
@@ -71,8 +64,3 @@ int main(int argc, char** argv) {
     return 0;
   }
 }
-
-
-
-
-

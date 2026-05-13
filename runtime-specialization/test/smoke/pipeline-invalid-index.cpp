@@ -7,15 +7,13 @@
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
 
-extern "C" int addone(int x) __asm__("addone");
+extern "C" int addone(int x);
 int addone(int x) {
     return x + 1;
 }
 
-inline constexpr char Fn_addone[] = "addone";
-
 int main() {
-    int result = clangRuntimeSpecializer::specializeOrFallback(Fn_addone, addone, 42);
+    int result = clangRuntimeSpecializer::specializeOrFallback(addone, 42);
     (void)result;
     std::printf("done\n");
     return 0;

@@ -10,7 +10,7 @@
 #include <cstdio>
 #include <iostream>
 
-extern "C" int loop_function(int iterations) __asm__("loop_function");
+extern "C" int loop_function(int iterations);
 int loop_function(int iterations) {
     int sum = 0;
     for (int i = 0; i < iterations; ++i) {
@@ -19,8 +19,6 @@ int loop_function(int iterations) {
     }
     return sum;
 }
-
-inline constexpr char Fn_loop_function[] = "loop_function";
 
 int main(int argc, char** argv) {
     int iters = 10;
@@ -31,7 +29,7 @@ int main(int argc, char** argv) {
     std::cout << "Calling loop_function with " << iters << " iterations." << std::endl;
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     RS->setOptions(clangRuntimeSpecializer::ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true));
-    int result = clangRuntimeSpecializer::specializeOrFallback(Fn_loop_function, loop_function, iters);
+    int result = clangRuntimeSpecializer::specializeOrFallback(loop_function, iters);
     RS->printCounters();
     std::cout << "Result: " << result << std::endl;
 

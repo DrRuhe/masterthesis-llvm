@@ -8,15 +8,13 @@
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
 
-extern "C" int triple(int x) __asm__("triple");
+extern "C" int triple(int x);
 int triple(int x) {
     return x * 3;
 }
 
-inline constexpr char Fn_triple[] = "triple";
-
 int main() {
-    int result = clangRuntimeSpecializer::specializeOrFallback(Fn_triple, triple, 4);
+    int result = clangRuntimeSpecializer::specializeOrFallback(triple, 4);
     (void)result;
     std::printf("funcspec ok\n");
     return 0;

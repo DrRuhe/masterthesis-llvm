@@ -911,6 +911,184 @@ namespace clangRuntimeSpecializer {
 
   };
 
+  // ── callSpecializedResolved and callSpecialized (funcptr) free variants ────────
+  // Defined early so specializeOrFallbackResolved / assertSpecializedIsEquivalentResolved
+  // can call them. The IRDumpingPass detects noinline calls to callSpecialized and
+  // rewrites them to callSpecializedResolved with the compile-time-resolved name.
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  R callSpecializedResolved(const char* resolvedName, F* func, ARGS&&... Args) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->callSpecializedResolved<R>(resolvedName, func, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  R callSpecializedResolved(const char* resolvedName, F* func,
+                            const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->callSpecializedResolved<R>(resolvedName, func, opts, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  __attribute__((noinline))
+  R callSpecialized(F* func, ARGS&&... Args) {
+    return callSpecializedResolved<R>(nullptr, func, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  __attribute__((noinline))
+  R callSpecialized(F* func, const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args) {
+    return callSpecializedResolved<R>(nullptr, func, opts, std::forward<ARGS>(Args)...);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Resolved variants for specializeOrFallback and assertSpecializedIsEquivalent.
+  // The IRDumpingPass detects calls to the user-facing (noinline) wrappers,
+  // finds these Resolved variants in the callee body via findSpecOnlyResolvedInBody,
+  // and rewrites the outer call sites to invoke these directly with the baked-in name.
+
+  template <class Callable, class... ARGS>
+  decltype(auto) specializeOrFallbackResolved(const char* resolvedName, Callable C, ARGS&&... Args) {
+    auto Invoke = [&]() -> decltype(auto) {
+      return std::invoke(C, std::forward<ARGS>(Args)...);
+    };
+    if constexpr (std::is_function_v<std::remove_pointer_t<std::decay_t<Callable>>>) {
+      try {
+        if (ClangRuntimeSpecializer::init()) {
+          using R = decltype(Invoke());
+          if constexpr (std::is_void_v<R>) {
+            callSpecializedResolved<void>(resolvedName, C, std::forward<ARGS>(Args)...);
+            return;
+          } else {
+            return callSpecializedResolved<R>(resolvedName, C, std::forward<ARGS>(Args)...);
+          }
+        }
+      } catch (const std::exception& E) {
+        CRS_LOG(Error, (llvm::Twine("Specialization failed: ") + E.what()).str());
+      } catch (...) {
+        CRS_LOG(Error, "Specialization failed with an unknown error.");
+      }
+    }
+    if constexpr (std::is_void_v<decltype(Invoke())>) {
+      Invoke();
+      return;
+    } else {
+      return Invoke();
+    }
+  }
+
+  // specializeOrFallback: noinline so IRDumpingPass can detect the call site and
+  // extract the compile-time-constant function pointer to resolve the name.
+  // The IRDumpingPass rewrites calls from user code to specializeOrFallbackResolved.
+  // For non-function-pointer callables (lambdas, method ptrs), falls back to
+  // std::invoke without attempting specialization.
+  template <class Callable, class... ARGS>
+  __attribute__((noinline))
+  decltype(auto) specializeOrFallback(Callable C, ARGS&&... Args) {
+    return specializeOrFallbackResolved(nullptr, C, std::forward<ARGS>(Args)...);
+  }
+
+  // Internal Resolved variant for assertSpecializedIsEquivalent.
+  // The IRDumpingPass finds this call inside the user-facing wrapper's body
+  // and rewrites the outer call site to invoke this directly with the baked-in name.
+  template <class Fn, class Tuple, class Comparator>
+  void assertSpecializedIsEquivalentResolved(const char* resolvedName, Fn F,
+      Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
+    auto InvokeNormal = [&](auto&&... args) {
+        return std::invoke(F, std::forward<decltype(args)>(args)...);
+    };
+
+    using R = decltype(std::apply(InvokeNormal, normalArgs));
+
+    if constexpr (std::is_void_v<R>) {
+        std::apply(InvokeNormal, normalArgs);
+        std::apply([&](auto&&... CallArgs) {
+            callSpecializedResolved<void>(resolvedName, F, std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, specArgs);
+    } else {
+        R ResOrig = std::apply(InvokeNormal, normalArgs);
+        R ResSpec = std::apply([&](auto&&... CallArgs) -> R {
+            return callSpecializedResolved<R>(resolvedName, F, std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, specArgs);
+        if constexpr (HasEqualityOperator<R>::value) {
+            if (ResOrig != ResSpec) {
+                throw ClangRuntimeSpecializerChangesBehaviorError("Comparison failed: return values differ");
+            }
+        }
+    }
+
+    comp();
+    CRS_LOG(Info, "Successfully specialized! No differences could be observed.");
+  }
+
+  // assertSpecializedIsEquivalent: noinline so IRDumpingPass can detect the call
+  // site, extract the compile-time-constant function pointer F, and rewrite the
+  // call to assertSpecializedIsEquivalentResolved(resolvedName, F, ...).
+  template <class Fn, class Tuple, class Comparator>
+  __attribute__((noinline))
+  void assertSpecializedIsEquivalent(Fn F, Tuple&& normalArgs, Tuple&& specArgs, Comparator&& comp) {
+    return assertSpecializedIsEquivalentResolved(nullptr, F,
+        std::forward<Tuple>(normalArgs), std::forward<Tuple>(specArgs),
+        std::forward<Comparator>(comp));
+  }
+
+
+  template <class Fn, class... ARGS>
+  __attribute__((always_inline))
+  void compareFunctionInstructionCounts(Fn F, ARGS... Args) {
+    auto* RS = ClangRuntimeSpecializer::init();
+
+    // Copy arguments for both calls to ensure same initial state
+    auto ArgsOrig = std::make_tuple(Args...);
+    auto ArgsSpec = std::make_tuple(Args...);
+
+    using R = decltype(F(Args...));
+
+    ClangRuntimeSpecializer::InstructionCounts Before, After;
+
+    // Call baseline instrumented (no optimization) via free callSpecialized
+    RS->resetCounters();
+    if constexpr (std::is_void_v<R>) {
+        std::apply([&](auto&&... CallArgs) {
+            callSpecialized<void>(F,
+                ClangRuntimeSpecializer::Options::NoOptimize().withInstructionInstrumentation(true),
+                std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
+        }, ArgsOrig);
+    } else {
+        std::apply([&](auto&&... CallArgs) {
+            callSpecialized<R>(F,
+                ClangRuntimeSpecializer::Options::NoOptimize().withInstructionInstrumentation(true),
+                std::forward<std::decay_t<decltype(CallArgs)>>(CallArgs)...);
+        }, ArgsOrig);
+    }
+    Before = RS->getCurrentCounters();
+
+    // Call specialized instrumented (with optimization) via free callSpecialized
+    RS->resetCounters();
+    if constexpr (std::is_void_v<R>) {
+        std::apply([&](auto&&... CallArgs) {
+            callSpecialized<void>(F,
+                ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true),
+                std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
+    } else {
+        std::apply([&](auto&&... CallArgs) {
+            callSpecialized<R>(F,
+                ClangRuntimeSpecializer::Options::Default().withInstructionInstrumentation(true),
+                std::forward<decltype(CallArgs)>(CallArgs)...);
+        }, ArgsSpec);
+    }
+    After = RS->getCurrentCounters();
+
+    ClangRuntimeSpecializer::printComparisonTable("", Before, After);
+  }
+
+  // ─── Legacy string-name overloads (kept for backward compat; removal is T033) ───
+
   template <class Callable, class... ARGS>
   __attribute__((always_inline))
   decltype(auto) specializeOrFallback(const char* funcName, Callable C, ARGS&&... Args) {
@@ -952,23 +1130,15 @@ namespace clangRuntimeSpecializer {
     using R = decltype(std::apply(InvokeNormal, normalArgs));
 
     if constexpr (std::is_void_v<R>) {
-        // Call original
         std::apply(InvokeNormal, normalArgs);
-
-        // Call specialized
         std::apply([&](auto&&... CallArgs) {
             RS->callSpecialized<void>(funcName, std::forward<decltype(CallArgs)>(CallArgs)...);
         }, specArgs);
     } else {
-        // Call original
         R ResOrig = std::apply(InvokeNormal, normalArgs);
-
-        // Call specialized
         R ResSpec = std::apply([&](auto&&... CallArgs) -> R {
             return RS->callSpecialized<R>(funcName, std::forward<decltype(CallArgs)>(CallArgs)...);
         }, specArgs);
-
-        // Compare return values
         if constexpr (HasEqualityOperator<R>::value) {
             if (ResOrig != ResSpec) {
                 throw ClangRuntimeSpecializerChangesBehaviorError((llvm::Twine("Comparison failed: return values differ for ") + funcName).str());
@@ -976,19 +1146,15 @@ namespace clangRuntimeSpecializer {
         }
     }
 
-    // Compare modified arguments/state
     comp();
-
     CRS_LOG(Info, (llvm::Twine("Successfully specialized ") + funcName + "! No differences could be observed.").str());
   }
-
 
   template <class Fn, class... ARGS>
   __attribute__((always_inline))
   void compareFunctionInstructionCounts(const char* funcName, Fn F, ARGS... Args) {
     auto* RS = ClangRuntimeSpecializer::init();
 
-    // Copy arguments for both calls to ensure same initial state
     auto ArgsOrig = std::make_tuple(Args...);
     auto ArgsSpec = std::make_tuple(Args...);
 
@@ -996,7 +1162,6 @@ namespace clangRuntimeSpecializer {
 
     ClangRuntimeSpecializer::InstructionCounts Before, After;
 
-    // Call baseline instrumented (no optimization)
     RS->resetCounters();
     if constexpr (std::is_void_v<R>) {
         std::apply([&](auto&&... CallArgs) {
@@ -1013,7 +1178,6 @@ namespace clangRuntimeSpecializer {
     }
     Before = RS->getCurrentCounters();
 
-    // Call specialized instrumented (with optimization)
     RS->resetCounters();
     if constexpr (std::is_void_v<R>) {
         std::apply([&](auto&&... CallArgs) {
@@ -1032,6 +1196,8 @@ namespace clangRuntimeSpecializer {
 
     ClangRuntimeSpecializer::printComparisonTable(funcName, Before, After);
   }
+
+  // ─── End legacy overloads ─────────────────────────────────────────────────────
 
   // assertSpecializedLambdaIsEquivalent — calls specializeLambda once, checks all inputs.
   // Throws ClangRuntimeSpecializerChangesBehaviorError on return-value mismatch.
@@ -1089,9 +1255,9 @@ namespace clangRuntimeSpecializer {
     return specializeLambdaResolved<R>(nullptr, lambda, opts);
   }
 
-  // Internal resolved variants for specializeOnly/callSpecialized — free-function wrappers
+  // Internal resolved variants for specializeOnly — free-function wrappers
   // around the member *Resolved variants. The IRDumpingPass finds these in the body of the
-  // free specializeOnly/callSpecialized overloads below and uses them as rewrite targets.
+  // free specializeOnly overloads below and uses them as rewrite targets.
   template <class R, class F, class... ARGS,
             std::enable_if_t<std::is_function_v<F>, int> = 0>
   auto specializeOnlyResolved(const char* resolvedName, F* func, ARGS&&... Args)
@@ -1107,21 +1273,6 @@ namespace clangRuntimeSpecializer {
       -> SpecializedFunction<R> {
     auto* RS = ClangRuntimeSpecializer::init();
     return RS->specializeOnlyResolved<R>(resolvedName, func, opts, std::forward<ARGS>(Args)...);
-  }
-
-  template <class R, class F, class... ARGS,
-            std::enable_if_t<std::is_function_v<F>, int> = 0>
-  R callSpecializedResolved(const char* resolvedName, F* func, ARGS&&... Args) {
-    auto* RS = ClangRuntimeSpecializer::init();
-    return RS->callSpecializedResolved<R>(resolvedName, func, std::forward<ARGS>(Args)...);
-  }
-
-  template <class R, class F, class... ARGS,
-            std::enable_if_t<std::is_function_v<F>, int> = 0>
-  R callSpecializedResolved(const char* resolvedName, F* func,
-                            const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args) {
-    auto* RS = ClangRuntimeSpecializer::init();
-    return RS->callSpecializedResolved<R>(resolvedName, func, opts, std::forward<ARGS>(Args)...);
   }
 
   // specializeOnly with function pointer — free function variant.
@@ -1140,21 +1291,6 @@ namespace clangRuntimeSpecializer {
   auto specializeOnly(F* func, const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args)
       -> SpecializedFunction<R> {
     return specializeOnlyResolved<R>(nullptr, func, opts, std::forward<ARGS>(Args)...);
-  }
-
-  // callSpecialized with function pointer — free function variant.
-  template <class R, class F, class... ARGS,
-            std::enable_if_t<std::is_function_v<F>, int> = 0>
-  __attribute__((noinline))
-  R callSpecialized(F* func, ARGS&&... Args) {
-    return callSpecializedResolved<R>(nullptr, func, std::forward<ARGS>(Args)...);
-  }
-
-  template <class R, class F, class... ARGS,
-            std::enable_if_t<std::is_function_v<F>, int> = 0>
-  __attribute__((noinline))
-  R callSpecialized(F* func, const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args) {
-    return callSpecializedResolved<R>(nullptr, func, opts, std::forward<ARGS>(Args)...);
   }
 
 } // namespace clangRuntimeSpecializer

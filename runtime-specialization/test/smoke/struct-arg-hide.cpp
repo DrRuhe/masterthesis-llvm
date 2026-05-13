@@ -12,12 +12,10 @@ struct MyStruct {
     int a;
 };
 
-extern "C" int process_struct(MyStruct s) __asm__("process_struct");
+extern "C" int process_struct(MyStruct s);
 int process_struct(MyStruct s) {
     return s.x + s.y + s.z + s.w + s.a;
 }
-
-inline constexpr char Fn_process_struct[] = "process_struct";
 
 __attribute__((noinline)) MyStruct* hide(MyStruct* s) {
     return s;
@@ -36,7 +34,7 @@ int main(int argc, char** argv) {
     // EXE: entry:
     // EXE:   ret i32 102
     auto comp = [&]() {}; // no comparison needed, as no changes done anyways.
-    clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_process_struct, process_struct, std::tie(*hidden_a), std::tie(*hidden_b), comp);
+    clangRuntimeSpecializer::assertSpecializedIsEquivalent(process_struct, std::tie(*hidden_a), std::tie(*hidden_b), comp);
     return 0;
 }
 

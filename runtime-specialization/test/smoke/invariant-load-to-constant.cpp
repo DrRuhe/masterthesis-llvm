@@ -9,19 +9,17 @@ struct Data {
     int mutable_field;
 };
 
-extern "C" int test_invariant_load(Data* d) __asm__("test_invariant_load");
+extern "C" int test_invariant_load(Data* d);
 int test_invariant_load(Data* d) {
     // This load should be marked invariant and then replaced by a constant (10)
     return d->read_only;
 }
 
-inline constexpr char Fn_test_invariant_load[] = "test_invariant_load";
-
 int main() {
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
     Data d = {10, 20};
-    
-    int res = clangRuntimeSpecializer::specializeOrFallback(Fn_test_invariant_load, test_invariant_load, &d);
+
+    int res = clangRuntimeSpecializer::specializeOrFallback(test_invariant_load, &d);
     
     // Check that the specialized IR has been optimized to a single return of constant 10
     // CHECK: Optimized specialized function IR:

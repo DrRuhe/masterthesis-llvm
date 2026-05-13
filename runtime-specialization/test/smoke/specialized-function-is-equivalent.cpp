@@ -9,7 +9,8 @@
 
 
 /// computes 3^x
-extern "C" void mypow(int* result, int x)
+extern "C" void mypow(int* result, int x);
+void mypow(int* result, int x)
 {
   *result =  1;
   for (int i = 0; i < x; i++)
@@ -18,8 +19,6 @@ extern "C" void mypow(int* result, int x)
   }
 }
 
-
-inline constexpr char Fn_mypow[] = "mypow";
 
 int main(int argc, char** argv)
 {
@@ -34,7 +33,7 @@ int main(int argc, char** argv)
   // EXE:   store i32 9, ptr inttoptr
   // EXE:   ret void
   // EXE: }
-  // EXE: INFO: Successfully specialized mypow! No differences could be observed.
+  // EXE: INFO: Successfully specialized! No differences could be observed.
   int result1 = 0;
   int result2 = 0;
   int x1 = argc;
@@ -44,7 +43,7 @@ int main(int argc, char** argv)
   };
   int* p1 = &result1;
   int* p2 = &result2;
-  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_mypow, mypow, std::tie(p1, x1), std::tie(p2, x2), comp);
+  clangRuntimeSpecializer::assertSpecializedIsEquivalent(mypow, std::tie(p1, x1), std::tie(p2, x2), comp);
 
   return 0;
 }

@@ -22,63 +22,64 @@ public:
     return !(*this == other);
   }
 
-  int getMod2() const __asm__("A::getMod2") {
+  int getMod2() const {
     int result = value % 2;
     return result;
   }
 
-  int add(int a, int b) const __asm__("A::add")
+  int add(int a, int b) const
   {
     int result = value + a + b;
     return result;
   }
 };
 
-inline constexpr char Fn_A_getMod2[] = "A::getMod2";
-inline constexpr char Fn_A_add[] = "A::add";
-
 int main(int argc, char** argv) {
 
   clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
 
-
-
-
-  // EXE: INFO: Specializing call to: A::getMod2
-  // EXE: DEBUG: Serializing value of type pointer or class
-  // EXE: DEBUG: Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
-  // EXE: DEBUG: Optimized specialized function IR:
-  // EXE: entry:
-  // EXE:   ret i32 0
-  // EXE: }
-  // EXE: INFO: Successfully specialized A::getMod2! No differences could be observed.
   A instance(argc);
   A instance2(argc);
-  auto comp = [&]() {
-    if (instance.value != instance2.value) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
-  };
-  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_A_getMod2, &A::getMod2, std::tie(instance), std::tie(instance2), comp);
 
-  // EXE: INFO: Specializing call to: A::add
-  // EXE: DEBUG: Serializing value of type pointer or class
-  // EXE: DEBUG: Arg Serialized to: ptr inttoptr (i64 {{[0-9]+}} to ptr)
-  // EXE: DEBUG: Serializing value of type i32
-  // EXE: DEBUG: Arg Serialized to: i32 7
-  // EXE: DEBUG: Serializing value of type i32
-  // EXE: DEBUG: Arg Serialized to: i32 11
-  // EXE: DEBUG: Optimized specialized function IR:
-  // EXE: entry:
-  // EXE:   ret i32 20
-  // EXE: }
-  // EXE: INFO: Successfully specialized A::add! No differences could be observed.
+  // EXE: INFO: Successfully specialized! No differences could be observed.
+  {
+    auto comp = [&]() {
+      if (instance.value != instance2.value) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
+    };
+    auto normalArgs = std::tie(instance);
+    auto specArgs   = std::tie(instance2);
+    auto InvokeNormal = [](A& inst) { return inst.getMod2(); };
+    using R = decltype(InvokeNormal(instance));
+    R ResOrig = InvokeNormal(instance);
+    auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
+    auto lambda1 = [&instance2]() -> R { return instance2.getMod2(); };
+    auto spec = RS->specializeLambda<R>(lambda1);
+    R ResSpec = spec();
+    if (ResOrig != ResSpec)
+      throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Comparison failed: return values differ");
+    comp();
+    CRS_LOG(Info, "Successfully specialized! No differences could be observed.");
+  }
 
-  A instance3(argc);
-  A instance4(argc);
-  int a1 = 7, b1 = 11, a2 = 7, b2 = 11;
-  auto comp2 = [&]() {
-    if (instance3.value != instance4.value || a1 != a2 || b1 != b2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
-  };
-  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_A_add, &A::add, std::tie(instance3, a1, b1), std::tie(instance4, a2, b2), comp2);
+  // EXE: INFO: Successfully specialized! No differences could be observed.
+  {
+    A instance3(argc);
+    A instance4(argc);
+    int a1 = 7, b1 = 11, a2 = 7, b2 = 11;
+    auto comp2 = [&]() {
+      if (instance3.value != instance4.value || a1 != a2 || b1 != b2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
+    };
+    auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
+    using R = int;
+    R ResOrig = instance3.add(a1, b1);
+    auto lambda2 = [&instance4, a2, b2]() -> R { return instance4.add(a2, b2); };
+    auto spec = RS->specializeLambda<R>(lambda2);
+    R ResSpec = spec();
+    if (ResOrig != ResSpec)
+      throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Comparison failed: return values differ");
+    comp2();
+    CRS_LOG(Info, "Successfully specialized! No differences could be observed.");
+  }
 
   return 0;
 }

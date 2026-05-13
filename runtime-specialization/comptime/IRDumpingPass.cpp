@@ -86,13 +86,15 @@ bool isSpecializeLambdaUserCall(StringRef MangledName) {
          !MangledName.contains("specializeLambdaResolved");
 }
 
-// Returns true for calls to the user-facing specializeOnly/callSpecialized
-// overloads that take a function pointer (identified by having a function type
-// template parameter encoded in the mangled name).
+// Returns true for calls to the user-facing specializeOnly/callSpecialized/
+// specializeOrFallback/assertSpecializedIsEquivalent overloads that take a
+// function pointer as first or second argument.
 bool isSpecOnlyFuncPtrUserCall(StringRef MangledName) {
   if (MangledName.contains("Resolved")) return false;
   return MangledName.contains("specializeOnly") ||
-         MangledName.contains("callSpecialized");
+         MangledName.contains("callSpecialized") ||
+         MangledName.contains("specializeOrFallback") ||
+         MangledName.contains("assertSpecializedIsEquivalent");
 }
 
 // Look inside a specializeLambda function body for its call to
@@ -108,17 +110,19 @@ Function* findResolvedFuncInBody(Function* SpecLambdaFn) {
   return nullptr;
 }
 
-// For a specializeOnly/callSpecialized(F* func, args...) call site, find the
-// Resolved variant by inspecting the callee's body.  The user-facing overload
-// calls specializeOnlyResolved(nullptr, func, ...) or callSpecializedResolved
-// inside its body, so we can find the resolved function that way.
+// For a specializeOnly/callSpecialized/specializeOrFallback/assertSpecializedIsEquivalent
+// (F* func, args...) call site, find the Resolved variant by inspecting the callee's body.
+// The user-facing overload calls specializeOnlyResolved / callSpecializedResolved /
+// specializeOrFallbackResolved / assertSpecializedIsEquivalentResolved inside its body.
 Function* findSpecOnlyResolvedInBody(Function* SpecOnlyFn) {
   for (auto& BB : *SpecOnlyFn)
     for (auto& I : BB)
       if (auto* CI = dyn_cast<CallInst>(&I))
         if (auto* F = CI->getCalledFunction())
           if (F->getName().contains("specializeOnlyResolved") ||
-              F->getName().contains("callSpecializedResolved"))
+              F->getName().contains("callSpecializedResolved") ||
+              F->getName().contains("specializeOrFallbackResolved") ||
+              F->getName().contains("assertSpecializedIsEquivalentResolved"))
             return F;
   return nullptr;
 }
@@ -201,13 +205,15 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
 
   for (auto& F : M) {
     if (F.isDeclaration()) continue;
-    // Skip functions that are themselves part of the specializeLambda infrastructure
-    // (free wrappers, member overloads, resolved variants).  Their internal calls
-    // pass the lambda as a function parameter — not an alloca-backed local — so
-    // alloca-tracing would fail or produce wrong results.
+    // Skip functions that are themselves part of the specializer infrastructure
+    // (free wrappers, member overloads, resolved variants, helper functions).
+    // Their internal calls pass the function/lambda as a parameter — not an
+    // alloca-backed local — so alloca-tracing would fail or produce wrong results.
     if (F.getName().contains("specializeLambda") ||
         F.getName().contains("specializeOnly") ||
-        F.getName().contains("callSpecialized"))
+        F.getName().contains("callSpecialized") ||
+        F.getName().contains("specializeOrFallback") ||
+        F.getName().contains("assertSpecializedIsEquivalent"))
       continue;
 
     for (auto& BB : F) {
@@ -254,10 +260,13 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
 
   for (auto& F : M) {
     if (F.isDeclaration()) continue;
-    // Skip specializer infrastructure itself
+    // Skip specializer infrastructure itself (free wrappers, resolved variants,
+    // helper functions like specializeOrFallback/assertSpecializedIsEquivalent).
     if (F.getName().contains("specializeLambda") ||
         F.getName().contains("specializeOnly") ||
-        F.getName().contains("callSpecialized"))
+        F.getName().contains("callSpecialized") ||
+        F.getName().contains("specializeOrFallback") ||
+        F.getName().contains("assertSpecializedIsEquivalent"))
       continue;
 
     for (auto& BB : F) {

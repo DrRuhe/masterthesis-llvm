@@ -5,15 +5,13 @@
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
 
-extern "C" int square(int x) __asm__("square");
+extern "C" int square(int x);
 int square(int x) {
     return x * x;
 }
 
-inline constexpr char Fn_square[] = "square";
-
 int main() {
-    int result = clangRuntimeSpecializer::specializeOrFallback(Fn_square, square, 5);
+    int result = clangRuntimeSpecializer::specializeOrFallback(square, 5);
     (void)result;
     std::printf("env-vars ok\n");
     return 0;

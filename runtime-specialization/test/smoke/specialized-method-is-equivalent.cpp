@@ -22,15 +22,13 @@ public:
   }
 
 
-  int addAndSum(int x) __asm__("A::addAndSum") {
+  int addAndSum(int x) {
 	std::fprintf(stderr, "[addAndSum] was called!\n");
 	value += x;
     return value;
   }
 
 };
-
-inline constexpr char Fn_A_addAndSum[] = "A::addAndSum";
 
 int main(int argc, char** argv) {
 
@@ -40,6 +38,17 @@ int main(int argc, char** argv) {
   auto comp = [&]() {
     if (instance != instance2) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Results differ");
   };
-  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_A_addAndSum, &A::addAndSum, std::tie(instance, x1), std::tie(instance2, x2), comp);
+
+  // Use lambda-based equivalence testing since method pointers aren't supported by the new API
+  auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
+  using R = int;
+  R ResOrig = instance.addAndSum(x1);
+  auto lambdaSpec = [&instance2, x2]() mutable -> R { return instance2.addAndSum(x2); };
+  auto spec = RS->specializeLambda<R>(lambdaSpec);
+  R ResSpec = spec();
+  if (ResOrig != ResSpec)
+    throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Comparison failed: return values differ");
+  comp();
+
   return 0;
 }

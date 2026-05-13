@@ -6,7 +6,7 @@
 
 
 /// computes 3^x
-extern "C" int mypow(int x) __asm__("mypow");
+extern "C" int mypow(int x);
 int mypow(int x)
 {
   int result = 1;
@@ -18,8 +18,6 @@ int mypow(int x)
   return result;
 }
 
-
-inline constexpr char Fn_mypow[] = "mypow";
 
 int main(int argc, char** argv)
 {
@@ -33,12 +31,12 @@ int main(int argc, char** argv)
   // EXE: entry:
   // EXE:   ret i32 9
   // EXE: }
-  // EXE: INFO: Successfully specialized mypow! No differences could be observed.
+  // EXE: INFO: Successfully specialized! No differences could be observed.
   int argc_copy = argc;
   auto comp = [&]() {
       if (argc != argc_copy) throw clangRuntimeSpecializer::ClangRuntimeSpecializerChangesBehaviorError("Arguments differ");
   };
-  clangRuntimeSpecializer::assertSpecializedIsEquivalent(Fn_mypow, mypow, std::tie(argc), std::tie(argc_copy), comp);
+  clangRuntimeSpecializer::assertSpecializedIsEquivalent(mypow, std::tie(argc), std::tie(argc_copy), comp);
 
   return 0;
 }

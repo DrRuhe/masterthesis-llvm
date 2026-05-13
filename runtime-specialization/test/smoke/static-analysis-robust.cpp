@@ -14,21 +14,19 @@ extern "C" __attribute__((pure)) int nested_read_only(__attribute__((noescape)) 
     return *p;
 }
 
-extern "C" int process_data_robust(Data* d, int x) __asm__("process_data_robust");
+extern "C" int process_data_robust(Data* d, int x);
 int process_data_robust(Data* d, int x) {
     int val1 = d->read_only; // Should be invariant
-    
+
     int dummy = nested_read_only(&d->read_only); // Should not invalidate
-    
+
     d->mutable_field += x; // Should invalidate d->mutable_field but not d->read_only
-    
+
     int val2 = d->read_only; // Should be invariant
     int val3 = d->mutable_field; // Should NOT be invariant
-    
+
     return val1 + val2 + val3 + dummy;
 }
-
-inline constexpr char Fn_process_data_robust[] = "process_data_robust";
 
 // CHECK: INFO: Specializing call to: process_data_robust
 // CHECK: DEBUG: Optimized specialized function IR:
@@ -39,8 +37,8 @@ inline constexpr char Fn_process_data_robust[] = "process_data_robust";
 int main() {
     clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
     Data d = {10, 20};
-    
-    int res = clangRuntimeSpecializer::specializeOrFallback(Fn_process_data_robust, process_data_robust, &d, 5);
+
+    int res = clangRuntimeSpecializer::specializeOrFallback(process_data_robust, &d, 5);
     
     std::printf("Result: %d\n", res);
     // CHECK: Result: 55

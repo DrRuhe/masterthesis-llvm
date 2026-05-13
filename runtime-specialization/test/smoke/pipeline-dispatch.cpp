@@ -8,18 +8,16 @@
 #include <cstdio>
 #include <cstdlib>
 
-extern "C" int mul(int a, int b) __asm__("mul");
+extern "C" int mul(int a, int b);
 int mul(int a, int b) {
     return a * b;
 }
-
-inline constexpr char Fn_mul[] = "mul";
 
 int main() {
     const char* pipelineEnv = std::getenv("CRS_DEFAULT_PIPELINE");
     int pipelineVal = (pipelineEnv != nullptr) ? std::atoi(pipelineEnv) : 0;
 
-    int result = clangRuntimeSpecializer::specializeOrFallback(Fn_mul, mul, 3, 7);
+    int result = clangRuntimeSpecializer::specializeOrFallback(mul, 3, 7);
     (void)result;
 
     if (pipelineVal == 1) {
