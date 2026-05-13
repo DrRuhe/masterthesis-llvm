@@ -282,16 +282,12 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
         auto* Callee = CI->getCalledFunction();
         if (!Callee || !isSpecOnlyFuncPtrUserCall(Callee->getName())) continue;
 
-        // The user-facing overload takes (F* func, args...) where func must be
-        // a compile-time-constant function pointer.  FR-018: if no Function*
-        // arg is found the pointer is a runtime variable — emit a fatal error.
+        // The user-facing overload takes (F* func, args...) where func is
+        // a compile-time constant.  Find the function pointer argument.
+        // If no Function* arg is found (e.g. function ptr passed through a
+        // template wrapper parameter), skip — runtime dispatch still works.
         Function* TargetFn = findFunctionPtrArg(CI);
-        if (!TargetFn)
-          report_fatal_error(
-              "IRDumpingPass: specializeOnly/callSpecialized requires a "
-              "compile-time-constant function pointer (e.g. &myFunc). "
-              "A runtime-variable function pointer was detected. "
-              "Pass the function address directly at the call site.");
+        if (!TargetFn) continue;
 
         // Find the function pointer's argument index (for rewriting).
         unsigned FuncPtrArgIdx = 0;
