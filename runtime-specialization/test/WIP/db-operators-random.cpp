@@ -60,7 +60,6 @@ int execute_query(Operator* op) {
 
 
 
-inline constexpr char Fn_execute_query[] = "execute_query";
 
 std::string argsToString(int argc, char* argv[]) {
     std::string res;
@@ -104,7 +103,7 @@ int main(int argc, char* argv[]) {
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
 
-    int result = clangRuntimeSpecializer::specializeOrFallback(Fn_execute_query, &execute_query, query_plan);
+    int result = clangRuntimeSpecializer::specializeOrFallback(&execute_query, query_plan);
     std::fprintf(stdout, "Operators returned %d \n",result);
     return 0;
 }
