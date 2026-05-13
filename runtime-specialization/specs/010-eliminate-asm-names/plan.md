@@ -1,212 +1,183 @@
 # Implementation Plan: Eliminate Manual ASM Names from Specialization API
 
-**Branch**: `010-eliminate-asm-names` | **Date**: 2026-05-10 | **Spec**: [spec.md](spec.md)  
-**Input**: Feature specification from `specs/010-eliminate-asm-names/spec.md`
+**Branch**: `010-eliminate-asm-names` | **Date**: 2026-05-10 | **Spec**: `specs/010-eliminate-asm-names/spec.md`
+
+---
 
 ## Summary
 
-Remove the `funcName` string parameter from `specializeLambda`, `specializeOnly`, and
-`callSpecialized`.  The IRDumpingPass is extended to scan each TU for call sites of these
-three APIs, resolve the target function name from the IR (lambda `operator()` mangled name
-or named function pointer target), and rewrite those call sites to call internal
-`*Resolved` variants that receive the embedded string as a compile-time constant.  A
-zero-argument lambda and a fully-baked `specializeOnly` call are unified: both reach
-`specializeOnlyImpl` with an empty variable-arg list and the resolved name.
+Remove `funcName` string parameters from `specializeLambda`, `specializeOnly`, `callSpecialized`, and all helper functions. The IR-dumping compile-time pass detects each call site, resolves the target function identity from the IR at compile time, and rewrites the call to an internal `*Resolved` variant that carries the embedded name as a private string constant. At runtime the specializer uses this constant — no `__asm__` attribute, no manual registration.
+
+**Current state (2026-05-13)**:
+- Phase 1–4 complete: lambda + funcptr specialization without funcName work end-to-end; 35/35 smoke tests pass.
+- Phase 5–6 (old API removal, benchmarks, polish) not yet started.
 
 ---
 
 ## Technical Context
 
-**Language/Version**: C++17, LLVM 18  
-**Primary Dependencies**: LLVM/Clang plugin (`LLVMRuntimeSpecializationComptimePlugin`), LLJIT, `llvm::PassBuilder`  
-**Storage**: N/A  
-**Testing**: `lit` / `FileCheck` via `ninja check-wip-runtime-specializer` and `ninja check-smoke-runtime-specializer`  
-**Target Platform**: Linux x86-64 (NixOS, Nix flake at `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/flake.nix`)  
-**Project Type**: C++ library + LLVM compiler plugin  
-**Performance Goals**: No regression in JIT compilation time; name resolution at the call site is free (compile-time rewriting, not runtime lookup)  
-**Constraints**: Embedded function names must survive strip; no debug-symbol dependency  
-**Scale/Scope**: 3 API functions changed; 1 pass extended; existing smoke tests updated; 4 new smoke tests added
+**Language**: C++17, LLVM 18 (opaque pointers, Itanium ABI, clang 18)  
+**Primary changed files**:
+- `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h` — public API + internal resolved overloads  
+- `comptime/IRDumpingPass.cpp` — compile-time call-site rewriting pass  
+- `test/smoke/`, `test/WIP/` — smoke tests (promoted from WIP)  
+- `benchmarks/` — callers updated when old funcName overloads are removed  
+
+**Testing**: `ninja check-wip-runtime-specializer` (WIP loop), `ninja check-smoke-runtime-specializer` (gate before commit). Always run via ninja targets — never `llvm-lit` directly.  
+**Build**: `ninja LLVMRuntimeSpecializationComptimePlugin ClangRuntimeSpecializer` from `llvm/llvm/build/debug`.
 
 ---
 
 ## Constitution Check
 
-*GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
-
-| Principle | Status | Notes |
-|-----------|--------|-------|
-| I. Correctness & Safety | ✅ PASS | `assertSpecializedIsEquivalent` tests preserved; LLVM `Expected<T>` error model unchanged |
-| II. LLVM Coding Standards | ✅ PASS | IR rewriting uses standard LLVM IR Builder APIs; mangled-name extraction via `llvm::Function::getName()`; no raw owning pointers introduced |
-| III. Test-First Validation | ✅ PASS | WIP tests written before implementation; promoted to smoke on completion |
-| IV. Performance Measurement | ✅ PASS | Name resolution is compile-time rewriting — zero runtime cost; no benchmark regression expected |
-| V. Minimal Public API | ✅ PASS | `funcName` overloads removed (not retained for compatibility); no new public types added; dead API deleted outright |
-| Backwards Compatibility | ✅ PASS | Old `funcName` overloads deleted; all callers updated in the same change; no shim |
-| Specialization Scope Constraint | ✅ PASS | Single-threaded execution model unchanged |
-
-No violations. Complexity Tracking table omitted.
+| Gate | Status | Notes |
+|------|--------|-------|
+| Research motivation documented | ✅ | Simplifies API, removes error-prone string literals, enables arbitrary lambda bodies |
+| Backwards compatibility | ✅ OK to break | No-legacy-support policy; old funcName overloads will be removed |
+| Tests before promotion | ✅ | All new tests go through WIP → smoke workflow |
+| Smoke suite green | ✅ | 41/41 pass before Phase 4 work |
 
 ---
 
-## Project Structure
+## Implementation-Informed Design (Lessons from Phase 3)
 
-### Documentation (this feature)
+This section replaces the original research.md findings where experience proved them wrong or incomplete.
 
-```text
-specs/010-eliminate-asm-names/
-├── plan.md              ← this file
-├── research.md          ← Phase 0 output
-├── data-model.md        ← Phase 1 output
-├── contracts/
-│   └── api.md           ← Phase 1 output
-└── tasks.md             ← Phase 2 output (/speckit.tasks)
+### Lambda `operator()` Discovery — Revised
+
+**Research.md said**: alloca-tracing to get closure struct type.  
+**What actually works**: Extract `$_N` (e.g. `$_0`, `$_12`) from the **mangled name of the `specializeLambda<R, Lambda>` callee** — the Lambda template arg is encoded there. Then find a non-declaration function whose demangled name contains `"operator()"` AND whose mangled name contains the same `$_N` token. This is robust under opaque pointers and works for captureless lambdas (whose closure struct is `class.anon`, carrying no useful type info).
+
+### Lambda Argument Index — Revised
+
+**Research.md said**: alloca-trace the lambda arg to find its index.  
+**What actually works**: Read it from the callee's mangled name:
+- If callee name contains `"23ClangRuntimeSpecializer16specializeLambda"` → member function → `LambdaArgIdx = 2` (sret=0, this=1, lambda=2)
+- Otherwise → free function → `LambdaArgIdx = 1` (sret=0, lambda=1)  
+No alloca-tracing needed.
+
+### Function Pointer Argument Location
+
+For `specializeOnly(F* func, args...)` / `callSpecialized(F* func, args...)`, scan all args with `dyn_cast<Function>(arg->stripPointerCasts())`. The first argument that resolves to a `Function*` is the target. This automatically handles sret/this offsets without index arithmetic.
+
+**Critical**: Skip (do NOT error) if no `Function*` arg is found — this means the call is the old string-based overload, which the pass should not touch. A compile-time fatal error is only appropriate for the new funcptr overloads when the pointer is NOT a compile-time constant. Currently, non-constant pointers can be silently deferred to a runtime `ClangRuntimeSpecializerDumpedIRError`.
+
+### CallBase vs CallInst
+
+Always use `CallBase*` (the common base of `CallInst` and `InvokeInst`). The `always_inline` attribute on helpers like `assertSpecializedLambdaIsEquivalent` causes inlining into EH-cleanup contexts, producing `InvokeInst` nodes that `dyn_cast<CallInst>` misses. When rewriting, create `InvokeInst` (preserving `getNormalDest()`/`getUnwindDest()`) if the original was an invoke, else create `CallInst`.
+
+### forceLambdaOpEmit — Required
+
+If the user never directly calls `lambda(...)` (only uses `spec(args...)`), clang does NOT emit the lambda's `operator()` in the TU, and the pass cannot discover it. The fix: in the user-facing `specializeLambda<R>(lambda)` overload body, take a `volatile` pointer-to-member-function of `operator()`. The `volatile` prevents dead-code elimination, forcing clang to emit the definition.
+
+---
+
+## Remaining Work — Minimal Complexity Breakdown
+
+### Phase 4: specializeOnly / callSpecialized with Function Pointer
+
+**Goal**: `specializeOnly<R>(&myFunc, args...)` works without funcName.
+
+**Files to change**:
+1. `comptime/IRDumpingPass.cpp` — fix the Phase 0b detection + Phase N2 rewriting
+2. `test/WIP/speconly-funcptr.cpp` — already written, needs to pass
+3. `test/WIP/zero-arg-lambda-equals-speconly.cpp` — already written, needs to pass
+
+**IRDumpingPass changes needed** (the skeleton is in Phase 0b / Phase N2 but has a critical bug):
+
+**BUG**: `findFunctionPtrArg` currently calls `report_fatal_error` when no `Function*` found, which breaks existing smoke tests that use `specializeOnly("funcName", args...)`. Fix: change to `continue` (skip the site) when no `Function*` is found, since the absence means it's the old string-based overload.
+
+**How `findSpecOnlyResolvedInBody` works**: scan the callee body for a `CallInst` to a function whose name contains `"specializeOnlyResolved"` OR `"callSpecializedResolved"`. The new funcptr overloads call the resolved variant with `nullptr` as the name arg, which forces template instantiation of the resolved variant and makes it visible in the module.
+
+**Key invariant**: The SFINAE constraint `std::enable_if_t<std::is_function_v<F>, int>` on the funcptr overloads ensures they do NOT match `const char*` or other pointer types — the IR will have two distinct mangled instantiations.
+
+**Phase 4 test sequence**:
+1. Fix the `report_fatal_error` → `continue` bug in Phase 0b
+2. Run `ninja check-smoke-runtime-specializer` to confirm existing 41 tests still pass
+3. Run `ninja check-wip-runtime-specializer` for the two new tests; iterate on IRDumpingPass until both pass
+4. Promote the two tests to `test/smoke/`
+
+### Phase 5: Helper Function Updates and Old API Removal
+
+**Minimal approach** (do NOT do all at once — risk of cascading failures):
+
+**Step A — Update helpers** (without removing old overloads yet):
+- `assertSpecializedIsEquivalent(F, normalArgs, specArgs, comp)` — change to take callable `F` directly; internally call `RS->callSpecialized<R>(&F_as_fnptr, ...)` but this requires F to be a plain function. For the helper use-case where F is a plain function, `&F` works.
+- `compareFunctionInstructionCounts(F, args...)` — same pattern.
+- `specializeOrFallback(C, args...)` — `C` is a callable, not a function pointer. The internal `callSpecialized` call uses the new funcptr form `RS->callSpecialized<R>(&C_address_if_fn, args...)`. Since `C` can be a lambda, this requires that `C` is not a lambda (or that it's passed as a function pointer). **Simplest approach**: keep `specializeOrFallback` internal as-is but remove `funcName` from its PUBLIC signature; route through `callSpecialized<R>(&C, args...)` only when `C` is a pointer to a plain function (detected at compile time via `std::is_function_v<std::remove_pointer_t<C>>`).
+
+**Step B — Remove old funcName overloads** (after all callers updated):
+- Remove `specializeOnly(const char* funcName, ...)` member and free functions
+- Remove `callSpecialized(const char* funcName, ...)` member and free functions
+- Do NOT remove `specializeLambda(const char* funcName, ...)` until after smoke tests confirm the new path works
+- Run `ninja check-smoke-runtime-specializer`; fix regressions one by one
+
+**Step C — Update benchmarks**:
+- `benchmarks/ClangRuntimeSpecializerBenchmark.h`: `benchmarkJITOverhead` etc. use the old string form → update to `callSpecialized<R>(&funcName_as_pointer, ...)`
+- Update actual benchmark `.cpp` files under `benchmarks/polybench/`, `benchmarks/tpch/`
+
+### Phase 6: Error Paths and Polish
+
+**Missing-plugin error tests**: The runtime behavior when compiled without the plugin is already handled (the `Resolved` variants check for `nullptr` resolvedName and throw `ClangRuntimeSpecializerDumpedIRError`). The tests just need to be written and the error message verified.
+
+**Old API cleanup**: After all callers are migrated and smoke tests pass, delete the old funcName overloads. One file, one pass, one verify.
+
+---
+
+## File Change Map
+
 ```
+runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h
+├── [DONE] specializeLambda<R>(lambda [, opts])  — noinline, forceLambdaOpEmit, →Resolved
+├── [DONE] specializeLambdaResolved<R>(name, lambda [, opts])  — public, →specializeLambdaImpl
+├── [DONE] specializeOnlyResolved<R>(name, F*, args...)  — private, nullptr check
+├── [DONE] callSpecializedResolved<R>(name, F*, args...)  — private, nullptr check
+├── [DONE] specializeOnly<R>(F* func, args...) member  — noinline, →specializeOnlyResolved(nullptr,...)
+├── [DONE] callSpecialized<R>(F* func, args...) member  — noinline, →callSpecializedResolved(nullptr,...)
+├── [DONE] free specializeOnly<R>(F* func, ...)  — delegates to RS->specializeOnlyResolved
+├── [DONE] free callSpecialized<R>(F* func, ...)  — delegates to RS->callSpecializedResolved
+├── [TODO] assertSpecializedIsEquivalent(F, ...)  — remove funcName
+├── [TODO] compareFunctionInstructionCounts(F, ...)  — remove funcName
+├── [TODO] specializeOrFallback(C, ...)  — remove funcName
+└── [TODO] Delete old string-based overloads (Phase 5B)
 
-### Source Code (affected paths)
+comptime/IRDumpingPass.cpp
+├── [DONE] SpecLambdaSite + Phase 0 lambda detection  — $\_N extraction
+├── [DONE] Phase N lambda rewriting  — CallBase, InvokeInst awareness
+├── [DONE] SpecFuncPtrSite + Phase 0b funcptr detection skeleton
+├── [BUG] Phase 0b: change report_fatal_error → continue when no Function* found
+├── [DONE] Phase N2 funcptr rewriting skeleton
+└── [VERIFY] findSpecOnlyResolvedInBody works for both specializeOnly and callSpecialized
 
-```text
-runtime/ClangRuntimeSpecializer/
-├── ClangRuntimeSpecializer.h      # API changes: 3 function signatures + internal Resolved variants
-└── ClangRuntimeSpecializer.cpp    # getTargetFunction() unchanged; specializeOnlyImpl() unified path
+test/smoke/  (41 tests, all passing)
+├── [DONE] specialized-lambda-{basic,void,equivalence,no-captures,raii}.cpp
+├── [DONE] specialized-lambda-{complex,no-captures,zero-arg}-no-funcname.cpp
+└── [TODO] speconly-funcptr.cpp, zero-arg-lambda-equals-speconly.cpp (after Phase 4)
 
-comptime/
-└── IRDumpingPass.cpp              # Extended: call-site scan + IR rewrite
-
-test/WIP/                          # New tests developed here first
-├── specialized-lambda-no-funcname.cpp
-├── specialize-only-funcptr.cpp
-├── zero-arg-lambda-equals-speconly.cpp
-└── missing-plugin-error.cpp
-
-test/smoke/                        # Existing lambda tests promoted here; new tests promoted on completion
-├── specialized-lambda-basic.cpp   # promote from WIP
-├── specialized-lambda-void.cpp    # promote from WIP
-└── specialized-lambda-equivalence.cpp  # promote from WIP
-
-benchmarks/
-└── (all existing callers of specializeLambda/specializeOnly/callSpecialized updated)
+test/WIP/  (2 remaining functional tests)
+├── speconly-funcptr.cpp       [written, needs to pass]
+└── zero-arg-lambda-equals-speconly.cpp  [written, needs to pass]
 ```
 
 ---
 
-## Phase 0: Research
+## Execution Order (Minimal Risk)
 
-See [research.md](research.md) for full findings.
-
-### Key Decisions
-
-**1. IR rewriting strategy (call-site substitution)**
-
-Decision: The IRDumpingPass rewrites each `specializeLambda(lambda)` /
-`specializeOnly(&f, args...)` / `callSpecialized(&f, args...)` call in the IR to an
-internal `*Resolved` variant that takes the resolved name as a `const char*` first
-argument.
-
-Rationale: Compile-time substitution requires no runtime address-to-name table, no
-dependency on debug symbols, and survives strip/LTO.  The runtime API stays simple
-(`specializeOnlyImpl` unchanged); only the calling convention at call sites changes, and
-that change is invisible to the user.
-
-Alternatives rejected:
-- *Runtime address table* (address → name lookup): requires a global table, adds runtime
-  cost at init(), and requires the function pointer to be a non-inline symbol at every
-  call site.
-- *Template-based name embedding*: would require `__builtin_FUNCTION()`-style compiler
-  intrinsic that returns the name at compile time; not available for arbitrary callees
-  in standard C++17 without compiler magic.
-
-**2. Lambda `operator()` discovery in IR**
-
-Decision: For a `specializeLambda(lambda_arg)` call, the pass extracts the IR type of
-`lambda_arg` (a pointer/reference to the closure struct `%class.anon.N`), then searches
-the module for the unique non-declaration function whose first parameter type is a pointer
-to that closure struct — that function IS the lambda's `operator()`.  Its name is used as
-the resolved name.
-
-Rationale: Lambda closure types in LLVM IR are unique structs per lambda; the
-`operator()` is the only callable member taking a pointer to the closure struct as its
-first arg.  This is reliable without debug info.
-
-**3. Named function pointer resolution**
-
-Decision: For `specializeOnly<R>(&myFunc, args...)` / `callSpecialized<R>(&myFunc, args...)`,
-the first argument in IR is a `ConstantExpr` bitcast of the global function value.  The
-pass strips the bitcast and reads `GlobalValue::getName()` directly.
-
-Rationale: Function pointer to name mapping via `GlobalValue::getName()` is O(1), always
-present (functions are globals in LLVM IR), and requires no additional infrastructure.
-
-**4. Unified zero-argument lambda path**
-
-Decision: `specializeLambdaImpl` with an empty `ExplicitArgTypes` pack is eliminated as a
-separate branch.  Instead, `specializeLambda(lambda)` with a 0-arg lambda calls
-`specializeOnlyImpl(resolvedName, Opts, closure_address)` — exactly the same call as
-`specializeOnly<R>(&equivalentFunc, closure_address)`.  The `SpecializedLambda<R>` wrapper
-is constructed from the resulting function pointer.
-
-Rationale: The spec explicitly requires the two code paths to be identical (FR-005,
-SC-005).  The unification is mechanically simple: the closure address is the only baked
-argument, and there are no explicit (variable) args.
-
-**5. Internal `*Resolved` function naming**
-
-Decision: Internal variants are named `__crs_specializeLambdaResolved`,
-`__crs_specializeOnlyResolved`, `__crs_callSpecializedResolved` (or equivalent private
-member overloads that accept `const char*` as their first argument, distinct from the
-user-visible overloads via an `internal_tag` struct).
-
-Rationale: Using a private tag type (`struct ResolvedTag{};`) avoids name collisions with
-user-defined functions and cannot be called accidentally from user code.
+1. **Fix the Phase 0b bug** (skip non-funcptr specializeOnly calls instead of erroring) → verify smoke tests still 41/41
+2. **Iterate WIP tests** until `speconly-funcptr.cpp` and `zero-arg-lambda-equals-speconly.cpp` pass
+3. **Promote** those two tests to smoke → verify 43/43 pass
+4. **Update helpers** (`assertSpecializedIsEquivalent`, `compareFunctionInstructionCounts`, `specializeOrFallback`) — remove funcName from each; update their existing smoke test callers
+5. **Remove old string overloads** from the header — run smoke suite; fix regressions
+6. **Update benchmarks** — compile-check only (benchmarks are run separately)
+7. **Write missing-plugin error tests** → promote to smoke
+8. **Final smoke sweep** both debug and release
 
 ---
 
-## Phase 1: Design & Contracts
+## Critical Implementation Notes
 
-See [data-model.md](data-model.md) for the IR annotation structure and API change matrix.
-See [contracts/api.md](contracts/api.md) for public API contracts.
-
-### IR Rewriting Mechanism (Summary)
-
-```
-Before (user writes):
-  specializeLambda<int>(lambda)
-
-After IRDumpingPass rewrite:
-  __crs_specializeLambdaResolved<int>("_ZZmainENK3$_0clEib", lambda)
-  ──────────────────────────────────────┬────────────────────────────
-                                         └─ injected compile-time constant
-```
-
-The pass locates each `CallInst` whose callee function name contains
-`"specializeLambda"`, `"specializeOnly"`, or `"callSpecialized"`, resolves the target
-name, creates a global `i8` array string constant (the name), and replaces the call with a
-new `CallInst` to the `*Resolved` internal variant with the string pointer prepended.
-
-### Zero-Arg Lambda / specializeOnly Unification
-
-```
-specializeLambda<R>([&ctx](){...})         specializeOnly<R>(&equivalentFunc, ctx)
-          │                                          │
-          └─────────── both reach ──────────────────┘
-                  specializeOnlyImpl("resolvedName", Opts, ctx_addr)
-                              │
-                    wrapper IR: R wrapper() { return target(ctx_addr_const); }
-```
-
-The `SpecializedLambda<R>` is constructed from the result of `specializeOnlyImpl` when
-`ExplicitArgTypes` is empty; `SpecializedFunction<R>` is returned for `specializeOnly`.
-Both wrap the same JIT-compiled function pointer.
-
-### Migration of Existing Call Sites
-
-Every existing caller of the old `funcName`-string overloads is updated in the same
-commit:
-- Benchmark files under `benchmarks/`: `callSpecialized<R>("name", args...)` →
-  `callSpecialized<R>(&name, args...)`
-- Existing WIP tests: updated to remove funcName string; re-verified under
-  `ninja check-wip-runtime-specializer`
-- `assertSpecializedIsEquivalent`, `specializeFunctionOrFallback`, `specializeOrFallback`:
-  updated to use function pointer as first arg instead of `const char*`
-
-### Agent Context
-
-Active feature plan updated in `CLAUDE.md` to point to this plan file.
+- **Do not touch the lambda rewriting logic** — it works, 41 tests prove it. Only add the funcptr path.
+- **SiteIdx is shared** between Phase N and Phase N2 so `@__crs_resolved_name_K` indices are unique across both lambda and funcptr sites.
+- **The `findSpecOnlyResolvedInBody` function** must search for BOTH `"specializeOnlyResolved"` and `"callSpecializedResolved"` in the callee body, since the user-facing `callSpecialized(F* func, ...)` overload calls `callSpecializedResolved(nullptr, func, ...)`.
+- **Zero-arg lambda unification** (FR-005): `specializeLambdaImpl` already has the `if constexpr (sizeof...(ExplicitArgs) == 0)` branch calling `specializeOnlyImpl`. Verify this in the test.
+- **SC-005 (identical pass traces)**: the zero-arg lambda routes through `specializeOnlyImpl(&lambda, ...)` while `specializeOnly(&func, 42)` routes through `specializeOnlyImpl(&func, 42)`. These are NOT identical JIT wrappers because the targets differ (lambda's operator() vs computeFoo). The test should be written to compare the PASS SEQUENCE only, not instruction counts, or compare two structurally identical computations.

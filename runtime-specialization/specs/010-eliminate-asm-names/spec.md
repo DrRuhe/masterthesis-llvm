@@ -41,6 +41,19 @@ that no behavioral difference exists between them.
 
 ---
 
+## Clarifications
+
+### Session 2026-05-10
+
+- Q: How should spec 009 (funcName-based lambda API, WIP) relate to spec 010? → A: Spec 010 supersedes spec 009. Spec 010 migrates and completes the spec 009 WIP tests (updating them to the no-funcName API). Spec 009 is closed as superseded.
+- Q: Should `[[noinline]]` on public API overloads be a formal spec requirement? → A: Implementation detail — left to the implementer; not a formal FR.
+- Q: What happens when the pass cannot resolve a lambda's `operator()` at compile time? → A: Compile-time fatal error — the pass must abort compilation with a clear diagnostic; runtime-only error is not acceptable.
+- Q: How strict should SC-005 ("identical JIT pass trace") be? → A: Same pass sequence and same instruction counts (verifiable via `getLastPassTrace()`); minor wrapper IR differences before optimization are acceptable.
+- Q: Are helper functions (`specializeFunctionOrFallback`, `specializeOrFallback`, `assertSpecializedIsEquivalent`, `compareFunctionInstructionCounts`) in scope for spec 010? → A: Yes, all helpers that take `funcName` are updated in spec 010 in the same change.
+- Q: How should the IRDumpingPass discover the lambda's `operator()` without Itanium ABI mangled-name parsing (`$_N` extraction)? → A: Option C — redesign `forceLambdaOpEmit` to call a sentinel `__crs_op_hint(void*)` with the address of a typed proxy `__crs_lambda_op_proxy<R,Lambda,Args...>`. The IRDumpingPass detects `__crs_op_hint` calls via LLVM API (`dyn_cast<Function>(arg->stripPointerCasts())`) — no string parsing at all. Member/free function disambiguation is also eliminated: the pass detects the `resolvedName` insertion point by finding the `ConstantPointerNull` position in the inner `specializeLambdaResolved` call inside the callee body.
+
+---
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 — Specialize a Complex Lambda Without Naming Its Target (Priority: P1)
@@ -252,6 +265,31 @@ throw (or return a falsy result) with a diagnostic identifying the missing blob.
   (behavioral equivalence, RAII cleanup, `operator bool` semantics) MUST be preserved
   unchanged.
 
+**Compile-time error for unresolvable call sites**
+
+- **FR-018**: When the IR-dumping pass encounters a `specializeLambda`, `specializeOnly`,
+  or `callSpecialized` call site for which it cannot determine the target function identity
+  (e.g., the lambda's `operator()` is not found in the module, or the function pointer
+  argument is not a compile-time constant), the pass MUST abort compilation with a fatal
+  diagnostic error identifying the problematic call site.  Silent success or runtime-only
+  failure is NOT acceptable.
+
+**Helper function migration**
+
+- **FR-019**: All public helper free functions that currently accept a `const char* funcName`
+  first parameter — `specializeFunctionOrFallback`, `specializeOrFallback`,
+  `assertSpecializedIsEquivalent`, and `compareFunctionInstructionCounts` — MUST be
+  updated to remove the `funcName` parameter in this spec.  They MUST internally delegate
+  to the new `specializeOnly<R>(&F, args...)` overload so that the IR-dumping pass
+  resolves names transitively.
+
+**Spec 009 migration**
+
+- **FR-020**: All WIP tests from spec 009 (`specialized-lambda-basic.cpp`,
+  `specialized-lambda-void.cpp`, `specialized-lambda-equivalence.cpp`) MUST be migrated to
+  the no-`funcName` API and promoted to the smoke test suite as part of spec 010.  Spec 009
+  is superseded by this spec; its WIP tests are not to be promoted under the old API.
+
 **Tests**
 
 - **FR-014**: At least three smoke tests covering: (a) a lambda with a loop and a branch
@@ -316,8 +354,10 @@ throw (or return a falsy result) with a diagnostic identifying the missing blob.
   propagation fired on the complex body.
 
 - **SC-005**: A zero-argument lambda and a `specializeOnly` call encoding the same
-  computation produce an identical JIT pass trace (same pass sequence and instruction
-  counts), confirming the unified runtime code path.
+  computation produce the same JIT pass sequence (same passes firing in the same order)
+  and the same final instruction count after optimization — verified via
+  `getLastPassTrace()`.  Minor differences in the wrapper IR before optimization are
+  acceptable provided they disappear after the fixpoint loop.
 
 - **SC-006**: Calling any specialization API on a function from a TU compiled without the
   plugin produces `ClangRuntimeSpecializerDumpedIRError` (or a falsy result) in 100% of
@@ -353,8 +393,18 @@ throw (or return a falsy result) with a diagnostic identifying the missing blob.
 - Generic lambdas (`auto` parameters) remain out of scope, consistent with spec 009.
 
 - All old overloads that take an explicit `funcName` string — for `specializeLambda`,
-  `specializeOnly`, and `callSpecialized` — are removed; no backwards-compatibility shim
-  is provided, consistent with the project's no-legacy-support policy.
+  `specializeOnly`, `callSpecialized`, and all helper free functions — are removed; no
+  backwards-compatibility shim is provided, consistent with the project's no-legacy-support
+  policy.
+
+- Spec 009 (`WIP-specialization/009-lambda-specialization-api`) is superseded by this
+  spec.  Its WIP tests are migrated (not promoted under the old API) and its branch is
+  closed after spec 010 lands.
+
+- The `[[noinline]]` annotation (or equivalent) on the new public API overloads is an
+  implementation detail left to the developer; it is not a formal spec requirement.  The
+  spec only requires that the pass detects all call sites — how inlining is prevented is
+  unspecified.
 
 - The lambda or target function may be arbitrarily complex internally (loops, branches,
   multiple method calls) as long as all baked-in inputs are serializable by the existing

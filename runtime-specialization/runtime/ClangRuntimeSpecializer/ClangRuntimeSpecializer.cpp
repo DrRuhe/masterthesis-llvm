@@ -39,6 +39,10 @@
 
 extern "C" void clang_runtime_specializer_link_anchor() {}
 
+// No-op sentinel; the IRDumpingPass detects calls to this function by name and
+// reads arg 0 to find the lambda proxy (the JIT target).
+extern "C" __attribute__((noinline)) void __crs_op_hint(void*) {}
+
 // ---------------------------------------------------------------------------
 // Multi-TU IR blob registry
 // Each TU compiled with the plugin injects a constructor that calls

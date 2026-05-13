@@ -30,6 +30,10 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 
+// Sentinel detected by IRDumpingPass to find the lambda proxy function.
+// Defined in ClangRuntimeSpecializer.cpp as a no-op; noinline prevents DCE.
+extern "C" __attribute__((noinline)) void __crs_op_hint(void*);
+
 // TODO refactor the error handling: create a special "ClangRuntimeSpecializationError" for this project.
 namespace clangRuntimeSpecializer {
 
@@ -119,6 +123,25 @@ namespace clangRuntimeSpecializer {
     std::vector<llvm::Type*> tupleToLLVMTypes(llvm::LLVMContext& Ctx,
                                               std::index_sequence<I...>) {
       return { serializeTypeToLLVM<std::tuple_element_t<I, Tuple>>(Ctx)... };
+    }
+
+    // Typed proxy for a lambda's operator().
+    // The IRDumpingPass finds this function by reading arg 0 of __crs_op_hint via
+    // dyn_cast<Function>(arg->stripPointerCasts()) — pure LLVM API, no name parsing.
+    // Its body calls (*self)(args...), so the optimizer inlines through to operator().
+    template <class R, class Lambda, class... Args>
+    R __crs_lambda_op_proxy(Lambda* self, Args... args) {
+      return (*self)(args...);
+    }
+
+    // Force the lambda's operator() to be emitted and make the proxy visible to
+    // the IRDumpingPass.  Taking the address of __crs_lambda_op_proxy ODR-uses it
+    // and its body, which in turn ODR-uses operator().  The pass finds the proxy by
+    // detecting calls to the __crs_op_hint sentinel and reading its first argument.
+    template <class R, class Lambda, class... Args>
+    __attribute__((noinline))
+    void forceLambdaOpEmit(Lambda& /*unused*/, std::tuple<Args...>*) {
+      __crs_op_hint(reinterpret_cast<void*>(&__crs_lambda_op_proxy<R, Lambda, Args...>));
     }
   } // namespace detail
 
@@ -456,18 +479,61 @@ namespace clangRuntimeSpecializer {
       return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
     }
 
-    // T006: specializeLambda member overloads — bake in lambda closure, keep explicit args variable.
+    // specializeOnly with function pointer — no funcName string needed.
+    // The IRDumpingPass detects these call sites, extracts the function name from the
+    // compile-time-constant pointer, creates @__crs_resolved_name_K, and rewrites to
+    // specializeOnlyResolved(resolvedName, func, args...).
+    template <class R, class F, class... ARGS,
+              std::enable_if_t<std::is_function_v<F>, int> = 0>
+    __attribute__((noinline))
+    auto specializeOnly(F* func, ARGS&&... Args) -> SpecializedFunction<R> {
+      return specializeOnlyResolved<R>(nullptr, func, std::forward<ARGS>(Args)...);
+    }
+
+    template <class R, class F, class... ARGS,
+              std::enable_if_t<std::is_function_v<F>, int> = 0>
+    __attribute__((noinline))
+    auto specializeOnly(F* func, const Options& opts, ARGS&&... Args) -> SpecializedFunction<R> {
+      return specializeOnlyResolved<R>(nullptr, func, opts, std::forward<ARGS>(Args)...);
+    }
+
+    // callSpecialized with function pointer — no funcName string needed.
+    // Same IRDumpingPass rewriting as specializeOnly above.
+    template <class R, class F, class... ARGS,
+              std::enable_if_t<std::is_function_v<F>, int> = 0>
+    __attribute__((noinline))
+    R callSpecialized(F* func, ARGS&&... Args) {
+      return callSpecializedResolved<R>(nullptr, func, std::forward<ARGS>(Args)...);
+    }
+
+    template <class R, class F, class... ARGS,
+              std::enable_if_t<std::is_function_v<F>, int> = 0>
+    __attribute__((noinline))
+    R callSpecialized(F* func, const Options& opts, ARGS&&... Args) {
+      return callSpecializedResolved<R>(nullptr, func, opts, std::forward<ARGS>(Args)...);
+    }
+
+    // specializeLambda — bake in lambda closure, keep explicit args variable.
+    // The IRDumpingPass detects calls to these overloads (noinline preserves the call site
+    // through the plugin pass), resolves the lambda operator() mangled name, and rewrites
+    // each call site to specializeLambdaResolved(resolvedName, lambda [, opts]).
+    // The nullptr passed here forces template instantiation of specializeLambdaResolved
+    // so the pass can find the function definition in the module.
     template <class R, class Lambda,
               std::enable_if_t<FirstArgIsNotOptions<Lambda>::value, int> = 0>
     __attribute__((noinline))
-    auto specializeLambda(const char* funcName, Lambda& lambda) {
-      return specializeLambdaWithOpts<R>(funcName, lambda, CurrentOptions);
+    auto specializeLambda(Lambda& lambda) {
+      detail::forceLambdaOpEmit<R>(lambda,
+          static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
+      return specializeLambdaResolved<R>(nullptr, lambda);
     }
 
     template <class R, class Lambda>
     __attribute__((noinline))
-    auto specializeLambda(const char* funcName, Lambda& lambda, const Options& opts) {
-      return specializeLambdaWithOpts<R>(funcName, lambda, opts);
+    auto specializeLambda(Lambda& lambda, const Options& opts) {
+      detail::forceLambdaOpEmit<R>(lambda,
+          static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
+      return specializeLambdaResolved<R>(nullptr, lambda, opts);
     }
 
     ~ClangRuntimeSpecializer();
@@ -639,6 +705,12 @@ namespace clangRuntimeSpecializer {
       using ArgTuple = detail::LambdaExplicitArgs<Lambda>;
       constexpr std::size_t NArgs = std::tuple_size_v<ArgTuple>;
 
+      // Zero-arg lambda: no explicit parameters — the closure is the sole baked argument.
+      // Delegate to specializeOnlyImpl, unifying this code path with specializeOnly.
+      if constexpr (NArgs == 0) {
+        return specializeOnlyImpl(funcName, Opts, &lambda);
+      }
+
       checkInitialization(funcName);
       llvm::Function* TargetFunc = getTargetFunction(funcName);
 
@@ -732,6 +804,64 @@ namespace clangRuntimeSpecializer {
       return makeSpecLambda<R>(Res, static_cast<ArgTuple*>(nullptr));
     }
 
+  public:
+    // Internal variants called only from IRDumpingPass-rewritten call sites.
+    // The pass inserts the compile-time-resolved mangled name as the first argument.
+    // A null resolvedName means the TU was not compiled with the plugin.
+
+    template <class R, class Lambda>
+    auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda) {
+      if (!resolvedName)
+        throw ClangRuntimeSpecializerDumpedIRError(
+            "specializeLambda: TU was not compiled with the IRDumpingPass plugin");
+      return specializeLambdaWithOpts<R>(resolvedName, lambda, CurrentOptions);
+    }
+
+    template <class R, class Lambda>
+    auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda, const Options& opts) {
+      if (!resolvedName)
+        throw ClangRuntimeSpecializerDumpedIRError(
+            "specializeLambda: TU was not compiled with the IRDumpingPass plugin");
+      return specializeLambdaWithOpts<R>(resolvedName, lambda, opts);
+    }
+
+    template <class R, class F, class... ARGS>
+    auto specializeOnlyResolved(const char* resolvedName, F* /*unused*/, ARGS&&... Args) -> SpecializedFunction<R> {
+      if (!resolvedName)
+        throw ClangRuntimeSpecializerDumpedIRError(
+            "specializeOnly: TU was not compiled with the IRDumpingPass plugin");
+      auto Res = specializeOnlyImpl(resolvedName, CurrentOptions, std::forward<ARGS>(Args)...);
+      if (Res.TimedOut) return SpecializedFunction<R>{};
+      return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
+    }
+
+    template <class R, class F, class... ARGS>
+    auto specializeOnlyResolved(const char* resolvedName, F* /*unused*/, const Options& opts, ARGS&&... Args) -> SpecializedFunction<R> {
+      if (!resolvedName)
+        throw ClangRuntimeSpecializerDumpedIRError(
+            "specializeOnly: TU was not compiled with the IRDumpingPass plugin");
+      auto Res = specializeOnlyImpl(resolvedName, opts, std::forward<ARGS>(Args)...);
+      if (Res.TimedOut) return SpecializedFunction<R>{};
+      return SpecializedFunction<R>(reinterpret_cast<R(*)()>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
+    }
+
+    template <class R, class F, class... ARGS>
+    R callSpecializedResolved(const char* resolvedName, F* /*unused*/, ARGS&&... Args) {
+      if (!resolvedName)
+        throw ClangRuntimeSpecializerDumpedIRError(
+            "callSpecialized: TU was not compiled with the IRDumpingPass plugin");
+      return callImpl<R>(resolvedName, CurrentOptions, std::forward<ARGS>(Args)...);
+    }
+
+    template <class R, class F, class... ARGS>
+    R callSpecializedResolved(const char* resolvedName, F* /*unused*/, const Options& opts, ARGS&&... Args) {
+      if (!resolvedName)
+        throw ClangRuntimeSpecializerDumpedIRError(
+            "callSpecialized: TU was not compiled with the IRDumpingPass plugin");
+      return callImpl<R>(resolvedName, opts, std::forward<ARGS>(Args)...);
+    }
+
+  private:
     explicit ClangRuntimeSpecializer();
 
       template <class T>
@@ -903,41 +1033,128 @@ namespace clangRuntimeSpecializer {
     ClangRuntimeSpecializer::printComparisonTable(funcName, Before, After);
   }
 
-  // T006: assertSpecializedLambdaIsEquivalent — calls specializeLambda once, checks all inputs.
+  // assertSpecializedLambdaIsEquivalent — calls specializeLambda once, checks all inputs.
   // Throws ClangRuntimeSpecializerChangesBehaviorError on return-value mismatch.
   template <class R, class Lambda, class InputRange>
   __attribute__((always_inline))
-  void assertSpecializedLambdaIsEquivalent(const char* funcName, Lambda& lambda,
-                                           const InputRange& inputs) {
+  void assertSpecializedLambdaIsEquivalent(Lambda& lambda, const InputRange& inputs) {
     auto* RS = ClangRuntimeSpecializer::init();
-    auto spec = RS->specializeLambda<R>(funcName, lambda);
+    auto spec = RS->specializeLambda<R>(lambda);
     for (const auto& args : inputs) {
       R expected = std::apply(lambda, args);
       R actual   = std::apply(spec,   args);
       if constexpr (HasEqualityOperator<R>::value) {
         if (expected != actual)
           throw ClangRuntimeSpecializerChangesBehaviorError(
-              (llvm::Twine("assertSpecializedLambdaIsEquivalent: result mismatch for ") +
-               funcName).str());
+              "assertSpecializedLambdaIsEquivalent: result mismatch");
       }
     }
-    CRS_LOG(Info, (llvm::Twine("assertSpecializedLambdaIsEquivalent passed for: ") + funcName).str());
+    CRS_LOG(Info, "assertSpecializedLambdaIsEquivalent passed");
   }
 
-  // funcName must name a kernel whose first parameter accepts a pointer to Lambda's closure struct; remaining parameters match Lambda::operator() in order.
+  // Internal resolved variants — called only from IRDumpingPass-rewritten call sites.
+  // The free functions mirror the member *Resolved variants so the pass can find
+  // the right instantiation by looking inside the specializeLambda body.
   template <class R, class Lambda>
-  __attribute__((noinline))
-  auto specializeLambda(const char* funcName, Lambda& lambda) {
+  auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda) {
     auto* RS = ClangRuntimeSpecializer::init();
-    return RS->specializeLambda<R>(funcName, lambda);
+    return RS->specializeLambdaResolved<R>(resolvedName, lambda);
+  }
+
+  template <class R, class Lambda>
+  auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda,
+                                const ClangRuntimeSpecializer::Options& opts) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->specializeLambdaResolved<R>(resolvedName, lambda, opts);
+  }
+
+  // Specialize a lambda using the IRDumpingPass-resolved operator() name.
+  // The IRDumpingPass rewrites this call to specializeLambdaResolved(resolvedName, lambda).
+  // The specializeLambdaResolved(nullptr,...) calls below force template instantiation
+  // so the pass can find the resolved function definition in the module.
+  template <class R, class Lambda>
+  __attribute__((noinline))
+  auto specializeLambda(Lambda& lambda) {
+    detail::forceLambdaOpEmit<R>(lambda,
+        static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
+    return specializeLambdaResolved<R>(nullptr, lambda);
   }
 
   template <class R, class Lambda>
   __attribute__((noinline))
-  auto specializeLambda(const char* funcName, Lambda& lambda,
+  auto specializeLambda(Lambda& lambda,
                         const ClangRuntimeSpecializer::Options& opts) {
+    detail::forceLambdaOpEmit<R>(lambda,
+        static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
+    return specializeLambdaResolved<R>(nullptr, lambda, opts);
+  }
+
+  // Internal resolved variants for specializeOnly/callSpecialized — free-function wrappers
+  // around the member *Resolved variants. The IRDumpingPass finds these in the body of the
+  // free specializeOnly/callSpecialized overloads below and uses them as rewrite targets.
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  auto specializeOnlyResolved(const char* resolvedName, F* func, ARGS&&... Args)
+      -> SpecializedFunction<R> {
     auto* RS = ClangRuntimeSpecializer::init();
-    return RS->specializeLambda<R>(funcName, lambda, opts);
+    return RS->specializeOnlyResolved<R>(resolvedName, func, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  auto specializeOnlyResolved(const char* resolvedName, F* func,
+                              const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args)
+      -> SpecializedFunction<R> {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->specializeOnlyResolved<R>(resolvedName, func, opts, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  R callSpecializedResolved(const char* resolvedName, F* func, ARGS&&... Args) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->callSpecializedResolved<R>(resolvedName, func, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  R callSpecializedResolved(const char* resolvedName, F* func,
+                            const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args) {
+    auto* RS = ClangRuntimeSpecializer::init();
+    return RS->callSpecializedResolved<R>(resolvedName, func, opts, std::forward<ARGS>(Args)...);
+  }
+
+  // specializeOnly with function pointer — free function variant.
+  // The IRDumpingPass detects these call sites, extracts the function name from the
+  // compile-time-constant pointer, and rewrites to specializeOnlyResolved(resolvedName, func, args...).
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  __attribute__((noinline))
+  auto specializeOnly(F* func, ARGS&&... Args) -> SpecializedFunction<R> {
+    return specializeOnlyResolved<R>(nullptr, func, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  __attribute__((noinline))
+  auto specializeOnly(F* func, const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args)
+      -> SpecializedFunction<R> {
+    return specializeOnlyResolved<R>(nullptr, func, opts, std::forward<ARGS>(Args)...);
+  }
+
+  // callSpecialized with function pointer — free function variant.
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  __attribute__((noinline))
+  R callSpecialized(F* func, ARGS&&... Args) {
+    return callSpecializedResolved<R>(nullptr, func, std::forward<ARGS>(Args)...);
+  }
+
+  template <class R, class F, class... ARGS,
+            std::enable_if_t<std::is_function_v<F>, int> = 0>
+  __attribute__((noinline))
+  R callSpecialized(F* func, const ClangRuntimeSpecializer::Options& opts, ARGS&&... Args) {
+    return callSpecializedResolved<R>(nullptr, func, opts, std::forward<ARGS>(Args)...);
   }
 
 } // namespace clangRuntimeSpecializer
