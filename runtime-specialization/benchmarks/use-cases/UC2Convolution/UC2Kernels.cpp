@@ -49,6 +49,9 @@ ConvSpecialized create_conv_specialized() {
 }
 
 void validate_conv_specialized() {
+    // Use a smaller image so the specialized lambda can be validated quickly.
+    // The kernel TU is compiled at -O0, so the IRDumpingPass sees all function
+    // arguments and can rewrite each specializeLambda call site correctly.
     constexpr int W = 64, H = 64;
     std::vector<float> src(W * H, 1.0f);
     std::vector<float> ref_dst(W * H, 0.0f);
@@ -57,26 +60,23 @@ void validate_conv_specialized() {
     // Reference: run convolve2d directly.
     convolve2d(src.data(), ref_dst.data(), W, H, g_kernel_coeffs, 5);
 
-    // Specialized: use create_conv_specialized (which uses specializeLambda) so the
-    // IRDumpingPass only needs to process one specializeLambda call site in this TU.
-    // create_conv_specialized uses 1920x1080, but we redirect to our 64x64 buffer
-    // by creating the specialized lambda for 64x64 separately.
-    auto spec = create_conv_specialized();
-    // create_conv_specialized bakes in 1920x1080; for validation use the reference
-    // convolve2d directly on a small buffer instead.
-    (void)spec;
+    // Specialized: create a 64x64 specialized lambda and run it.
+    auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
+    const float* kcoeffs = g_kernel_coeffs;
+    const int ksize = 5, width = W, height = H;
+    auto lam = [kcoeffs, ksize, width, height](const float* s, float* d) {
+        convolve2d(s, d, width, height, kcoeffs, ksize);
+    };
+    auto spec = RS->specializeLambda<void>(lam);
+    spec(src.data(), spec_dst.data());
 
-    // Validate by running convolve2d twice and comparing results.
-    // Both runs use identical inputs so results must be bit-exact.
-    std::vector<float> ref_dst2(W * H, 0.0f);
-    convolve2d(src.data(), ref_dst2.data(), W, H, g_kernel_coeffs, 5);
-
+    // Verify element-wise agreement between reference and specialized results.
     constexpr float kTol = 1e-4f;
     for (int i = 0; i < W * H; ++i) {
-        float diff = ref_dst[i] - ref_dst2[i];
+        float diff = ref_dst[i] - spec_dst[i];
         if (diff < -kTol || diff > kTol) {
             throw clangRuntimeSpecializer::ClangRuntimeSpecializerError(
-                "validate_conv_specialized: convolve2d not deterministic");
+                "validate_conv_specialized: element-wise mismatch");
         }
     }
     clangRuntimeSpecializer::ClangRuntimeSpecializer::log(
