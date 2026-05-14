@@ -7,7 +7,7 @@
 // the vtable is a JIT constant when captured by value.
 struct ResultCollector {
     virtual void emit(int64_t row_idx) = 0;
-    virtual ~ResultCollector() = default;
+
 };
 
 // BufferCollector writes matching row indices as int32_t to an output array and
@@ -24,7 +24,7 @@ struct BufferCollector : ResultCollector {
 };
 
 // Full scan — no early exit per FR-011.
-static void scan_collecting(const uint8_t* rows, int64_t n,
+void scan_collecting(const uint8_t* rows, int64_t n,
                              int row_stride, int col_offset, double threshold,
                              ResultCollector& collector) {
     for (int64_t i = 0; i < n; ++i) {
