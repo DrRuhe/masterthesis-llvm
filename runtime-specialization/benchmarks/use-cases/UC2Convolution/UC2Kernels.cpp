@@ -38,10 +38,10 @@ void convolve2d(const float* src, float* dst, int width, int height,
     }
 }
 
-ConvSpecialized create_conv_specialized() {
+ConvSpecialized create_conv_specialized(int width, int height) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     const float* kcoeffs = g_kernel_coeffs;
-    const int ksize = 5, width = 1920, height = 1080;
+    const int ksize = 5;
     auto lam = [kcoeffs, ksize, width, height](const float* src, float* dst) {
         convolve2d(src, dst, width, height, kcoeffs, ksize);
     };

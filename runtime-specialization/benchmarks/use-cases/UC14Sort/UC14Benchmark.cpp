@@ -7,65 +7,78 @@
 #include <cstdint>
 #include <numeric>
 
-static constexpr int64_t N_SORT = 1'000'000;
+static constexpr int64_t N_SORT_MAX = 20'000'000;
 
-// Global dataset: 1M int64_t values, initially shuffled
+// Global dataset: N_SORT_MAX int64_t values.
+// Benchmarks pass size-specific n_elements via state.range(0).
 static std::vector<int64_t> g_data = [] {
-    std::vector<int64_t> d(N_SORT);
+    std::vector<int64_t> d(N_SORT_MAX);
     std::iota(d.begin(), d.end(), 0);
     std::shuffle(d.begin(), d.end(), std::mt19937{42});
     return d;
 }();
 
-// BM_UC14_unspecialized: direct call with runtime comparator pointer
 static void BM_UC14_unspecialized(benchmark::State& state) {
+    int64_t n_elements = state.range(0);
     std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::shuffle(g_data.begin(), g_data.end(), rng);
+        std::shuffle(g_data.begin(), g_data.begin() + n_elements, rng);
         state.ResumeTiming();
-        generic_sort(g_data.data(), N_SORT, sizeof(int64_t), &int64_asc_cmp);
+        generic_sort(g_data.data(), n_elements, sizeof(int64_t), &int64_asc_cmp);
     }
 }
-BENCHMARK(BM_UC14_unspecialized)
-    ->Name("BM_g:uc14_sort;n:sort_int64;t:unspecialized;")
-    ->Unit(benchmark::kMillisecond);
 
-// BM_UC14_jit_overhead: measure JIT compilation cost only (single iteration)
 static void BM_UC14_jit_overhead(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(
             create_sort_specialized(&int64_asc_cmp, sizeof(int64_t)));
     }
 }
-BENCHMARK(BM_UC14_jit_overhead)
-    ->Name("BM_g:uc14_sort;n:sort_int64;t:jit_overhead;")
-    ->Unit(benchmark::kMillisecond);
 
-// BM_UC14_specialized_exec: factory called once before loop, execute specialized sort
 static void BM_UC14_specialized_exec(benchmark::State& state) {
+    int64_t n_elements = state.range(0);
     auto spec = create_sort_specialized(&int64_asc_cmp, sizeof(int64_t));
     std::mt19937 local_rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::shuffle(g_data.begin(), g_data.end(), local_rng);
+        std::shuffle(g_data.begin(), g_data.begin() + n_elements, local_rng);
         state.ResumeTiming();
-        spec(g_data.data(), N_SORT);
+        spec(g_data.data(), n_elements);
     }
 }
-BENCHMARK(BM_UC14_specialized_exec)
-    ->Name("BM_g:uc14_sort;n:sort_int64;t:specialized_exec;")
-    ->Unit(benchmark::kMillisecond);
+
+#define UC14_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:sort_int64;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:sort_int64;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:sort_int64;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:sort_int64;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:sort_int64;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:sort_int64;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:sort_int64;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:sort_int64;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:sort_int64;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:sort_int64;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:sort_int64;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:sort_int64;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+
+UC14_BENCHMARK_SPEC(
+    Arg(100'000),
+    Arg(1'000'000),
+    Arg(5'000'000),
+    Arg(20'000'000)
+)
 
 #ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
-    // Validate correctness before running benchmarks
     validate_sort_specialized(&int64_asc_cmp, sizeof(int64_t));
 
     static RSSMemoryManager g_rss_mgr;
     benchmark::RegisterMemoryManager(&g_rss_mgr);
     benchmark::Initialize(&argc, argv);
     if (benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
+    if (benchmark::GetBenchmarkFilter() == "")
+        benchmark::SetBenchmarkFilter("s:SMALL|s:MEDIUM|s:LARGE");
     benchmark::RunSpecifiedBenchmarks();
     benchmark::Shutdown();
     return 0;

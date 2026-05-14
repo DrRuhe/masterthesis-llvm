@@ -13,5 +13,5 @@ void convolve2d(const float* src, float* dst, int width, int height,
 using ConvSpecialized =
     clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
 
-ConvSpecialized create_conv_specialized();
+ConvSpecialized create_conv_specialized(int width, int height);
 void validate_conv_specialized();

@@ -181,16 +181,24 @@ function in the kernel TU (invoked via a static initializer object or
 
 ### Dataset Sizes and Memory
 
-| Use Case | Dataset | Memory |
-|----------|---------|--------|
-| UC1 | 10M rows × 16B = 160 MB | Allocated once; reused across iterations |
-| UC2 | 1920×1080 float image ≈ 8 MB | Two buffers (src + dst) |
-| UC7 | 50 MB ASCII corpus | Generated at startup |
-| UC8 | 10M row-delta events × 32B = 320 MB | Allocated once |
-| UC12 | 10M rows × 24B = 240 MB | Allocated once |
-| UC14 | 1M `int64_t` values = 8 MB | Re-shuffled between iterations |
+Each benchmark registers four size variants via `kv_s` (`s:SMALL`, `s:MEDIUM`, `s:LARGE`,
+`s:EXTRALARGE` in the benchmark name). Global datasets are allocated to the EXTRALARGE max
+size at startup; smaller variants use a subset (prefix or dimension slice).
+Default filter in standalone `main()` excludes EXTRALARGE (same pattern as polybench).
 
-Total peak: ≈ 750 MB; fits within the 8 GB assumption from the spec.
+| Use Case | SMALL | MEDIUM | LARGE | EXTRALARGE | Max alloc |
+|----------|-------|--------|-------|------------|-----------|
+| UC1 `n_rows` | 1M | 10M | 30M | 50M | 50M × 16B = 800 MB |
+| UC2 `(width, height)` | 640×360 | 1920×1080 | 3840×2160 | 7680×4320 | 7680×4320×4×2 ≈ 240 MB |
+| UC7 `corpus_bytes` | 5 MB | 50 MB | 500 MB | 1000 MB | 1000 MB |
+| UC8 `n_rows` | 1M | 10M | 30M | 50M | 50M × 24B = 1.2 GB |
+| UC12 `n_rows` | 1M | 10M | 30M | 50M | 50M × 24B = 1.2 GB |
+| UC14 `n_elements` | 100K | 1M | 5M | 20M | 20M × 8B = 160 MB |
+
+Estimated unspecialized runtime reference: SMALL ≈ 0.1s, MEDIUM ≈ 1s, LARGE ≈ 10s,
+EXTRALARGE ≈ 60s (UC7/UC14 approach these; row-scan kernels are faster per byte).
+
+Total peak (all EXTRALARGE simultaneously, AllBenchmarks binary): ≈ 4.6 GB.
 
 ### Benchmark Phase Structure
 
@@ -199,16 +207,14 @@ Each use case registers three Google Benchmark phases. Because the factory funct
 convention required by `record_benchmark.py`:
 
 ```cpp
-// Phase 1: unspecialized — direct kernel call
-BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email;t:unspecialized;")
-    ->Range(...);
-
-// Phase 2: JIT overhead — factory call measures one specializeLambda compilation
-BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email;t:jit_overhead;")
-    ->Iterations(1);
-
-// Phase 3: specialized exec — SpecializedLambda called in hot loop
-BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;t:specialized_exec;");
+// Registered via UC7_BENCHMARK_SPEC macro (4 sizes × 3 phases = 12 benchmarks):
+BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email;s:SMALL;t:unspecialized;")
+    ->Arg(5LL*1024*1024)->Unit(benchmark::kMillisecond);
+// ... MEDIUM / LARGE / EXTRALARGE variants ...
+BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email;s:MEDIUM;t:jit_overhead;")
+    ->Arg(50LL*1024*1024)->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:MEDIUM;t:specialized_exec;")
+    ->Arg(50LL*1024*1024)->Unit(benchmark::kMillisecond);
 ```
 
 The factory function handles `specializeOnly` internally via `specializeLambda`; the
