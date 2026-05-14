@@ -115,11 +115,11 @@
 
 ### Verify Compile-Time Error Behavior
 
-- [ ] T036 Write a negative-compile test (or a FileCheck-on-stderr test) in `test/WIP/` that calls `specializeOnly` with a runtime-variable function pointer (e.g., passed as a function parameter) and confirm the IRDumpingPass emits a `fatal_error` containing the expected diagnostic text — this validates FR-018 for the non-constant-pointer case
+- [x] T036 Write a negative-compile test (or a FileCheck-on-stderr test) in `test/WIP/` that calls `specializeOnly` with a runtime-variable function pointer (e.g., passed as a function parameter) and confirm the IRDumpingPass emits a `fatal_error` containing the expected diagnostic text — this validates FR-018 for the non-constant-pointer case
 
 ### Promote to Smoke Suite
 
-- [ ] T037 Promote T031, T032, and T036 tests to `test/smoke/` (move files; update `test/smoke/CMakeLists.txt`); run `ninja check-smoke-runtime-specializer` in both debug and release builds and verify all pass
+- [x] T037 Promote T031, T032, and T036 tests to `test/smoke/` (move files; update `test/smoke/CMakeLists.txt`); run `ninja check-smoke-runtime-specializer` in both debug and release builds and verify all pass
 
 **Checkpoint**: Old API completely removed; error paths verified; full smoke suite green.
 
@@ -127,9 +127,9 @@
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T038 Run `ninja check-all-runtime-specializer` (full suite including `test/complete/`); fix any failures not already covered by the smoke suite
-- [ ] T039 [P] Update `docs/thesis.typ` — add concise bullet points under the JIT specialization API section documenting: (a) compile-time name resolution via IRDumpingPass call-site rewriting, (b) unified 0-arg lambda / `specializeOnly` code path, (c) arbitrary lambda bodies now supported
-- [ ] T040 [P] Clean up `test/WIP/` — remove any WIP test files for spec 009 that have been superseded and fully replaced by smoke tests; confirm `test/WIP/` contains only genuinely in-progress tests
+- [x] T038 Run `ninja check-all-runtime-specializer` (full suite including `test/complete/`); fix any failures not already covered by the smoke suite
+- [x] T039 [P] Update `docs/thesis.typ` — add concise bullet points under the JIT specialization API section documenting: (a) compile-time name resolution via IRDumpingPass call-site rewriting, (b) unified 0-arg lambda / `specializeOnly` code path, (c) arbitrary lambda bodies now supported
+- [x] T040 [P] Clean up `test/WIP/` — remove any WIP test files for spec 009 that have been superseded and fully replaced by smoke tests; confirm `test/WIP/` contains only genuinely in-progress tests
 
 ---
 

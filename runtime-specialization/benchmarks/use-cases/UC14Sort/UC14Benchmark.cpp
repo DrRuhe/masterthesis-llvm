@@ -40,7 +40,6 @@ static void BM_UC14_jit_overhead(benchmark::State& state) {
 }
 BENCHMARK(BM_UC14_jit_overhead)
     ->Name("BM_g:uc14_sort;n:sort_int64;t:jit_overhead;")
-    ->Iterations(1)
     ->Unit(benchmark::kMillisecond);
 
 // BM_UC14_specialized_exec: factory called once before loop, execute specialized sort
@@ -58,6 +57,7 @@ BENCHMARK(BM_UC14_specialized_exec)
     ->Name("BM_g:uc14_sort;n:sort_int64;t:specialized_exec;")
     ->Unit(benchmark::kMillisecond);
 
+#ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
     // Validate correctness before running benchmarks
     validate_sort_specialized(&int64_asc_cmp, sizeof(int64_t));
@@ -70,3 +70,4 @@ int main(int argc, char** argv) {
     benchmark::Shutdown();
     return 0;
 }
+#endif // ALL_BENCHMARKS_BUILD

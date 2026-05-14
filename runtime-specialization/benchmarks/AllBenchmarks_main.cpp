@@ -14,7 +14,7 @@ void duckdb_tpch_set_queries_dir(const char* path);
 // Default filter: fast benchmarks only.
 // Pass --benchmark_filter=.* to also run polybench/TPCH.
 static const std::string kDefaultFilter =
-    "BM_.*_(mypow|config_count|method_add|single_filter|chained_filter)";
+    "BM_.*(mypow|config_count|method_add|single_filter|chained_filter).*";
 
 int main(int argc, char** argv) {
     bool has_filter = false;

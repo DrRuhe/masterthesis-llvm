@@ -49,7 +49,6 @@ static void BM_UC1_jit_overhead(benchmark::State& state) {
 }
 BENCHMARK(BM_UC1_jit_overhead)
     ->Name("BM_g:uc1_sql;n:predicate;t:jit_overhead;")
-    ->Iterations(1)
     ->Unit(benchmark::kMillisecond);
 
 // BM_UC1_specialized_exec: factory called once before loop, then execute specialized fn
@@ -63,6 +62,7 @@ BENCHMARK(BM_UC1_specialized_exec)
     ->Name("BM_g:uc1_sql;n:predicate;t:specialized_exec;")
     ->Unit(benchmark::kMillisecond);
 
+#ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
     // Validate correctness before running benchmarks
     validate_sql_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
@@ -75,3 +75,4 @@ int main(int argc, char** argv) {
     benchmark::Shutdown();
     return 0;
 }
+#endif // ALL_BENCHMARKS_BUILD

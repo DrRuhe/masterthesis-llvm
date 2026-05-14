@@ -30,8 +30,7 @@ static void BM_UC2_jit_overhead(benchmark::State& state) {
     }
 }
 BENCHMARK(BM_UC2_jit_overhead)
-    ->Name("BM_g:uc2_conv;n:gaussian5x5;t:jit_overhead;")
-    ->Iterations(1);
+    ->Name("BM_g:uc2_conv;n:gaussian5x5;t:jit_overhead;");
 
 // BM_UC2_specialized_exec — compile once before loop, measure execution only.
 static void BM_UC2_specialized_exec(benchmark::State& state) {
@@ -45,6 +44,7 @@ static void BM_UC2_specialized_exec(benchmark::State& state) {
 BENCHMARK(BM_UC2_specialized_exec)
     ->Name("BM_g:uc2_conv;n:gaussian5x5;t:specialized_exec;");
 
+#ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
     // Initialize source image with random floats in [0, 1].
     {
@@ -62,3 +62,4 @@ int main(int argc, char** argv) {
     benchmark::Shutdown();
     return 0;
 }
+#endif // ALL_BENCHMARKS_BUILD

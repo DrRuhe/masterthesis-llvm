@@ -63,7 +63,6 @@ static void BM_UC8_jit_overhead(benchmark::State& state) {
 }
 BENCHMARK(BM_UC8_jit_overhead)
     ->Name("BM_g:uc8_ivm;n:ivm_sum;t:jit_overhead;")
-    ->Iterations(1)
     ->Unit(benchmark::kMillisecond);
 
 // BM_UC8_specialized_exec: factory once before loop, then execute specialized fn per row.
@@ -82,6 +81,7 @@ BENCHMARK(BM_UC8_specialized_exec)
     ->Name("BM_g:uc8_ivm;n:ivm_sum;t:specialized_exec;")
     ->Unit(benchmark::kMillisecond);
 
+#ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
     // Validate correctness before running benchmarks.
     validate_ivm_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
@@ -94,3 +94,4 @@ int main(int argc, char** argv) {
     benchmark::Shutdown();
     return 0;
 }
+#endif // ALL_BENCHMARKS_BUILD

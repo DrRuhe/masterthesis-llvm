@@ -54,7 +54,6 @@ static void BM_UC12_jit_overhead(benchmark::State& state) {
 }
 BENCHMARK(BM_UC12_jit_overhead)
     ->Name("BM_g:uc12_groupby;n:groupby_sum;t:jit_overhead;")
-    ->Iterations(1)
     ->Unit(benchmark::kMillisecond);
 
 // BM_UC12_specialized_exec: factory called once before loop, then execute specialized fn
@@ -70,6 +69,7 @@ BENCHMARK(BM_UC12_specialized_exec)
     ->Name("BM_g:uc12_groupby;n:groupby_sum;t:specialized_exec;")
     ->Unit(benchmark::kMillisecond);
 
+#ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
     // Validate correctness before running benchmarks
     validate_groupby_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
@@ -82,3 +82,4 @@ int main(int argc, char** argv) {
     benchmark::Shutdown();
     return 0;
 }
+#endif // ALL_BENCHMARKS_BUILD

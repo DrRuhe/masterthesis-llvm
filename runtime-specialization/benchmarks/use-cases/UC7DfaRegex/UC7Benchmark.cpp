@@ -97,7 +97,6 @@ static void BM_UC7_jit_overhead(benchmark::State& state) {
 }
 BENCHMARK(BM_UC7_jit_overhead)
     ->Name("BM_g:uc7_dfa;n:email;t:jit_overhead;")
-    ->Iterations(1)
     ->Unit(benchmark::kMillisecond);
 
 // BM_UC7_specialized_exec: factory called once before loop, execute specialized fn each iter
@@ -116,6 +115,7 @@ BENCHMARK(BM_UC7_specialized_exec)
 // main
 // ---------------------------------------------------------------------------
 
+#ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
     validate_dfa_specialized();
 
@@ -127,3 +127,4 @@ int main(int argc, char** argv) {
     benchmark::Shutdown();
     return 0;
 }
+#endif // ALL_BENCHMARKS_BUILD
