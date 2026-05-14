@@ -24,14 +24,13 @@ class A {
 public:
   A(int val) : value(val) {}
 
-  int getMod2() const __asm__("A::getMod2") {
+  int getMod2() const {
     int result = value % 2;
     std::fprintf(stderr, "[getMod2] return value: %d\n", result);
     return result;
   }
 
-  int add(int a, int b) const __asm__("A::add")
-  {
+  int add(int a, int b) const {
     std::fprintf(stderr, "[add] args: a=%d, b=%d, value=%d\n", a, b, value);
     int result = value + a + b;
     std::fprintf(stderr, "[add] return value: %d\n", result);
@@ -39,15 +38,12 @@ public:
   }
 };
 
-inline constexpr char Fn_A_getMod2[] = "A::getMod2";
-inline constexpr char Fn_A_add[] = "A::add";
-
 int main(int argc, char** argv) {
 
   A instance(argc);
 
-  int r1 = clangRuntimeSpecializer::specializeOrFallback(Fn_A_getMod2, &A::getMod2, instance);
-  int r2 = clangRuntimeSpecializer::specializeOrFallback(Fn_A_add, &A::add, instance, 7, 11);
+  int r1 = clangRuntimeSpecializer::specializeOrFallback(&A::getMod2, instance);
+  int r2 = clangRuntimeSpecializer::specializeOrFallback(&A::add, instance, 7, 11);
 
   if (r1 != 1)
   {
