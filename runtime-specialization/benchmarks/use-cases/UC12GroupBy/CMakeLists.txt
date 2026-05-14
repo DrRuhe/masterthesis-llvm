@@ -53,10 +53,31 @@ add_custom_command(OUTPUT ${BENCH_OBJ}
 set(IDE_STUB "${CMAKE_CURRENT_BINARY_DIR}/UC12_ide_stub.cpp")
 file(WRITE "${IDE_STUB}" "")
 
-set_source_files_properties(UC12Kernels.cpp UC12Benchmark.cpp PROPERTIES HEADER_FILE_ONLY ON)
+set_source_files_properties(
+    UC12GroupedSumLowKernels.cpp
+    UC12GroupedSumTradeoffKernels.cpp
+    UC12GroupedSumAbstractKernels.cpp
+    UC12GroupedCountLowKernels.cpp
+    UC12GroupedCountTradeoffKernels.cpp
+    UC12GroupedCountAbstractKernels.cpp
+    UC12GroupedMinMaxLowKernels.cpp
+    UC12GroupedMinMaxTradeoffKernels.cpp
+    UC12GroupedMinMaxAbstractKernels.cpp
+    UC12Benchmark.cpp
+    PROPERTIES HEADER_FILE_ONLY ON)
 
 add_benchmark(UC12GroupBy PARTIAL_SOURCES_INTENDED
-    ${_KERN_OBJS} ${BENCH_OBJ} UC12Kernels.cpp UC12Benchmark.cpp ${IDE_STUB})
+    ${_KERN_OBJS} ${BENCH_OBJ}
+    UC12GroupedSumLowKernels.cpp
+    UC12GroupedSumTradeoffKernels.cpp
+    UC12GroupedSumAbstractKernels.cpp
+    UC12GroupedCountLowKernels.cpp
+    UC12GroupedCountTradeoffKernels.cpp
+    UC12GroupedCountAbstractKernels.cpp
+    UC12GroupedMinMaxLowKernels.cpp
+    UC12GroupedMinMaxTradeoffKernels.cpp
+    UC12GroupedMinMaxAbstractKernels.cpp
+    UC12Benchmark.cpp ${IDE_STUB})
 
 target_include_directories(UC12GroupBy PRIVATE
     ${LLVM_THIRD_PARTY_DIR}/benchmark/include
