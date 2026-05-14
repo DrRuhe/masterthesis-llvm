@@ -270,6 +270,60 @@ files). Run them in parallel. Each task ends with `git commit`.
 
 ---
 
+/## Phase 3b: Size Calibration (FR-007)
+
+**Goal**: Calibrate dataset sizes so unspecialized per-call runtime is within 2× of the
+target: SMALL ≈ 0.1 s, MEDIUM ≈ 1 s, LARGE ≈ 10 s, EXTRALARGE ≈ 60 s.
+
+- [ ] T009b [P] [US1] Calibrate dataset sizes for all six benchmarks.
+
+  **Steps**:
+  1. Build and run all six binaries in release mode with the default benchmark filter,
+     recording results into a temporary database:
+     ```bash
+     cd llvm/llvm/build/release
+     ninja UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort
+     for bin in UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort; do
+       python3 <repo>/benchmarks/record_benchmark.py \
+         --db /tmp/uc_calibration.duckdb ./$bin
+     done
+     ```
+
+  2. Query measured unspecialized runtimes by size label:
+     ```sql
+     SELECT kernel, kv_s, real_time_ns / 1e9 AS unspec_s
+     FROM v_ns
+     WHERE run_id = (SELECT MAX(run_id) FROM runs)
+       AND phase = 'unspecialized'
+       AND kv_s IS NOT NULL
+     ORDER BY kernel, kv_s;
+     ```
+     (Use `size_scaling.py` or run the query directly via `duckdb /tmp/uc_calibration.duckdb`.)
+
+  3. For each (kernel, size) pair that falls outside the 2× tolerance band
+     (SMALL: 0.05–0.20 s, MEDIUM: 0.5–2.0 s, LARGE: 5–20 s, EXTRALARGE: 30–120 s):
+     - Compute corrected size: `new_size = current_size × (target_s / measured_s)`
+     - Update the corresponding size constant in the `*Benchmark.cpp` file (or the
+       size array/`Arg()` call that drives the benchmark)
+     - Rebuild the affected binary
+
+  4. Re-run the affected binaries, re-record, and re-query until all sizes satisfy
+     the tolerance band.
+
+  5. Update the "Dataset Sizes and Memory" table in `specs/008-use-case-benchmarks/plan.md`
+     with the calibrated sizes.
+
+  **Quality gates**:
+  - All six binaries still build and pass `assertSpecializedLambdaIsEquivalent` after size changes
+  - DuckDB query shows `unspec_s` within the tolerance band for every (kernel, size) pair
+
+  **Commit**: `feat(calibration): calibrate dataset sizes to hit FR-007 runtime targets`
+
+**⚠️ NOTE**: T009 (AllBenchmarks integration) MUST wait for T009b — sizes baked into
+AllBenchmarks object files must reflect calibrated values.
+
+---
+
 ## Phase 4: AllBenchmarks Integration & Build Verification (US1 continued)
 
 - [ ] T009 [US1] Edit `benchmarks/CMakeLists.txt` to integrate all six use-case kernel and
@@ -359,13 +413,14 @@ use-case binary without errors.
 ### Phase Dependencies
 
 ```
-T001 → T002 → T003–T008 (parallel) → T009 → T010 → T011 → T012–T014
+T001 → T002 → T003–T008 (parallel) → T009b → T009 → T010 → T011 → T012–T014
 ```
 
 - **T001 (Setup)**: No dependencies — start immediately
 - **T002 (Foundational)**: Depends on T001
 - **T003–T008 (US1, use cases)**: All depend on T002; run in parallel
-- **T009 (AllBenchmarks)**: Depends on T003–T008 all complete
+- **T009b (Size calibration)**: Depends on T003–T008 all complete; calibrates sizes to FR-007 targets
+- **T009 (AllBenchmarks)**: Depends on T009b (must use calibrated sizes)
 - **T010 (US2, record results)**: Depends on T009
 - **T011 (US3, Optuna)**: Depends on T009; can run in parallel with T010
 - **T012–T014 (Polish)**: Depend on T010 + T011
@@ -381,6 +436,9 @@ Agent: "Implement UC8IVM benchmark (T006)"
 Agent: "Implement UC12GroupBy benchmark (T007)"
 Agent: "Implement UC14Sort benchmark (T008)"
 
+# After T003–T008 complete, run T009b (size calibration) before T009
+Agent: "Calibrate dataset sizes to FR-007 runtime targets (T009b)"
+
 # After T009, run in parallel:
 Agent: "Record benchmarks and document speedups (T010)"
 Agent: "Verify optimize_benchmarks.py compatibility (T011)"
@@ -394,9 +452,10 @@ Agent: "Verify optimize_benchmarks.py compatibility (T011)"
 
 1. Complete T001 + T002 (Setup + Foundational)
 2. Complete T003–T008 in parallel (six use cases)
-3. Complete T009 (AllBenchmarks integration)
-4. **STOP and VALIDATE**: each binary runs and passes equivalence check
-5. Advance to T010 if recordings needed for thesis
+3. Complete T009b (size calibration — measure and adjust sizes to FR-007 targets)
+4. Complete T009 (AllBenchmarks integration — using calibrated sizes)
+5. **STOP and VALIDATE**: each binary runs and passes equivalence check
+6. Advance to T010 if recordings needed for thesis
 
 ### Incremental Delivery
 

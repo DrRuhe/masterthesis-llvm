@@ -186,6 +186,12 @@ Each benchmark registers four size variants via `kv_s` (`s:SMALL`, `s:MEDIUM`, `
 size at startup; smaller variants use a subset (prefix or dimension slice).
 Default filter in standalone `main()` excludes EXTRALARGE (same pattern as polybench).
 
+**Size targets (FR-007)**: unspecialized per-call runtime MUST be within 2× of:
+SMALL ≈ 0.1 s, MEDIUM ≈ 1 s, LARGE ≈ 10 s, EXTRALARGE ≈ 60 s.
+
+The table below shows **initial estimates** — sizes MUST be calibrated after implementation
+(see "Size Calibration" subsection below).
+
 | Use Case | SMALL | MEDIUM | LARGE | EXTRALARGE | Max alloc |
 |----------|-------|--------|-------|------------|-----------|
 | UC1 `n_rows` | 1M | 10M | 30M | 50M | 50M × 16B = 800 MB |
@@ -195,10 +201,31 @@ Default filter in standalone `main()` excludes EXTRALARGE (same pattern as polyb
 | UC12 `n_rows` | 1M | 10M | 30M | 50M | 50M × 24B = 1.2 GB |
 | UC14 `n_elements` | 100K | 1M | 5M | 20M | 20M × 8B = 160 MB |
 
-Estimated unspecialized runtime reference: SMALL ≈ 0.1s, MEDIUM ≈ 1s, LARGE ≈ 10s,
-EXTRALARGE ≈ 60s (UC7/UC14 approach these; row-scan kernels are faster per byte).
-
 Total peak (all EXTRALARGE simultaneously, AllBenchmarks binary): ≈ 4.6 GB.
+
+#### Size Calibration
+
+After initial implementation (T003–T008), run a calibration pass (task T009b) to measure
+actual unspecialized runtimes and update the size constants to hit the FR-007 targets.
+
+**Calibration query** (mirrors `size_scaling.py` `load_data`):
+
+```sql
+-- Run against the benchmarks database after recording the initial run:
+SELECT kernel, kv_s, real_time_ns / 1e9 AS unspec_s
+FROM v_ns
+WHERE run_id = (SELECT MAX(run_id) FROM runs)
+  AND phase = 'unspecialized'
+  AND kv_s IS NOT NULL
+ORDER BY kernel, kv_s;
+```
+
+**Calibration procedure**:
+1. Record a short benchmark run (default filter, release build) via `record_benchmark.py`.
+2. Run the query above; compare `unspec_s` against targets (SMALL 0.05–0.2 s, MEDIUM 0.5–2 s, LARGE 5–20 s, EXTRALARGE 30–120 s).
+3. For any size that misses its target by > 2×, compute the required size as `new_size = current_size × (target_s / measured_s)`, update the constant in `*Benchmark.cpp`, rebuild, and re-record.
+4. Repeat until all four sizes are within the 2× tolerance band.
+5. Update the table above with the calibrated sizes.
 
 ### Benchmark Phase Structure
 
