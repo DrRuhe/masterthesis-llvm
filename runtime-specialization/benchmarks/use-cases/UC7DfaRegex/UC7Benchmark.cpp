@@ -78,18 +78,18 @@ static void BM_UC7_specialized_exec(benchmark::State& state) {
 }
 
 #define UC7_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_unspecialized)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_jit_overhead)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
 
 #ifdef ALL_BENCHMARKS_BUILD
 UC7_BENCHMARK_SPEC(
