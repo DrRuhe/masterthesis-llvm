@@ -53,10 +53,10 @@ add_custom_command(OUTPUT ${BENCH_OBJ}
 set(IDE_STUB "${CMAKE_CURRENT_BINARY_DIR}/UC1_ide_stub.cpp")
 file(WRITE "${IDE_STUB}" "")
 
-set_source_files_properties(UC1Kernels.cpp UC1Benchmark.cpp PROPERTIES HEADER_FILE_ONLY ON)
+set_source_files_properties(UC1CountMatchingRowsLowKernels.cpp UC1Benchmark.cpp PROPERTIES HEADER_FILE_ONLY ON)
 
 add_benchmark(UC1SqlPredicate PARTIAL_SOURCES_INTENDED
-    ${_KERN_OBJS} ${BENCH_OBJ} UC1Kernels.cpp UC1Benchmark.cpp ${IDE_STUB})
+    ${_KERN_OBJS} ${BENCH_OBJ} UC1CountMatchingRowsLowKernels.cpp UC1Benchmark.cpp ${IDE_STUB})
 
 target_include_directories(UC1SqlPredicate PRIVATE
     ${LLVM_THIRD_PARTY_DIR}/benchmark/include
