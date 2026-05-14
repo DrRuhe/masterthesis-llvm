@@ -30,12 +30,12 @@ def fmt_time(val_ns: float) -> str:
     if np.isnan(val_ns) or val_ns <= 0:
         return ""
     if val_ns >= 1e9:
-        return f"{val_ns / 1e9:.2g}s"
+        return f"{val_ns / 1e9:.0f}s"
     if val_ns >= 1e6:
-        return f"{val_ns / 1e6:.2g}ms"
+        return f"{val_ns / 1e6:.0f}ms"
     if val_ns >= 1e3:
-        return f"{val_ns / 1e3:.2g}µs"
-    return f"{val_ns:.2g}ns"
+        return f"{val_ns / 1e3:.0f}µs"
+    return f"{val_ns:.0f}ns"
 
 
 def make_group_key(row) -> str:
