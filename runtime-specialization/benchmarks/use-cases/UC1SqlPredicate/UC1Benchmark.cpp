@@ -3,14 +3,13 @@
 #include <benchmark/benchmark.h>
 #include <vector>
 #include <random>
+#include <algorithm>
 
 static constexpr int     ROW_STRIDE  = 16;
 static constexpr int     COL_OFFSET  = 8;
-#ifdef ALL_BENCHMARKS_BUILD
+// Fixed buffer: 50M rows × 16 B = 800 MB.  For sizes larger than N_ROWS_MAX
+// the benchmarks loop through this buffer multiple times (streaming pattern).
 static constexpr int64_t N_ROWS_MAX  = 50'000'000;
-#else
-static constexpr int64_t N_ROWS_MAX  = 1'000'000'000;
-#endif
 
 // Global dataset: N_ROWS_MAX rows of ROW_STRIDE bytes.
 // Benchmarks pass a size-specific n_rows via state.range(0).
@@ -31,10 +30,14 @@ static std::vector<uint8_t> g_rows = [] {
 }();
 
 static void BM_UC1_unspecialized(benchmark::State& state) {
-    int64_t n_rows = state.range(0);
+    int64_t n_total = state.range(0);
     for (auto _ : state) {
-        benchmark::DoNotOptimize(
-            count_matching_rows(g_rows.data(), n_rows, ROW_STRIDE, COL_OFFSET, 0.5));
+        int64_t total = 0;
+        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
+            total += count_matching_rows(g_rows.data(),
+                                         std::min(rem, (int64_t)N_ROWS_MAX),
+                                         ROW_STRIDE, COL_OFFSET, 0.5);
+        benchmark::DoNotOptimize(total);
     }
 }
 
@@ -46,10 +49,13 @@ static void BM_UC1_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC1_specialized_exec(benchmark::State& state) {
-    int64_t n_rows = state.range(0);
+    int64_t n_total = state.range(0);
     auto spec = create_sql_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
     for (auto _ : state) {
-        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows));
+        int64_t total = 0;
+        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
+            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX));
+        benchmark::DoNotOptimize(total);
     }
 }
 
@@ -79,7 +85,7 @@ UC1_BENCHMARK_SPEC(
     Arg(16'000'000),
     Arg(150'000'000),
     Arg(800'000'000),
-    Arg(1'000'000'000)
+    Arg(4'550'000'000LL)
 )
 #endif
 

@@ -10,11 +10,9 @@ static constexpr int     ROW_STRIDE    = 24;
 static constexpr int     GROUP_COL     = 4;
 static constexpr int     VALUE_COL     = 8;
 static constexpr int     N_BUCKETS     = 1024;
-#ifdef ALL_BENCHMARKS_BUILD
+// Fixed buffer: 50M rows × 24 B = 1200 MB.  For sizes larger than N_ROWS_MAX
+// the benchmarks loop through this buffer multiple times (streaming pattern).
 static constexpr int64_t N_ROWS_MAX    = 50'000'000;
-#else
-static constexpr int64_t N_ROWS_MAX    = 700'000'000;
-#endif
 
 // Global dataset: N_ROWS_MAX rows of ROW_STRIDE bytes.
 // Benchmarks pass size-specific n_rows via state.range(0).
@@ -41,13 +39,16 @@ static std::vector<uint8_t> g_deltas = [] {
 static std::vector<double> g_buckets(N_BUCKETS, 0.0);
 
 static void BM_UC8_unspecialized(benchmark::State& state) {
-    int64_t n_rows = state.range(0);
+    int64_t n_total = state.range(0);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t i = 0; i < n_rows; ++i) {
-            apply_row_delta(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
-                            g_buckets.data(),
-                            N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
+            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
+            for (int64_t i = 0; i < batch; ++i) {
+                apply_row_delta(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
+                                g_buckets.data(),
+                                N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+            }
         }
         benchmark::DoNotOptimize(g_buckets.data());
     }
@@ -61,13 +62,16 @@ static void BM_UC8_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC8_specialized_exec(benchmark::State& state) {
-    int64_t n_rows = state.range(0);
+    int64_t n_total = state.range(0);
     auto spec = create_ivm_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t i = 0; i < n_rows; ++i) {
-            spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
-                 g_buckets.data());
+        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
+            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
+            for (int64_t i = 0; i < batch; ++i) {
+                spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
+                     g_buckets.data());
+            }
         }
         benchmark::DoNotOptimize(g_buckets.data());
     }
@@ -98,8 +102,8 @@ UC8_BENCHMARK_SPEC(
 UC8_BENCHMARK_SPEC(
     Arg(31'200'000),
     Arg(300'000'000),
-    Arg(500'000'000),
-    Arg(700'000'000)
+    Arg(1'500'000'000LL),
+    Arg(8'950'000'000LL)
 )
 #endif
 

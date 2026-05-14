@@ -10,11 +10,9 @@ static constexpr int     ROW_STRIDE12  = 24;
 static constexpr int     KEY_OFFSET12  = 0;
 static constexpr int     VALUE_OFFSET12 = 8;
 static constexpr int     N_BUCKETS12   = 1024;
-#ifdef ALL_BENCHMARKS_BUILD
+// Fixed buffer: 50M rows × 24 B = 1200 MB.  For sizes larger than N_ROWS_MAX12
+// the benchmarks loop through this buffer multiple times (streaming pattern).
 static constexpr int64_t N_ROWS_MAX12  = 50'000'000;
-#else
-static constexpr int64_t N_ROWS_MAX12  = 700'000'000;
-#endif
 
 // Global dataset: N_ROWS_MAX12 rows of ROW_STRIDE12 bytes.
 // Benchmarks pass size-specific n_rows via state.range(0).
@@ -36,11 +34,13 @@ static std::vector<uint8_t> g_rows12 = [] {
 static std::vector<double> g_buckets12(N_BUCKETS12, 0.0);
 
 static void BM_UC12_unspecialized(benchmark::State& state) {
-    int64_t n_rows = state.range(0);
+    int64_t n_total = state.range(0);
     for (auto _ : state) {
         std::fill(g_buckets12.begin(), g_buckets12.end(), 0.0);
-        grouped_sum(g_rows12.data(), n_rows, ROW_STRIDE12, KEY_OFFSET12,
-                    VALUE_OFFSET12, g_buckets12.data(), N_BUCKETS12);
+        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX12)
+            grouped_sum(g_rows12.data(), std::min(rem, (int64_t)N_ROWS_MAX12),
+                        ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12,
+                        g_buckets12.data(), N_BUCKETS12);
         benchmark::DoNotOptimize(g_buckets12.data());
     }
 }
@@ -53,11 +53,12 @@ static void BM_UC12_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC12_specialized_exec(benchmark::State& state) {
-    int64_t n_rows = state.range(0);
+    int64_t n_total = state.range(0);
     auto spec = create_groupby_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
     for (auto _ : state) {
         std::fill(g_buckets12.begin(), g_buckets12.end(), 0.0);
-        spec(g_rows12.data(), n_rows, g_buckets12.data());
+        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX12)
+            spec(g_rows12.data(), std::min(rem, (int64_t)N_ROWS_MAX12), g_buckets12.data());
         benchmark::DoNotOptimize(g_buckets12.data());
     }
 }
@@ -87,8 +88,8 @@ UC12_BENCHMARK_SPEC(
 UC12_BENCHMARK_SPEC(
     Arg(31'000'000),
     Arg(300'000'000),
-    Arg(500'000'000),
-    Arg(700'000'000)
+    Arg(1'550'000'000LL),
+    Arg(9'200'000'000LL)
 )
 #endif
 
