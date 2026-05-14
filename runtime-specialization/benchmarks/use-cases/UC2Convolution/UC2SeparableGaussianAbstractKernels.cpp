@@ -8,7 +8,7 @@
 struct FilterKernel {
     virtual float weight(int offset) const = 0;
     virtual int radius() const = 0;
-    virtual ~FilterKernel() = default;
+
 };
 
 // GaussianKernel stores up to 5 coefficients by value in a fixed-size array.
@@ -69,11 +69,17 @@ SeparableGaussianAbstractSpecialized create_separable_gaussian_abstract_speciali
         int width, int height, const float* coeffs, int ksize) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     int radius = ksize / 2;
-    GaussianKernel gk(coeffs, radius);
-    Convolver conv{gk};
-
-    // Lambda captures Convolver BY VALUE so vtable is a JIT constant.
-    auto lam = [conv, width, height](const float* src, float* dst) {
+    // Copy coefficients into a non-polymorphic POD struct for lambda capture.
+    // Reconstruct polymorphic objects inside the lambda so their this-pointers
+    // are local variables (not stale factory-frame stack addresses).
+    struct CoeffStore { float c[2 * GaussianKernel::kMaxR + 1]; int r; };
+    CoeffStore cs{};
+    cs.r = radius;
+    int ksz = 2 * radius + 1;
+    for (int i = 0; i < ksz; ++i) cs.c[i] = coeffs[i];
+    auto lam = [cs, width, height](const float* src, float* dst) {
+        GaussianKernel gk(cs.c, cs.r);
+        Convolver conv{gk};
         conv.convolve(src, dst, width, height);
     };
     return RS->specializeLambda<void>(lam);

@@ -7,7 +7,7 @@
 // this TU so the vtable pointer is a JIT constant when captured by value.
 struct SpatialFilter {
     virtual void apply(const float* src, float* dst, int width, int height) = 0;
-    virtual ~SpatialFilter() = default;
+
 };
 
 // BoxSpatialFilter: subclass name differs from T034's BoxFilter to avoid ODR issues
@@ -39,10 +39,10 @@ struct BoxSpatialFilter : SpatialFilter {
 BoxFilterAbstractSpecialized create_box_filter_abstract_specialized(
         int width, int height, int radius) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    BoxSpatialFilter bsf(radius);
-
-    // Capture BoxSpatialFilter BY VALUE so vtable is a JIT constant.
-    auto lam = [bsf, width, height](const float* src, float* dst) mutable {
+    // Capture scalars only; reconstruct object inside the lambda so its this-pointer
+    // is a local variable (not a stale factory-frame stack address).
+    auto lam = [radius, width, height](const float* src, float* dst) {
+        BoxSpatialFilter bsf(radius);
         bsf.apply(src, dst, width, height);
     };
     return RS->specializeLambda<void>(lam);

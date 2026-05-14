@@ -7,7 +7,6 @@
 // vtable is a JIT constant when the lambda captures a ThresholdPredicate by value.
 struct Predicate {
     virtual bool test(const uint8_t* row) const = 0;
-    virtual ~Predicate() = default;
 };
 
 struct ThresholdPredicate : Predicate {
@@ -26,8 +25,8 @@ struct ThresholdPredicate : Predicate {
 };
 
 // Full scan — no early exit per FR-011.
-static int64_t scan_with_predicate(const uint8_t* rows, int64_t n,
-                                    int row_stride, const Predicate& pred) {
+int64_t scan_with_predicate(const uint8_t* rows, int64_t n,
+                             int row_stride, const Predicate& pred) {
     int64_t count = 0;
     for (int64_t i = 0; i < n; ++i) {
         if (pred.test(rows + i * row_stride))
@@ -38,9 +37,10 @@ static int64_t scan_with_predicate(const uint8_t* rows, int64_t n,
 
 CountMatchingRowsAbstractSpecialized create_count_matching_rows_abstract_specialized(
         int col_offset, int row_stride, double threshold) {
-    ThresholdPredicate pred{col_offset, row_stride, threshold};
-    // Capture ThresholdPredicate BY VALUE so the vtable pointer is a JIT constant.
-    auto lam = [pred, row_stride](const uint8_t* rows, int64_t n) -> int64_t {
+    // Capture scalars only; reconstruct object inside the lambda so its this-pointer
+    // is a local variable (not a stale factory-frame stack address).
+    auto lam = [col_offset, row_stride, threshold](const uint8_t* rows, int64_t n) -> int64_t {
+        ThresholdPredicate pred{col_offset, row_stride, threshold};
         return scan_with_predicate(rows, n, row_stride, pred);
     };
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);

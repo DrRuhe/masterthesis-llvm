@@ -9,7 +9,7 @@
 struct AggregationOperator {
     virtual void aggregate(const uint8_t* rows, int64_t n_rows,
                            double* out_buckets, int n_buckets) = 0;
-    virtual ~AggregationOperator() = default;
+
 };
 
 struct SumOperator : AggregationOperator {
@@ -38,9 +38,11 @@ struct SumOperator : AggregationOperator {
 
 GroupedSumAbstractSpecialized create_grouped_sum_abstract_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets) {
-    // Capture SumOperator BY VALUE so its vtable pointer is a JIT constant.
-    SumOperator op{row_stride, key_offset, value_offset};
-    auto lam = [op, n_buckets](const uint8_t* rows, int64_t n_rows, double* out) mutable {
+    // Capture scalars only; reconstruct object inside the lambda so its this-pointer
+    // is a local variable (not a stale factory-frame stack address).
+    auto lam = [row_stride, key_offset, value_offset, n_buckets](
+                   const uint8_t* rows, int64_t n_rows, double* out) {
+        SumOperator op{row_stride, key_offset, value_offset};
         op.aggregate(rows, n_rows, out, n_buckets);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

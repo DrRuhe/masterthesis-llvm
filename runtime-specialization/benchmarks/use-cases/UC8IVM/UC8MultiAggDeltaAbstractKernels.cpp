@@ -8,7 +8,7 @@
 // Local abstract aggregator interface (independent of other TUs).
 struct Aggregator {
     virtual void apply(const uint8_t* row, double* state) const = 0;
-    virtual ~Aggregator() = default;
+
 };
 
 struct SumAgg : Aggregator {
@@ -62,12 +62,14 @@ struct MultiAggregator {
 
 MultiAggDeltaAbstractSpecialized create_multi_agg_delta_abstract_specialized(
         int n_buckets, int group_col_offset, int value_col_offset, int row_stride) {
-    MultiAggregator agg{
-        SumAgg{group_col_offset, value_col_offset, n_buckets, row_stride},
-        CountAgg{group_col_offset, n_buckets, row_stride}
-    };
-    // Capture MultiAggregator BY VALUE so all vtable pointers are JIT constants.
-    auto lam = [agg](const uint8_t* row, double* sum_buckets, double* count_buckets) {
+    // Capture scalars only; reconstruct objects inside the lambda so their this-pointers
+    // are local variables (not stale factory-frame stack addresses).
+    auto lam = [n_buckets, group_col_offset, value_col_offset, row_stride](
+                   const uint8_t* row, double* sum_buckets, double* count_buckets) {
+        MultiAggregator agg{
+            SumAgg{group_col_offset, value_col_offset, n_buckets, row_stride},
+            CountAgg{group_col_offset, n_buckets, row_stride}
+        };
         agg.apply_both(row, sum_buckets, count_buckets);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

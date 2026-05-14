@@ -6,7 +6,7 @@
 // Abstract predicate interface — local definition (not shared with other TUs).
 struct Predicate {
     virtual bool test(const uint8_t* row) const = 0;
-    virtual ~Predicate() = default;
+
 };
 
 struct ThresholdPredicate : Predicate {
@@ -40,7 +40,7 @@ struct AndPredicate : Predicate {
 };
 
 // Full scan — no early exit per FR-011.
-static int64_t scan_with_predicate_and(const uint8_t* rows, int64_t n,
+int64_t scan_with_predicate_and(const uint8_t* rows, int64_t n,
                                         int row_stride, const Predicate& pred) {
     int64_t count = 0;
     for (int64_t i = 0; i < n; ++i) {
@@ -53,12 +53,14 @@ static int64_t scan_with_predicate_and(const uint8_t* rows, int64_t n,
 MultiPredicateAbstractSpecialized create_multi_predicate_abstract_specialized(
         int row_stride, int col_offset_a, int col_offset_b,
         double threshold_a, double threshold_b) {
-    // Capture AndPredicate BY VALUE so vtable is a JIT constant.
-    AndPredicate pred{
-        ThresholdPredicate{col_offset_a, threshold_a},
-        ThresholdPredicate{col_offset_b, threshold_b}
-    };
-    auto lam = [pred, row_stride](const uint8_t* rows, int64_t n) -> int64_t {
+    // Capture scalars only; reconstruct object inside the lambda so its this-pointer
+    // is a local variable (not a stale factory-frame stack address).
+    auto lam = [row_stride, col_offset_a, col_offset_b, threshold_a, threshold_b](
+                   const uint8_t* rows, int64_t n) -> int64_t {
+        AndPredicate pred{
+            ThresholdPredicate{col_offset_a, threshold_a},
+            ThresholdPredicate{col_offset_b, threshold_b}
+        };
         return scan_with_predicate_and(rows, n, row_stride, pred);
     };
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);

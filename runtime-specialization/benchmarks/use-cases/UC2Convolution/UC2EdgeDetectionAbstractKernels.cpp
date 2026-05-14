@@ -8,7 +8,7 @@
 // in this TU so the vtable pointer is a JIT constant when captured by value.
 struct GradientDetector {
     virtual void detect(const float* src, float* dst, int width, int height) = 0;
-    virtual ~GradientDetector() = default;
+
 };
 
 // SobelDetector: applies Sobel Gx and Gy with hardcoded coefficients.
@@ -51,10 +51,10 @@ struct SobelDetector : GradientDetector {
 EdgeDetectionAbstractSpecialized create_edge_detection_abstract_specialized(
         int width, int height) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    SobelDetector sd{};
-
-    // Capture SobelDetector BY VALUE so vtable is a JIT constant.
-    auto lam = [sd, width, height](const float* src, float* dst) mutable {
+    // Reconstruct object inside the lambda so its this-pointer is a local variable
+    // (not a stale factory-frame stack address).
+    auto lam = [width, height](const float* src, float* dst) {
+        SobelDetector sd{};
         sd.detect(src, dst, width, height);
     };
     return RS->specializeLambda<void>(lam);

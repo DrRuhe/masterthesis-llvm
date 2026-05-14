@@ -9,7 +9,7 @@
 // Abstract matcher interface.
 struct Matcher {
     virtual int64_t match(const char* s, int64_t len) const = 0;
-    virtual ~Matcher() = default;
+
 };
 
 // DFAMatcher subclass: stores table and DFA constants.
@@ -45,9 +45,10 @@ struct DFAMatcher : Matcher {
 
 EmailMatchAbstractSpecialized create_email_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    // Capture DFAMatcher BY VALUE so the vtable pointer is a JIT constant.
-    DFAMatcher m(g_dfa_table, DFA_N_STATES, DFA_N_CHARS, DFA_START, DFA_ACCEPT);
-    auto lam = [m](const char* s, int64_t len) -> int64_t {
+    // Reconstruct object inside the lambda so its this-pointer is a local variable
+    // (not a stale factory-frame stack address). DFA globals are accessible directly.
+    auto lam = [](const char* s, int64_t len) -> int64_t {
+        DFAMatcher m(g_dfa_table, DFA_N_STATES, DFA_N_CHARS, DFA_START, DFA_ACCEPT);
         return m.match(s, len);
     };
     return RS->specializeLambda<int64_t>(lam);

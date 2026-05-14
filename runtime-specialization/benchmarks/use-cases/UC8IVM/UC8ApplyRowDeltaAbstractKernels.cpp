@@ -9,7 +9,7 @@
 // vtable pointer is a JIT constant when the lambda captures a SumAggregator by value.
 struct Aggregator {
     virtual void apply(const uint8_t* row, double* state) const = 0;
-    virtual ~Aggregator() = default;
+
 };
 
 struct SumAggregator : Aggregator {
@@ -33,9 +33,11 @@ struct SumAggregator : Aggregator {
 
 ApplyRowDeltaAbstractSpecialized create_apply_row_delta_abstract_specialized(
         int n_buckets, int group_col_offset, int value_col_offset, int row_stride) {
-    // Capture SumAggregator BY VALUE so the vtable pointer is a JIT constant.
-    SumAggregator agg{group_col_offset, value_col_offset, n_buckets, row_stride};
-    auto lam = [agg](const uint8_t* row, double* state) {
+    // Capture scalars only; reconstruct object inside the lambda so its this-pointer
+    // is a local variable (not a stale factory-frame stack address).
+    auto lam = [group_col_offset, value_col_offset, n_buckets, row_stride](
+                   const uint8_t* row, double* state) {
+        SumAggregator agg{group_col_offset, value_col_offset, n_buckets, row_stride};
         agg.apply(row, state);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

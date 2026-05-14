@@ -11,7 +11,7 @@
 struct BatchProcessor {
     virtual void process_batch(const uint8_t* rows, int64_t n_rows,
                                 double* buckets) const = 0;
-    virtual ~BatchProcessor() = default;
+
 };
 
 struct SumBatchProcessor : BatchProcessor {
@@ -41,9 +41,11 @@ struct SumBatchProcessor : BatchProcessor {
 BatchDeltaAbstractSpecialized create_batch_delta_abstract_specialized(
         int64_t n_rows, int n_buckets, int group_col_offset,
         int value_col_offset, int row_stride) {
-    // Capture SumBatchProcessor BY VALUE so the vtable pointer is a JIT constant.
-    SumBatchProcessor proc{n_buckets, group_col_offset, value_col_offset, row_stride};
-    auto lam = [proc, n_rows](const uint8_t* rows, double* buckets) {
+    // Capture scalars only; reconstruct object inside the lambda so its this-pointer
+    // is a local variable (not a stale factory-frame stack address).
+    auto lam = [n_buckets, group_col_offset, value_col_offset, row_stride, n_rows](
+                   const uint8_t* rows, double* buckets) {
+        SumBatchProcessor proc{n_buckets, group_col_offset, value_col_offset, row_stride};
         proc.process_batch(rows, n_rows, buckets);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

@@ -44,7 +44,7 @@ struct MultiDFABuilderAbstract {
 // Abstract pattern set interface.
 struct PatternSet {
     virtual int64_t match_all_count(const char* buf, int64_t len) const = 0;
-    virtual ~PatternSet() = default;
+
 };
 
 // DFAPatternSet subclass: stores DFA table + accept_states fixed array.
@@ -89,10 +89,11 @@ struct DFAPatternSet : PatternSet {
 
 MultiPatternMatchAbstractSpecialized create_multi_pattern_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    const int acc[2] = {2, 4};  // ACCEPT_AB, ACCEPT_CD
-    // Capture DFAPatternSet BY VALUE so the vtable pointer is a JIT constant.
-    DFAPatternSet ps(g_multi_dfa_table_abstract, MPA_N_STATES, MPA_N_CHARS, acc, 2);
-    auto lam = [ps](const char* buf, int64_t len) -> int64_t {
+    // Reconstruct object inside the lambda so its this-pointer is a local variable
+    // (not a stale factory-frame stack address). DFA globals are accessible directly.
+    auto lam = [](const char* buf, int64_t len) -> int64_t {
+        const int acc[2] = {2, 4};  // ACCEPT_AB, ACCEPT_CD
+        DFAPatternSet ps(g_multi_dfa_table_abstract, MPA_N_STATES, MPA_N_CHARS, acc, 2);
         return ps.match_all_count(buf, len);
     };
     return RS->specializeLambda<int64_t>(lam);

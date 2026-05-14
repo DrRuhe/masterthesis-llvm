@@ -10,7 +10,7 @@
 struct AggregationOperator {
     virtual void aggregate(const uint8_t* rows, int64_t n_rows,
                            double* out_buckets, int n_buckets) = 0;
-    virtual ~AggregationOperator() = default;
+
 };
 
 // MinMaxOperator tracks per-bucket min and max in a single pass.

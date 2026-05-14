@@ -8,7 +8,7 @@
 // Abstract extractor interface.
 struct FieldExtractor {
     virtual double extract(const void* record) const = 0;
-    virtual ~FieldExtractor() = default;
+
 };
 
 // Concrete subclass: extracts double at a byte offset via __builtin_memcpy.
@@ -98,8 +98,10 @@ struct FieldComparatorAdapter {
 
 StructSortAbstractSpecialized create_struct_sort_abstract_specialized(int element_size,
                                                                        int field_offset) {
-    FieldComparatorAdapter adapter{ByteOffsetExtractor{field_offset}, element_size};
-    auto lam = [adapter](void* data, int64_t n_elements) {
+    // Reconstruct object inside the lambda so its this-pointer is a local variable
+    // (not a stale factory-frame stack address).
+    auto lam = [element_size, field_offset](void* data, int64_t n_elements) {
+        FieldComparatorAdapter adapter{ByteOffsetExtractor{field_offset}, element_size};
         adapter.sort_struct(data, n_elements);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

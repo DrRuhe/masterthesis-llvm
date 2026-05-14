@@ -9,7 +9,7 @@
 // Abstract matcher interface — local definition (not shared with other TUs).
 struct Matcher {
     virtual int64_t match(const char* s, int64_t len) const = 0;
-    virtual ~Matcher() = default;
+
 };
 
 // DFAMatcher subclass with URL DFA.
@@ -43,10 +43,10 @@ struct DFAMatcher : Matcher {
 
 UrlMatchAbstractSpecialized create_url_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    // Capture DFAMatcher BY VALUE so the vtable pointer is a JIT constant.
-    // URL DFA accept state is 7 (IN_PATH).
-    DFAMatcher m(g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
-    auto lam = [m](const char* s, int64_t len) -> int64_t {
+    // Reconstruct object inside the lambda so its this-pointer is a local variable
+    // (not a stale factory-frame stack address). URL DFA accept state is 7 (IN_PATH).
+    auto lam = [](const char* s, int64_t len) -> int64_t {
+        DFAMatcher m(g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
         return m.match(s, len);
     };
     return RS->specializeLambda<int64_t>(lam);

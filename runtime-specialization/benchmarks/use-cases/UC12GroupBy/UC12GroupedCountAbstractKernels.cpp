@@ -9,7 +9,7 @@
 struct AggregationOperator {
     virtual void aggregate(const uint8_t* rows, int64_t n_rows,
                            double* out_buckets, int n_buckets) = 0;
-    virtual ~AggregationOperator() = default;
+
 };
 
 // CountOperator counts rows per bucket. Writes int64_t counts reinterpreted
@@ -38,9 +38,11 @@ struct CountOperator : AggregationOperator {
 
 GroupedCountAbstractSpecialized create_grouped_count_abstract_specialized(
         int row_stride, int key_offset, int n_buckets) {
-    // Capture CountOperator BY VALUE so its vtable pointer is a JIT constant.
-    CountOperator op{row_stride, key_offset};
-    auto lam = [op, n_buckets](const uint8_t* rows, int64_t n_rows, int64_t* out) mutable {
+    // Capture scalars only; reconstruct object inside the lambda so its this-pointer
+    // is a local variable (not a stale factory-frame stack address).
+    auto lam = [row_stride, key_offset, n_buckets](
+                   const uint8_t* rows, int64_t n_rows, int64_t* out) {
+        CountOperator op{row_stride, key_offset};
         op.aggregate(rows, n_rows, reinterpret_cast<double*>(out), n_buckets);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

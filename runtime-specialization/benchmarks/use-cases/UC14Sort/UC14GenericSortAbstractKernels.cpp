@@ -8,7 +8,7 @@
 // Abstract comparator interface — virtual dispatch is the specialization target.
 struct Comparator {
     virtual int compare(const void* a, const void* b) const = 0;
-    virtual ~Comparator() = default;
+
 };
 
 // Concrete subclass defined in the same TU so the JIT can devirtualize.
@@ -87,8 +87,10 @@ struct Sorter {
 };
 
 GenericSortAbstractSpecialized create_generic_sort_abstract_specialized(int element_size) {
-    Sorter sorter{};
-    auto lam = [sorter, element_size](void* data, int64_t n_elements) {
+    // Reconstruct object inside the lambda so its this-pointer is a local variable
+    // (not a stale factory-frame stack address).
+    auto lam = [element_size](void* data, int64_t n_elements) {
+        Sorter sorter{};
         sorter.sort(data, n_elements, element_size);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);
