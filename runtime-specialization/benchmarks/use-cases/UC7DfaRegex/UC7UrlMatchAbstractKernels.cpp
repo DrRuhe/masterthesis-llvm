@@ -1,4 +1,4 @@
-// CRITICAL: Matcher/DFAMatcher hierarchy and URL factory live in the same TU
+// CRITICAL: Matcher/AbstractDFAMatcher hierarchy and URL factory live in the same TU
 // so the JIT module clone contains the vtable as a JIT constant.
 // Do NOT include benchmark headers here.
 #include "UC7Kernels.h"
@@ -12,15 +12,15 @@ struct Matcher {
 
 };
 
-// DFAMatcher subclass with URL DFA.
-struct DFAMatcher : Matcher {
+// AbstractDFAMatcher subclass with URL DFA.
+struct AbstractDFAMatcher : Matcher {
     const int* table;
     int n_states;
     int n_chars;
     int start_state;
     int accept_state;
 
-    DFAMatcher(const int* tbl, int ns, int nc, int ss, int as)
+    AbstractDFAMatcher(const int* tbl, int ns, int nc, int ss, int as)
         : table(tbl), n_states(ns), n_chars(nc), start_state(ss), accept_state(as) {}
 
     // Full scan — no early exit per FR-011.
@@ -43,10 +43,11 @@ struct DFAMatcher : Matcher {
 
 UrlMatchAbstractSpecialized create_url_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    // Reconstruct object inside the lambda so its this-pointer is a local variable
-    // (not a stale factory-frame stack address). URL DFA accept state is 7 (IN_PATH).
-    auto lam = [](const char* s, int64_t len) -> int64_t {
-        DFAMatcher m(g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
+    // Capture the DFA table pointer (a stable global address, not a stack address).
+    // Reconstruct AbstractDFAMatcher inside the lambda so its this-pointer is local.
+    // URL DFA accept state is 7 (IN_PATH).
+    auto lam = [dfa_table = g_url_dfa_table](const char* s, int64_t len) -> int64_t {
+        AbstractDFAMatcher m(dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
         return m.match(s, len);
     };
     return RS->specializeLambda<int64_t>(lam);
@@ -66,7 +67,7 @@ void validate_url_match_abstract_specialized() {
         { "http://x" },
     };
 
-    DFAMatcher ref(g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
+    AbstractDFAMatcher ref(g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
     for (auto& tc : cases) {
         int64_t len = (int64_t)strlen(tc.text);
         int64_t expected = ref.match(tc.text, len);

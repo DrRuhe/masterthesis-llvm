@@ -78,16 +78,17 @@ struct MultiPatternMatcher {
 
 MultiPatternMatchTradeoffSpecialized create_multi_pattern_match_tradeoff_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    MultiPatternMatcher matcher;
-    matcher.n_states = MP_N_STATES;
-    matcher.n_chars  = MP_N_CHARS;
-    matcher.n_accept_states = 2;
-    matcher.accept_states[0] = 2;  // ACCEPT_AB
-    matcher.accept_states[1] = 4;  // ACCEPT_CD
-    for (int i = 2; i < MP_MAX_ACC; ++i) matcher.accept_states[i] = -1;
-    matcher.table = g_multi_dfa_table_tradeoff;
-
-    auto lam = [matcher](const char* buf, int64_t len) -> int64_t {
+    // Capture stable global pointer only; reconstruct MultiPatternMatcher inside so
+    // its this-pointer is a local (not a stale factory-frame stack address).
+    auto lam = [tbl = g_multi_dfa_table_tradeoff](const char* buf, int64_t len) -> int64_t {
+        MultiPatternMatcher matcher;
+        matcher.n_states = MP_N_STATES;
+        matcher.n_chars  = MP_N_CHARS;
+        matcher.n_accept_states = 2;
+        matcher.accept_states[0] = 2;  // ACCEPT_AB
+        matcher.accept_states[1] = 4;  // ACCEPT_CD
+        for (int i = 2; i < MP_MAX_ACC; ++i) matcher.accept_states[i] = -1;
+        matcher.table = tbl;
         return matcher.match_all_count(buf, len);
     };
     return RS->specializeLambda<int64_t>(lam);

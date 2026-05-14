@@ -36,8 +36,10 @@ struct DFAMatcher {
 UrlMatchTradeoffSpecialized create_url_match_tradeoff_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     // URL DFA accept state is 7 (IN_PATH).
-    DFAMatcher matcher{URL_N_STATES, DFA_N_CHARS, 0, 7, g_url_dfa_table};
-    auto lam = [matcher](const char* s, int64_t len) -> int64_t {
+    // Capture stable global pointer only; reconstruct DFAMatcher inside so its
+    // this-pointer is a local (not a stale factory-frame stack address).
+    auto lam = [tbl = g_url_dfa_table](const char* s, int64_t len) -> int64_t {
+        DFAMatcher matcher{URL_N_STATES, DFA_N_CHARS, 0, 7, tbl};
         return matcher.match(s, len);
     };
     return RS->specializeLambda<int64_t>(lam);

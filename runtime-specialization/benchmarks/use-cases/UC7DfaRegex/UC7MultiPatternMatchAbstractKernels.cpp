@@ -89,11 +89,11 @@ struct DFAPatternSet : PatternSet {
 
 MultiPatternMatchAbstractSpecialized create_multi_pattern_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    // Reconstruct object inside the lambda so its this-pointer is a local variable
-    // (not a stale factory-frame stack address). DFA globals are accessible directly.
-    auto lam = [](const char* buf, int64_t len) -> int64_t {
+    // Capture the DFA table pointer (a stable global address, not a stack address).
+    // Reconstruct DFAPatternSet inside the lambda so its this-pointer is local.
+    auto lam = [dfa_table = g_multi_dfa_table_abstract](const char* buf, int64_t len) -> int64_t {
         const int acc[2] = {2, 4};  // ACCEPT_AB, ACCEPT_CD
-        DFAPatternSet ps(g_multi_dfa_table_abstract, MPA_N_STATES, MPA_N_CHARS, acc, 2);
+        DFAPatternSet ps(dfa_table, MPA_N_STATES, MPA_N_CHARS, acc, 2);
         return ps.match_all_count(buf, len);
     };
     return RS->specializeLambda<int64_t>(lam);

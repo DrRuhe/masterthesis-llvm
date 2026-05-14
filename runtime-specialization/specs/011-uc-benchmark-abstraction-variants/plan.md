@@ -429,6 +429,10 @@ Compare against pre-feature baseline; flag any >10% increase.
 4. **Kernel TUs compiled at -O0** (CMake rule: prevents DAE from hiding `specializeLambda` call).
 5. **Each (variant × level) is a separate .cpp TU** (FR-003) — no `#include`-based combination.
 6. **Benchmark name format**: `BM_g:<group>;n:<variant>;a:<level>;s:<size>;t:<type>;` — `a:` placed after `n:`, before `s:`.
+7. **Scalar capture + reconstruct pattern (abstract AND tradeoff tier)**: `serializeArgumentToIR` for class types embeds `&lambda_closure` (a stack address on the factory call frame). After the factory returns, this address is stale → segfault on virtual dispatch. Fix: capture only scalar fields (ints, stable global pointers); reconstruct the polymorphic object inside the lambda body so `this` is a local variable, never stale. This applies to ALL tiers — even tradeoff structs with a `const T* table` pointer field must use scalar capture (`[tbl = g_table]`) + reconstruct inside.
+8. **Zero-capture lambda crash**: `specializeLambdaImpl` segfaults when the closure struct is zero-sized. If all needed constants are global-scope, add a dummy scalar capture (e.g., `[tbl = g_global_ptr]`) to ensure the closure is non-empty.
+9. **ODR violation between tradeoff and abstract TUs**: structs with the same name but different definitions across TUs cause ODR UB. Specifically, tradeoff DFAMatcher (non-polymorphic, 24 bytes) and abstract DFAMatcher (polymorphic with vtable, 32 bytes) with the same name → linker picks one implementation → crash. Fix: rename abstract-tier structs to `AbstractFoo` (e.g., `AbstractDFAMatcher`) in UC7 abstract TUs.
+10. **CMake KERNEL_SRCS must use absolute paths**: the `${UC_KERNELS_SRCS}` variable exported to `PARENT_SCOPE` must contain absolute paths (using `${CMAKE_CURRENT_SOURCE_DIR}/...`). Relative paths fail when the `AllBenchmarks` target in `benchmarks/CMakeLists.txt` tries to use them as source dependencies in `add_custom_command`.
 
 ## Complexity Tracking
 

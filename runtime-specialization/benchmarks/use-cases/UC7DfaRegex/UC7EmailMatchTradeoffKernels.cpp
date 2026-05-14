@@ -35,8 +35,10 @@ struct DFAMatcher {
 
 EmailMatchTradeoffSpecialized create_email_match_tradeoff_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    DFAMatcher matcher{DFA_N_STATES, DFA_N_CHARS, DFA_START, DFA_ACCEPT, g_dfa_table};
-    auto lam = [matcher](const char* s, int64_t len) -> int64_t {
+    // Capture stable global pointer only; reconstruct DFAMatcher inside so its
+    // this-pointer is a local (not a stale factory-frame stack address).
+    auto lam = [tbl = g_dfa_table](const char* s, int64_t len) -> int64_t {
+        DFAMatcher matcher{DFA_N_STATES, DFA_N_CHARS, DFA_START, DFA_ACCEPT, tbl};
         return matcher.match(s, len);
     };
     return RS->specializeLambda<int64_t>(lam);

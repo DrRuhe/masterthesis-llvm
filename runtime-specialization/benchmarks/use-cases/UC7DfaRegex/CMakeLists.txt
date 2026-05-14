@@ -1,23 +1,23 @@
 set(LLVM_LINK_COMPONENTS)
 
-# Define UC7 kernel source files
+# Define UC7 kernel source files (absolute paths required for AllBenchmarks re-link)
 set(UC7_KERNEL_SRCS
-    UC7EmailMatchLowKernels.cpp
-    UC7EmailMatchTradeoffKernels.cpp
-    UC7EmailMatchAbstractKernels.cpp
-    UC7UrlMatchLowKernels.cpp
-    UC7UrlMatchTradeoffKernels.cpp
-    UC7UrlMatchAbstractKernels.cpp
-    UC7MultiPatternMatchLowKernels.cpp
-    UC7MultiPatternMatchTradeoffKernels.cpp
-    UC7MultiPatternMatchAbstractKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7EmailMatchLowKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7EmailMatchTradeoffKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7EmailMatchAbstractKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7UrlMatchLowKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7UrlMatchTradeoffKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7UrlMatchAbstractKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7MultiPatternMatchLowKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7MultiPatternMatchTradeoffKernels.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/UC7MultiPatternMatchAbstractKernels.cpp
 )
 
 # Compile each kernel source to object file
 set(UC7_KERNELS_OBJS)
 foreach(KERNEL_SRC ${UC7_KERNEL_SRCS})
-    string(REPLACE ".cpp" ".o" KERNEL_OBJ "${KERNEL_SRC}")
-    set(KERNEL_OBJ "${CMAKE_CURRENT_BINARY_DIR}/${KERNEL_OBJ}")
+    get_filename_component(KERN_STEM "${KERNEL_SRC}" NAME_WE)
+    set(KERNEL_OBJ "${CMAKE_CURRENT_BINARY_DIR}/${KERN_STEM}.o")
     list(APPEND UC7_KERNELS_OBJS "${KERNEL_OBJ}")
 
     add_custom_command(OUTPUT ${KERNEL_OBJ}
@@ -28,11 +28,11 @@ foreach(KERNEL_SRC ${UC7_KERNEL_SRCS})
                 -I${LLVM_BINARY_DIR}/include
                 -fpass-plugin=${PLUGIN_LIB}
                 -fexceptions -frtti
-                -c ${CMAKE_CURRENT_SOURCE_DIR}/${KERNEL_SRC}
+                -c ${KERNEL_SRC}
                 -o ${KERNEL_OBJ}
-        DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${KERNEL_SRC}
+        DEPENDS ${KERNEL_SRC}
                 LLVMRuntimeSpecializationComptimePlugin clang
-        COMMENT "Compiling ${KERNEL_SRC} with plugin")
+        COMMENT "Compiling ${KERN_STEM} with plugin")
 endforeach()
 
 set(BENCH_OBJ "${CMAKE_CURRENT_BINARY_DIR}/UC7Benchmark.o")
