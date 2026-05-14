@@ -240,22 +240,24 @@ add_custom_command(
 # specializeLambda call from IRDumpingPass). Benchmark TUs compile at -O3.
 
 foreach(UC IN ITEMS UC1 UC2 UC7 UC8 UC12 UC14)
-    set(_KERN_OBJ "${CMAKE_CURRENT_BINARY_DIR}/AllBenchmarks_${UC}Kernels.o")
-    add_custom_command(
-        OUTPUT ${_KERN_OBJ}
-        COMMAND ${CLANG_EXE} -x c++ -g -O0 ${CXX_FLAGS_LIST}
-                -DALL_BENCHMARKS_BUILD=1
-                -I${${UC}_SRC_DIR}
-                -I${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
-                -I${LLVM_MAIN_INCLUDE_DIR}
-                -I${LLVM_BINARY_DIR}/include
-                -fpass-plugin=${PLUGIN_LIB}
-                -fexceptions -frtti
-                -c ${${UC}_KERNELS_SRC}
-                -o ${_KERN_OBJ}
-        DEPENDS ${${UC}_KERNELS_SRC} LLVMRuntimeSpecializationComptimePlugin clang
-        COMMENT "Compiling ${UC}Kernels for AllBenchmarks")
-    list(APPEND _ALL_UC_KERNEL_OBJS ${_KERN_OBJ})
+    foreach(KERN_SRC IN LISTS ${UC}_KERNELS_SRCS)
+        get_filename_component(KERN_STEM "${KERN_SRC}" NAME_WE)
+        set(_KERN_OBJ "${CMAKE_CURRENT_BINARY_DIR}/AllBenchmarks_${KERN_STEM}.o")
+        add_custom_command(
+            OUTPUT ${_KERN_OBJ}
+            COMMAND ${CLANG_EXE} -x c++ -g -O0 ${CXX_FLAGS_LIST}
+                    -DALL_BENCHMARKS_BUILD=1
+                    -I${${UC}_SRC_DIR}
+                    -I${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer
+                    -I${LLVM_MAIN_INCLUDE_DIR}
+                    -I${LLVM_BINARY_DIR}/include
+                    -fpass-plugin=${PLUGIN_LIB}
+                    -fexceptions -frtti
+                    -c ${KERN_SRC} -o ${_KERN_OBJ}
+            DEPENDS ${KERN_SRC} LLVMRuntimeSpecializationComptimePlugin clang
+            COMMENT "Compiling ${KERN_STEM} for AllBenchmarks")
+        list(APPEND _ALL_UC_KERNEL_OBJS ${_KERN_OBJ})
+    endforeach()
 
     set(_BENCH_OBJ "${CMAKE_CURRENT_BINARY_DIR}/AllBenchmarks_${UC}Benchmark.o")
     add_custom_command(
