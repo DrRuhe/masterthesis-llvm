@@ -53,10 +53,10 @@ add_custom_command(OUTPUT ${BENCH_OBJ}
 set(IDE_STUB "${CMAKE_CURRENT_BINARY_DIR}/UC14_ide_stub.cpp")
 file(WRITE "${IDE_STUB}" "")
 
-set_source_files_properties(UC14Kernels.cpp UC14Benchmark.cpp PROPERTIES HEADER_FILE_ONLY ON)
+set_source_files_properties(UC14GenericSortLowKernels.cpp UC14Benchmark.cpp PROPERTIES HEADER_FILE_ONLY ON)
 
 add_benchmark(UC14Sort PARTIAL_SOURCES_INTENDED
-    ${_KERN_OBJS} ${BENCH_OBJ} UC14Kernels.cpp UC14Benchmark.cpp ${IDE_STUB})
+    ${_KERN_OBJS} ${BENCH_OBJ} UC14GenericSortLowKernels.cpp UC14Benchmark.cpp ${IDE_STUB})
 
 target_include_directories(UC14Sort PRIVATE
     ${LLVM_THIRD_PARTY_DIR}/benchmark/include
