@@ -51,18 +51,18 @@ static void BM_UC2_specialized_exec(benchmark::State& state) {
 }
 
 #define UC2_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:gaussian5x5;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:gaussian5x5;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:gaussian5x5;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:gaussian5x5;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:gaussian5x5;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:gaussian5x5;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:gaussian5x5;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:gaussian5x5;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:gaussian5x5;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:gaussian5x5;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:gaussian5x5;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:gaussian5x5;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE;
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:unspecialized;")->SMALL; \
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM; \
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:unspecialized;")->LARGE; \
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:jit_overhead;")->SMALL; \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:jit_overhead;")->LARGE; \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:specialized_exec;")->SMALL; \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:specialized_exec;")->LARGE; \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE;
 
 UC2_BENCHMARK_SPEC(
     Args({1440, 800}),
