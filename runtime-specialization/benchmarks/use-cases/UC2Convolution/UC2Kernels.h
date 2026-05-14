@@ -2,6 +2,10 @@
 #include "ClangRuntimeSpecializer.h"
 #include <cstdint>
 
+// ---------------------------------------------------------------------------
+// Separable Gaussian (existing variant — low tier)
+// ---------------------------------------------------------------------------
+
 // 5-tap 1D Gaussian coefficients (specialization constant via pointer)
 extern float g_kernel_coeffs[5];
 
@@ -15,3 +19,90 @@ using ConvSpecialized =
 
 ConvSpecialized create_conv_specialized(int width, int height);
 void validate_conv_specialized();
+
+// ---------------------------------------------------------------------------
+// Shared SpecializedLambda type aliases
+// ---------------------------------------------------------------------------
+
+using BoxFilterLowSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+using BoxFilterTradeoffSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+using BoxFilterAbstractSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+
+using EdgeDetectionLowSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+using EdgeDetectionTradeoffSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+using EdgeDetectionAbstractSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+
+using SeparableGaussianTradeoffSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+using SeparableGaussianAbstractSpecialized =
+    clangRuntimeSpecializer::SpecializedLambda<void, const float*, float*>;
+
+// ---------------------------------------------------------------------------
+// Box filter (low tier)
+// ---------------------------------------------------------------------------
+
+void box_filter(const float* src, float* dst, int width, int height, int radius);
+BoxFilterLowSpecialized create_box_filter_low_specialized(int width, int height, int radius);
+void validate_box_filter_low_specialized();
+
+// ---------------------------------------------------------------------------
+// Edge detection / Sobel (low tier)
+// ---------------------------------------------------------------------------
+
+void sobel_edge_detect(const float* src, float* dst, int width, int height);
+EdgeDetectionLowSpecialized create_edge_detection_low_specialized(int width, int height);
+void validate_edge_detection_low_specialized();
+
+// ---------------------------------------------------------------------------
+// Separable Gaussian (tradeoff tier)
+// ---------------------------------------------------------------------------
+
+SeparableGaussianTradeoffSpecialized create_separable_gaussian_tradeoff_specialized(
+        int width, int height, const float* coeffs, int ksize);
+void validate_separable_gaussian_tradeoff_specialized();
+
+// ---------------------------------------------------------------------------
+// Box filter (tradeoff tier)
+// ---------------------------------------------------------------------------
+
+BoxFilterTradeoffSpecialized create_box_filter_tradeoff_specialized(
+        int width, int height, int radius);
+void validate_box_filter_tradeoff_specialized();
+
+// ---------------------------------------------------------------------------
+// Edge detection (tradeoff tier)
+// ---------------------------------------------------------------------------
+
+EdgeDetectionTradeoffSpecialized create_edge_detection_tradeoff_specialized(
+        int width, int height);
+void validate_edge_detection_tradeoff_specialized();
+
+// ---------------------------------------------------------------------------
+// Separable Gaussian (abstract tier)
+// ---------------------------------------------------------------------------
+
+SeparableGaussianAbstractSpecialized create_separable_gaussian_abstract_specialized(
+        int width, int height, const float* coeffs, int ksize);
+void validate_separable_gaussian_abstract_specialized();
+
+// ---------------------------------------------------------------------------
+// Box filter (abstract tier)
+// ---------------------------------------------------------------------------
+
+BoxFilterAbstractSpecialized create_box_filter_abstract_specialized(
+        int width, int height, int radius);
+void validate_box_filter_abstract_specialized();
+
+// ---------------------------------------------------------------------------
+// Edge detection (abstract tier)
+// ---------------------------------------------------------------------------
+
+EdgeDetectionAbstractSpecialized create_edge_detection_abstract_specialized(
+        int width, int height);
+void validate_edge_detection_abstract_specialized();
