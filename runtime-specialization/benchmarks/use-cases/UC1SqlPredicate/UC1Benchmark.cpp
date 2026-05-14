@@ -6,7 +6,11 @@
 
 static constexpr int     ROW_STRIDE  = 16;
 static constexpr int     COL_OFFSET  = 8;
+#ifdef ALL_BENCHMARKS_BUILD
 static constexpr int64_t N_ROWS_MAX  = 50'000'000;
+#else
+static constexpr int64_t N_ROWS_MAX  = 1'000'000'000;
+#endif
 
 // Global dataset: N_ROWS_MAX rows of ROW_STRIDE bytes.
 // Benchmarks pass a size-specific n_rows via state.range(0).
@@ -63,12 +67,21 @@ BENCHMARK(BM_UC1_specialized_exec)->Name("BM_g:uc1_sql;n:predicate;s:MEDIUM;t:sp
 BENCHMARK(BM_UC1_specialized_exec)->Name("BM_g:uc1_sql;n:predicate;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_UC1_specialized_exec)->Name("BM_g:uc1_sql;n:predicate;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
 
+#ifdef ALL_BENCHMARKS_BUILD
 UC1_BENCHMARK_SPEC(
     Arg(1'000'000),
     Arg(10'000'000),
     Arg(30'000'000),
     Arg(50'000'000)
 )
+#else
+UC1_BENCHMARK_SPEC(
+    Arg(16'000'000),
+    Arg(150'000'000),
+    Arg(800'000'000),
+    Arg(1'000'000'000)
+)
+#endif
 
 #ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {

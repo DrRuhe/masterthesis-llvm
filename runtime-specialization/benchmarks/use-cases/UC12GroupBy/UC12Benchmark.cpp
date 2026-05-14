@@ -10,7 +10,11 @@ static constexpr int     ROW_STRIDE12  = 24;
 static constexpr int     KEY_OFFSET12  = 0;
 static constexpr int     VALUE_OFFSET12 = 8;
 static constexpr int     N_BUCKETS12   = 1024;
+#ifdef ALL_BENCHMARKS_BUILD
 static constexpr int64_t N_ROWS_MAX12  = 50'000'000;
+#else
+static constexpr int64_t N_ROWS_MAX12  = 700'000'000;
+#endif
 
 // Global dataset: N_ROWS_MAX12 rows of ROW_STRIDE12 bytes.
 // Benchmarks pass size-specific n_rows via state.range(0).
@@ -72,12 +76,21 @@ BENCHMARK(BM_UC12_specialized_exec)->Name("BM_g:uc12_groupby;n:groupby_sum;s:MED
 BENCHMARK(BM_UC12_specialized_exec)->Name("BM_g:uc12_groupby;n:groupby_sum;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_UC12_specialized_exec)->Name("BM_g:uc12_groupby;n:groupby_sum;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
 
+#ifdef ALL_BENCHMARKS_BUILD
 UC12_BENCHMARK_SPEC(
     Arg(1'000'000),
     Arg(10'000'000),
     Arg(30'000'000),
     Arg(50'000'000)
 )
+#else
+UC12_BENCHMARK_SPEC(
+    Arg(31'000'000),
+    Arg(300'000'000),
+    Arg(500'000'000),
+    Arg(700'000'000)
+)
+#endif
 
 #ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {

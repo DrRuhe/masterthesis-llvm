@@ -275,7 +275,7 @@ files). Run them in parallel. Each task ends with `git commit`.
 **Goal**: Calibrate dataset sizes so unspecialized per-call runtime is within 2× of the
 target: SMALL ≈ 0.1 s, MEDIUM ≈ 1 s, LARGE ≈ 10 s, EXTRALARGE ≈ 60 s.
 
-- [ ] T009b [P] [US1] Calibrate dataset sizes for all six benchmarks.
+- [X] T009b [P] [US1] Calibrate dataset sizes for all six benchmarks.
 
   **Steps**:
   1. Build and run all six binaries in release mode with the default benchmark filter,

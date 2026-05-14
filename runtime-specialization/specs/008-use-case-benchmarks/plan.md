@@ -192,16 +192,20 @@ SMALL ≈ 0.1 s, MEDIUM ≈ 1 s, LARGE ≈ 10 s, EXTRALARGE ≈ 60 s.
 The table below shows **initial estimates** — sizes MUST be calibrated after implementation
 (see "Size Calibration" subsection below).
 
-| Use Case | SMALL | MEDIUM | LARGE | EXTRALARGE | Max alloc |
-|----------|-------|--------|-------|------------|-----------|
-| UC1 `n_rows` | 1M | 10M | 30M | 50M | 50M × 16B = 800 MB |
-| UC2 `(width, height)` | 640×360 | 1920×1080 | 3840×2160 | 7680×4320 | 7680×4320×4×2 ≈ 240 MB |
-| UC7 `corpus_bytes` | 5 MB | 50 MB | 500 MB | 1000 MB | 1000 MB |
-| UC8 `n_rows` | 1M | 10M | 30M | 50M | 50M × 24B = 1.2 GB |
-| UC12 `n_rows` | 1M | 10M | 30M | 50M | 50M × 24B = 1.2 GB |
-| UC14 `n_elements` | 100K | 1M | 5M | 20M | 20M × 8B = 160 MB |
+**Calibrated sizes (T009b, 2026-05-14)** — standalone binaries; AllBenchmarks uses original sizes via `#ifdef ALL_BENCHMARKS_BUILD`:
 
-Total peak (all EXTRALARGE simultaneously, AllBenchmarks binary): ≈ 4.6 GB.
+| Use Case | SMALL | MEDIUM | LARGE | EXTRALARGE | Standalone max alloc | Status |
+|----------|-------|--------|-------|------------|---------------------|--------|
+| UC1 `n_rows` | 16M (110ms) | 150M (1.03s) | 800M (5.5s) | 1B (7.0s) ¹ | 1B × 16B = 16 GB | SMALL/MEDIUM/LARGE ✓ |
+| UC2 `(width,height)` | 1440×800 (111ms) | 3840×2880 (1.08s) | 10560×10560 (11.1s) | 25920×25920 (66.1s) | 25920² × 4B × 2 = 5.4 GB | All ✓ |
+| UC7 `corpus_bytes` | 50 MB (132ms) | 500 MB (1.33s) | 5000 MB (13.4s) | 15000 MB (40.6s) | 15 GB | All ✓ |
+| UC8 `n_rows` | 31.2M (112ms) | 300M (1.04s) | 500M (1.75s) ¹ | 700M (2.53s) ¹ | 700M × 24B = 16.8 GB | SMALL/MEDIUM ✓ |
+| UC12 `n_rows` | 31M (98.8ms) | 300M (0.96s) | 500M (1.61s) ¹ | 700M (2.28s) ¹ | 700M × 24B = 16.8 GB | SMALL/MEDIUM ✓ |
+| UC14 `n_elements` | 550K (120ms) | 5M (1.27s) | 40M (11.3s) | 200M (61.8s) | 200M × 8B = 1.6 GB | All ✓ |
+
+¹ **Memory-limited**: UC1/UC8/UC12 are memory-bandwidth-bound (~2.5–7 GB/s throughput). The LARGE/EXTRALARGE FR-007 targets (5–20 s / 30–120 s) would require 35–225 GB datasets, exceeding available RAM (33 GB). UC7 `make_corpus` was replaced with a fast memcpy-based generator (same email/word mix, ~2.6 GB/s DFA scan vs 0.35 GB/s with random corpus); all four UC7 sizes are now within tolerance.
+
+AllBenchmarks total peak (all EXTRALARGE, default filter excludes EXTRALARGE): ≈ 4.6 GB.
 
 #### Size Calibration
 

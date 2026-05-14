@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <numeric>
 
-static constexpr int64_t N_SORT_MAX = 20'000'000;
+static constexpr int64_t N_SORT_MAX = 200'000'000;
 
 // Global dataset: N_SORT_MAX int64_t values.
 // Benchmarks pass size-specific n_elements via state.range(0).
@@ -63,10 +63,10 @@ BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:sort_int64;s:LARGE;t
 BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:sort_int64;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
 
 UC14_BENCHMARK_SPEC(
-    Arg(100'000),
-    Arg(1'000'000),
+    Arg(550'000),
     Arg(5'000'000),
-    Arg(20'000'000)
+    Arg(40'000'000),
+    Arg(200'000'000)
 )
 
 #ifndef ALL_BENCHMARKS_BUILD

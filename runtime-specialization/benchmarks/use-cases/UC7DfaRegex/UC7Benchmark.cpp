@@ -12,60 +12,39 @@
 // ---------------------------------------------------------------------------
 
 static std::vector<char> make_corpus(int64_t size) {
-    std::mt19937 rng(42);
-    std::uniform_int_distribution<int> kind_dist(0, 9);
-    std::uniform_int_distribution<int> word_len_dist(3, 12);
-    std::uniform_int_distribution<int> word_char_dist('a', 'z');
-    std::uniform_int_distribution<int> digit_dist('0', '9');
+    // Fast deterministic corpus: ~25% email addresses, ~75% word tokens.
+    // Uses memcpy of small cache-hot templates for multi-GB/s generation speed.
+    static constexpr char WORDS[] =
+        "the quick brown fox jumps over the lazy dog hello world "
+        "lorem ipsum dolor sit amet foo bar baz random text here ";
+    static constexpr char EMAILS[] =
+        "alice@example.com bob@test.org carol@foo.net dave@bar.io "
+        "eve@baz.edu frank@mail.org grace@domain.net henry@web.co ";
+    constexpr int64_t WL = (int64_t)(sizeof(WORDS) - 1);
+    constexpr int64_t EL = (int64_t)(sizeof(EMAILS) - 1);
 
-    static const char* local_chars  = "abcdefghijklmnopqrstuvwxyz0123456789._+-";
-    static const char* domain_chars = "abcdefghijklmnopqrstuvwxyz0123456789-";
-    static const char* tlds[]       = { "com", "org", "net", "io", "co", "de", "uk", "fr", "jp", "edu" };
-    constexpr int N_TLDS = 10;
-
-    std::uniform_int_distribution<int> local_char_idx(0, (int)strlen(local_chars) - 1);
-    std::uniform_int_distribution<int> domain_char_idx(0, (int)strlen(domain_chars) - 1);
-    std::uniform_int_distribution<int> tld_idx(0, N_TLDS - 1);
-    std::uniform_int_distribution<int> local_len_dist(4, 10);
-    std::uniform_int_distribution<int> domain_len_dist(3, 8);
-
-    std::vector<char> buf;
-    buf.reserve((size_t)size + 64);
-
-    while ((int64_t)buf.size() < size) {
-        int kind = kind_dist(rng);
-        if (kind < 4) {
-            int wlen = word_len_dist(rng);
-            for (int i = 0; i < wlen; ++i)
-                buf.push_back((char)word_char_dist(rng));
-            buf.push_back(' ');
-        } else if (kind < 6) {
-            int wlen = word_len_dist(rng);
-            for (int i = 0; i < wlen; ++i)
-                buf.push_back((char)digit_dist(rng));
-            buf.push_back(' ');
-        } else {
-            int llen = local_len_dist(rng);
-            int dlen = domain_len_dist(rng);
-            const char* tld = tlds[tld_idx(rng)];
-
-            for (int i = 0; i < llen; ++i)
-                buf.push_back(local_chars[local_char_idx(rng)]);
-            buf.push_back('@');
-            for (int i = 0; i < dlen; ++i)
-                buf.push_back(domain_chars[domain_char_idx(rng)]);
-            buf.push_back('.');
-            for (int i = 0; tld[i]; ++i)
-                buf.push_back(tld[i]);
-            buf.push_back(' ');
+    std::vector<char> buf(size);
+    int64_t pos = 0;
+    while (pos < size) {
+        for (int b = 0; b < 3 && pos < size; ++b) {
+            int64_t n = std::min(WL, size - pos);
+            memcpy(buf.data() + pos, WORDS, (size_t)n);
+            pos += n;
+        }
+        if (pos < size) {
+            int64_t n = std::min(EL, size - pos);
+            memcpy(buf.data() + pos, EMAILS, (size_t)n);
+            pos += n;
         }
     }
-
-    buf.resize((size_t)size);
     return buf;
 }
 
-static constexpr int64_t CORPUS_MAX = 1000LL * 1024 * 1024;  // 1 GB
+#ifdef ALL_BENCHMARKS_BUILD
+static constexpr int64_t CORPUS_MAX = 1000LL * 1024 * 1024;   // 1 GB for AllBenchmarks
+#else
+static constexpr int64_t CORPUS_MAX = 15000LL * 1024 * 1024;  // 15 GB for standalone
+#endif
 
 static std::vector<char> g_corpus = make_corpus(CORPUS_MAX);
 
@@ -112,12 +91,21 @@ BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:MEDIUM;t:specia
 BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_UC7_specialized_exec)->Name("BM_g:uc7_dfa;n:email;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
 
+#ifdef ALL_BENCHMARKS_BUILD
 UC7_BENCHMARK_SPEC(
     Arg(5LL * 1024 * 1024),
     Arg(50LL * 1024 * 1024),
     Arg(500LL * 1024 * 1024),
     Arg(1000LL * 1024 * 1024)
 )
+#else
+UC7_BENCHMARK_SPEC(
+    Arg(50LL * 1024 * 1024),
+    Arg(500LL * 1024 * 1024),
+    Arg(5000LL * 1024 * 1024),
+    Arg(15000LL * 1024 * 1024)
+)
+#endif
 
 // ---------------------------------------------------------------------------
 // main

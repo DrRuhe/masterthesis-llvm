@@ -4,8 +4,8 @@
 #include <random>
 #include <vector>
 
-static constexpr int IMG_WIDTH_MAX  = 7680;
-static constexpr int IMG_HEIGHT_MAX = 4320;
+static constexpr int IMG_WIDTH_MAX  = 25920;
+static constexpr int IMG_HEIGHT_MAX = 25920;
 static constexpr int N_PIXELS_MAX   = IMG_WIDTH_MAX * IMG_HEIGHT_MAX;
 
 // Global buffers allocated to EXTRALARGE size.
@@ -65,10 +65,10 @@ BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:gaussian5x5;s:LARGE;t:
 BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:gaussian5x5;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE;
 
 UC2_BENCHMARK_SPEC(
-    Args({640, 360}),
-    Args({1920, 1080}),
-    Args({3840, 2160}),
-    Args({7680, 4320})
+    Args({1440, 800}),
+    Args({3840, 2880}),
+    Args({10560, 10560}),
+    Args({25920, 25920})
 )
 
 #ifndef ALL_BENCHMARKS_BUILD
