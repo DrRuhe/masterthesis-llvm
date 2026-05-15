@@ -90,7 +90,7 @@ namespace clangRuntimeSpecializer {
     }
   }
 
-  static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Debug;
+  static ClangRuntimeSpecializer::LogLevel CurrentLogLevel = ClangRuntimeSpecializer::LogLevel::Warning;
   static ClangRuntimeSpecializer::JITModuleStats g_lastTransformStats;
   static std::vector<ClangRuntimeSpecializer::PassRecord> g_lastPassTrace;
 
@@ -313,6 +313,10 @@ namespace clangRuntimeSpecializer {
           TSM.withModuleDo([&](llvm::Module &M) {
             // Per-pass trace infrastructure using PassInstrumentationCallbacks.
             // Tracks module-level passes only (function/loop-level are skipped via any_cast).
+            // Only active when EnablePassTrace is set; otherwise callbacks are no-ops to avoid
+            // the countModule() overhead (O(instructions) per pass).
+            const bool DoTrace = Instance->CurrentCallOptions.EnablePassTrace;
+
             std::vector<ClangRuntimeSpecializer::PassRecord> TraceRecords;
             std::string CurrentGroup;
             int CurrentFixpointIter = -1;
@@ -335,26 +339,30 @@ namespace clangRuntimeSpecializer {
             PIC.registerBeforeNonSkippedPassCallback(
                 [&](llvm::StringRef ID, llvm::Any IR) {
                   llvm::timeTraceProfilerBegin(ID, ""); // no-op if profiler not initialized
-                  if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
-                    PendingName = std::string(ID);
-                    auto [F, I, B] = countModule(**MP);
-                    PendingFns = F; PendingInstrs = I; PendingBBs = B;
-                    PendingT0 = std::chrono::steady_clock::now();
+                  if (DoTrace) {
+                    if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
+                      PendingName = std::string(ID);
+                      auto [F, I, B] = countModule(**MP);
+                      PendingFns = F; PendingInstrs = I; PendingBBs = B;
+                      PendingT0 = std::chrono::steady_clock::now();
+                    }
                   }
                 });
             PIC.registerAfterPassCallback(
                 [&](llvm::StringRef /*ID*/, llvm::Any IR,
                     const llvm::PreservedAnalyses& PA) {
                   llvm::timeTraceProfilerEnd(); // no-op if profiler not initialized
-                  if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
-                    auto [FA, IA, BA] = countModule(**MP);
-                    double Ms = std::chrono::duration<double, std::milli>(
-                        std::chrono::steady_clock::now() - PendingT0).count();
-                    TraceRecords.push_back({
-                        PendingName, CurrentGroup, CurrentFixpointIter,
-                        PendingFns, FA, PendingInstrs, IA, PendingBBs, BA,
-                        Ms, !PA.areAllPreserved()
-                    });
+                  if (DoTrace) {
+                    if (auto *MP = llvm::any_cast<const llvm::Module*>(&IR)) {
+                      auto [FA, IA, BA] = countModule(**MP);
+                      double Ms = std::chrono::duration<double, std::milli>(
+                          std::chrono::steady_clock::now() - PendingT0).count();
+                      TraceRecords.push_back({
+                          PendingName, CurrentGroup, CurrentFixpointIter,
+                          PendingFns, FA, PendingInstrs, IA, PendingBBs, BA,
+                          Ms, !PA.areAllPreserved()
+                      });
+                    }
                   }
                 });
             PIC.registerAfterPassInvalidatedCallback(
@@ -586,7 +594,8 @@ namespace clangRuntimeSpecializer {
                 Instance->CurrentCallOptions.TimeTraceOutputPath.clear();
             }
 
-            g_lastPassTrace = std::move(TraceRecords);
+            if (DoTrace)
+                g_lastPassTrace = std::move(TraceRecords);
           });
           return std::move(TSM);
         });

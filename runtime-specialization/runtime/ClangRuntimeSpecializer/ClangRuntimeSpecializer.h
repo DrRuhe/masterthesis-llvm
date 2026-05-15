@@ -346,6 +346,7 @@ namespace clangRuntimeSpecializer {
       bool EnableInstructionInstrumentation = false;
       bool KeepDebugInfo = false;
       bool PrintFixpointIterations = false;
+      bool EnablePassTrace = false;          // collect per-pass IR stats; off by default to avoid countModule overhead
       std::string TimeTraceOutputPath;       // Chrome trace JSON path; "" = disabled
 
       // --- Preset factories ---
@@ -420,6 +421,7 @@ namespace clangRuntimeSpecializer {
       Options& withKeepDebugInfo(bool V)              { KeepDebugInfo = V; return *this; }
       Options& withPrintFixpointIterations(bool V)    { PrintFixpointIterations = V; return *this; }
       Options& withInstructionInstrumentation(bool V) { EnableInstructionInstrumentation = V; return *this; }
+      Options& withEnablePassTrace(bool V)            { EnablePassTrace = V; return *this; }
       Options& withOptimize(bool V)                   { Optimize = V; return *this; }
       Options& withFuncSpecMaxGroups(unsigned N)      { FuncSpecMaxGroups = N; return *this; }
       Options& withOptimizationPipeline(int P)        { OptimizationPipelineToUse = P; return *this; }

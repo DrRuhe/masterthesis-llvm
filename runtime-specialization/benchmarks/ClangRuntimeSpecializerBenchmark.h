@@ -205,6 +205,7 @@ void benchmarkJITAnalysis(
             !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
             C = '_';
     opts.TimeTraceOutputPath = std::string(ChromeDir) + "/" + ChromeTraceFilename;
+    opts.EnablePassTrace = true;
 
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
