@@ -19,6 +19,10 @@ llvmGetPassPluginInfo() {
                     [](StringRef Name, ModulePassManager &MPM,
                        ArrayRef<PassBuilder::PipelineElement>) {
 
+                      if (Name == "runtime-specialization-IR-rewriting") {
+                        MPM.addPass(IRRewritingPass());
+                        return true;
+                      }
                       if (Name == "runtime-specialization-IR-dumping") {
                         MPM.addPass(IRDumpingPass());
                         return true;
@@ -34,8 +38,15 @@ llvmGetPassPluginInfo() {
                       return false;
                     });
 
+                // IRRewritingPass runs at pipeline start (before any -O3 optimisations)
+                // so call-site detection sees unmodified IR shapes.
+                PB.registerPipelineStartEPCallback(
+                    [](ModulePassManager &MPM, OptimizationLevel Level) {
+                      MPM.addPass(IRRewritingPass());
+                    });
 
-                // 2. Automatisches Einhängen des Finalizers nach allen Optimierungen
+                // IRDumpingPass runs after all optimisations to clone and serialise
+                // the post-optimisation module into a bitcode blob.
                 PB.registerOptimizerLastEPCallback(
                     [](ModulePassManager &MPM, OptimizationLevel Level, ThinOrFullLTOPhase Phase) {
                       MPM.addPass(IRDumpingPass());
