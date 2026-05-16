@@ -1,5 +1,7 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
 // RUN: %t.exe | FileCheck %s --dump-input=always
+// RUN: %clangxx -g -O3 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.o3.exe
+// RUN: %t.o3.exe | FileCheck %s --dump-input=always
 
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
@@ -30,7 +32,7 @@ int process_data_robust(Data* d, int x) {
 
 // CHECK: INFO: Specializing call to: process_data_robust
 // CHECK: DEBUG: Optimized specialized function IR:
-// CHECK: define {{.*}} i32 @specialized_wrapper_{{.*}}()
+// CHECK: define {{.*}}i32 @specialized_wrapper_{{.*}}()
 // CHECK: load i32, ptr inttoptr (i64 {{.*}} to ptr), align {{.*}}
 // CHECK-NOT: !invariant.load
 

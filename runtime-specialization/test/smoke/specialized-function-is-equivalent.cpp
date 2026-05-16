@@ -1,5 +1,7 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
 // RUN: %t.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: %clangxx -g -O3 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.o3.exe
+// RUN: %t.o3.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
 
 
 

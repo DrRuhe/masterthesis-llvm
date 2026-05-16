@@ -1,6 +1,8 @@
 // RUN: %clangxx -g -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
 // RUN: %t.exe '>=95' '<100'
 //| FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: %clangxx -g -O3 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.o3.exe
+// RUN: %t.o3.exe '>=95' '<100'
 
 #include <iostream>
 #include <string>

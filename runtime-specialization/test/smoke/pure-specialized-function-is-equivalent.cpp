@@ -1,5 +1,7 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
 // RUN: %t.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: %clangxx -g -O3 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.o3.exe
+// RUN: %t.o3.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
 
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
@@ -27,7 +29,7 @@ int main(int argc, char** argv)
   // EXE: DEBUG: Serializing value of type i32
   // EXE: DEBUG: Arg Serialized to: i32 2
   // EXE: DEBUG: Optimized specialized function IR:
-  // EXE: define noundef i32 @specialized_wrapper
+  // EXE: define {{.*}}i32 @specialized_wrapper
   // EXE: entry:
   // EXE:   ret i32 9
   // EXE: }
