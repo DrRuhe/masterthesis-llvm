@@ -236,8 +236,8 @@ add_custom_command(
 # Custom commands must be defined in the same CMakeLists.txt as the consuming
 # target. Source paths are exported from each UC's CMakeLists.txt via
 # PARENT_SCOPE through use-cases/CMakeLists.txt.
-# Kernel TUs compile at -O0 (prevents DAE/inlining from hiding the
-# specializeLambda call from IRDumpingPass). Benchmark TUs compile at -O3.
+# Kernel TUs compile at -O3 (IRRewritingPass runs at PipelineStart before
+# -O3 optimizations, so call-site detection is not affected). Benchmark TUs also at -O3.
 
 foreach(UC IN ITEMS UC1 UC2 UC7 UC8 UC12 UC14)
     foreach(KERN_SRC IN LISTS ${UC}_KERNELS_SRCS)
@@ -245,7 +245,7 @@ foreach(UC IN ITEMS UC1 UC2 UC7 UC8 UC12 UC14)
         set(_KERN_OBJ "${CMAKE_CURRENT_BINARY_DIR}/AllBenchmarks_${KERN_STEM}.o")
         add_custom_command(
             OUTPUT ${_KERN_OBJ}
-            COMMAND ${CLANG_EXE} -x c++ -g -O0 ${CXX_FLAGS_LIST}
+            COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
                     -DALL_BENCHMARKS_BUILD=1
                     -I${${UC}_SRC_DIR}
                     -I${CMAKE_CURRENT_SOURCE_DIR}/../runtime/ClangRuntimeSpecializer

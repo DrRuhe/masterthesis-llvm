@@ -21,7 +21,7 @@ foreach(KERNEL_SRC ${UC7_KERNEL_SRCS})
     list(APPEND UC7_KERNELS_OBJS "${KERNEL_OBJ}")
 
     add_custom_command(OUTPUT ${KERNEL_OBJ}
-        COMMAND ${CLANG_EXE} -x c++ -g -O0 ${CXX_FLAGS_LIST}
+        COMMAND ${CLANG_EXE} -x c++ -g -O3 ${CXX_FLAGS_LIST}
                 -I${CMAKE_CURRENT_SOURCE_DIR}
                 -I${CMAKE_CURRENT_SOURCE_DIR}/../../../runtime/ClangRuntimeSpecializer
                 -I${LLVM_MAIN_INCLUDE_DIR}
