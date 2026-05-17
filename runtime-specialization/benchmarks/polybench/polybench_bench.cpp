@@ -107,12 +107,19 @@ double (*g_corr_data)[M] = nullptr; // [N][M]
 double (*g_corr_corr)[M] = nullptr; // [M][M]
 double g_corr_mean[M];
 double g_corr_stddev[M];
-static struct CorrelationInit {
-    CorrelationInit() {
+static int g_corr_refcount = 0;
+static void pb_setup_correlation(const benchmark::State&) {
+    if (g_corr_refcount++ == 0) {
         g_corr_data = new double[N][M]();
         g_corr_corr = new double[M][M]();
     }
-} _corr_arrinit;
+}
+static void pb_teardown_correlation(const benchmark::State&) {
+    if (--g_corr_refcount == 0) {
+        delete[] g_corr_data; g_corr_data = nullptr;
+        delete[] g_corr_corr; g_corr_corr = nullptr;
+    }
+}
 extern "C" void kernel_correlation(int m, int n) __asm__("kernel_correlation");
 extern "C" void kernel_correlation(int m, int n) {
     __pb_correlation_kernel(m, n, (double)n,
@@ -130,12 +137,19 @@ POLYBENCH_IMPL_2(correlation)
 double (*g_cov_data)[M] = nullptr; // [N][M]
 double (*g_cov_cov)[M]  = nullptr; // [M][M]
 double g_cov_mean[M];
-static struct CovarianceInit {
-    CovarianceInit() {
+static int g_cov_refcount = 0;
+static void pb_setup_covariance(const benchmark::State&) {
+    if (g_cov_refcount++ == 0) {
         g_cov_data = new double[N][M]();
         g_cov_cov  = new double[M][M]();
     }
-} _cov_arrinit;
+}
+static void pb_teardown_covariance(const benchmark::State&) {
+    if (--g_cov_refcount == 0) {
+        delete[] g_cov_data; g_cov_data = nullptr;
+        delete[] g_cov_cov;  g_cov_cov  = nullptr;
+    }
+}
 extern "C" void kernel_covariance(int m, int n) __asm__("kernel_covariance");
 extern "C" void kernel_covariance(int m, int n) {
     __pb_covariance_kernel(m, n, (double)n,
@@ -155,15 +169,25 @@ double (*g_2mm_A)[NK]   = nullptr; // [NI][NK]
 double (*g_2mm_B)[NJ]   = nullptr; // [NK][NJ]
 double (*g_2mm_C)[NL]   = nullptr; // [NJ][NL]
 double (*g_2mm_D)[NL]   = nullptr; // [NI][NL]
-static struct Mm2Init {
-    Mm2Init() {
+static int g_mm2_refcount = 0;
+static void pb_setup_mm2(const benchmark::State&) {
+    if (g_mm2_refcount++ == 0) {
         g_2mm_tmp = new double[NI][NJ]();
         g_2mm_A   = new double[NI][NK]();
         g_2mm_B   = new double[NK][NJ]();
         g_2mm_C   = new double[NJ][NL]();
         g_2mm_D   = new double[NI][NL]();
     }
-} _2mm_arrinit;
+}
+static void pb_teardown_mm2(const benchmark::State&) {
+    if (--g_mm2_refcount == 0) {
+        delete[] g_2mm_tmp; g_2mm_tmp = nullptr;
+        delete[] g_2mm_A;   g_2mm_A   = nullptr;
+        delete[] g_2mm_B;   g_2mm_B   = nullptr;
+        delete[] g_2mm_C;   g_2mm_C   = nullptr;
+        delete[] g_2mm_D;   g_2mm_D   = nullptr;
+    }
+}
 extern "C" void kernel_2mm(int ni, int nj, int nk, int nl) __asm__("kernel_2mm");
 extern "C" void kernel_2mm(int ni, int nj, int nk, int nl) {
     __pb_2mm_kernel(ni, nj, nk, nl, 1.5, 1.2,
@@ -185,8 +209,9 @@ double (*g_3mm_F)[NL] = nullptr; // [NJ][NL]
 double (*g_3mm_C)[NM] = nullptr; // [NJ][NM]
 double (*g_3mm_D)[NL] = nullptr; // [NM][NL]
 double (*g_3mm_G)[NL] = nullptr; // [NI][NL]
-static struct Mm3Init {
-    Mm3Init() {
+static int g_mm3_refcount = 0;
+static void pb_setup_mm3(const benchmark::State&) {
+    if (g_mm3_refcount++ == 0) {
         g_3mm_E = new double[NI][NJ]();
         g_3mm_A = new double[NI][NK]();
         g_3mm_B = new double[NK][NJ]();
@@ -195,7 +220,18 @@ static struct Mm3Init {
         g_3mm_D = new double[NM][NL]();
         g_3mm_G = new double[NI][NL]();
     }
-} _3mm_arrinit;
+}
+static void pb_teardown_mm3(const benchmark::State&) {
+    if (--g_mm3_refcount == 0) {
+        delete[] g_3mm_E; g_3mm_E = nullptr;
+        delete[] g_3mm_A; g_3mm_A = nullptr;
+        delete[] g_3mm_B; g_3mm_B = nullptr;
+        delete[] g_3mm_F; g_3mm_F = nullptr;
+        delete[] g_3mm_C; g_3mm_C = nullptr;
+        delete[] g_3mm_D; g_3mm_D = nullptr;
+        delete[] g_3mm_G; g_3mm_G = nullptr;
+    }
+}
 extern "C" void kernel_3mm(int ni, int nj, int nk, int nl, int nm) __asm__("kernel_3mm");
 extern "C" void kernel_3mm(int ni, int nj, int nk, int nl, int nm) {
     __pb_3mm_kernel(ni, nj, nk, nl, nm,
@@ -216,9 +252,17 @@ double (*g_atax_A)[N] = nullptr; // [kAtaxMaxM][N]
 double g_atax_x[N];
 double g_atax_y[N];
 double g_atax_tmp[kAtaxMaxM]; // was [M=1800]; LARGE uses m=1900
-static struct AtaxInit {
-    AtaxInit() { g_atax_A = new double[kAtaxMaxM][N](); }
-} _atax_arrinit;
+static int g_atax_refcount = 0;
+static void pb_setup_atax(const benchmark::State&) {
+    if (g_atax_refcount++ == 0) {
+        g_atax_A = new double[kAtaxMaxM][N]();
+    }
+}
+static void pb_teardown_atax(const benchmark::State&) {
+    if (--g_atax_refcount == 0) {
+        delete[] g_atax_A; g_atax_A = nullptr;
+    }
+}
 extern "C" void kernel_atax(int m, int n) __asm__("kernel_atax");
 extern "C" void kernel_atax(int m, int n) {
     __pb_atax_kernel(m, n, g_atax_A, g_atax_x, g_atax_y, g_atax_tmp);
@@ -241,9 +285,17 @@ double g_bicg_s[kBicgMaxM];     // was [M=1800]; LARGE uses m=1900
 double g_bicg_q[N];
 double g_bicg_p[kBicgMaxM];     // was [M=1800]; LARGE uses m=1900
 double g_bicg_r[N];
-static struct BicgInit {
-    BicgInit() { g_bicg_A = new double[N][M](); }
-} _bicg_arrinit;
+static int g_bicg_refcount = 0;
+static void pb_setup_bicg(const benchmark::State&) {
+    if (g_bicg_refcount++ == 0) {
+        g_bicg_A = new double[N][M]();
+    }
+}
+static void pb_teardown_bicg(const benchmark::State&) {
+    if (--g_bicg_refcount == 0) {
+        delete[] g_bicg_A; g_bicg_A = nullptr;
+    }
+}
 extern "C" void kernel_bicg(int m, int n) __asm__("kernel_bicg");
 extern "C" void kernel_bicg(int m, int n) {
     __pb_bicg_kernel(m, n, g_bicg_A, g_bicg_s, g_bicg_q, g_bicg_p, g_bicg_r);
@@ -262,12 +314,19 @@ POLYBENCH_IMPL_2(bicg)
 double (*g_doitgen_A)[NQ][NP] = nullptr; // [NR][NQ][NP]
 double (*g_doitgen_C4)[NP]    = nullptr; // [NP][NP]
 double g_doitgen_sum[NP];
-static struct DoitgenInit {
-    DoitgenInit() {
+static int g_doitgen_refcount = 0;
+static void pb_setup_doitgen(const benchmark::State&) {
+    if (g_doitgen_refcount++ == 0) {
         g_doitgen_A  = new double[NR][NQ][NP]();
         g_doitgen_C4 = new double[NP][NP]();
     }
-} _doitgen_arrinit;
+}
+static void pb_teardown_doitgen(const benchmark::State&) {
+    if (--g_doitgen_refcount == 0) {
+        delete[] g_doitgen_A;  g_doitgen_A  = nullptr;
+        delete[] g_doitgen_C4; g_doitgen_C4 = nullptr;
+    }
+}
 // Wrapper receives (nq, nr, np) matching spec order; kernel takes (nr, nq, np).
 extern "C" void kernel_doitgen(int nq, int nr, int np) __asm__("kernel_doitgen");
 extern "C" void kernel_doitgen(int nq, int nr, int np) {
@@ -287,9 +346,17 @@ double g_mvt_x2[N];
 double g_mvt_y1[N];
 double g_mvt_y2[N];
 double (*g_mvt_A)[N] = nullptr; // [N][N]
-static struct MvtInit {
-    MvtInit() { g_mvt_A = new double[N][N](); }
-} _mvt_arrinit;
+static int g_mvt_refcount = 0;
+static void pb_setup_mvt(const benchmark::State&) {
+    if (g_mvt_refcount++ == 0) {
+        g_mvt_A = new double[N][N]();
+    }
+}
+static void pb_teardown_mvt(const benchmark::State&) {
+    if (--g_mvt_refcount == 0) {
+        delete[] g_mvt_A; g_mvt_A = nullptr;
+    }
+}
 extern "C" void kernel_mvt(int n) __asm__("kernel_mvt");
 extern "C" void kernel_mvt(int n) {
     __pb_mvt_kernel(n, g_mvt_x1, g_mvt_x2, g_mvt_y1, g_mvt_y2, g_mvt_A);
@@ -306,13 +373,21 @@ POLYBENCH_IMPL_1(mvt)
 double (*g_gemm_C)[NJ] = nullptr; // [NI][NJ]
 double (*g_gemm_A)[NK] = nullptr; // [NI][NK]
 double (*g_gemm_B)[NJ] = nullptr; // [NK][NJ]
-static struct GemmInit {
-    GemmInit() {
+static int g_gemm_refcount = 0;
+static void pb_setup_gemm(const benchmark::State&) {
+    if (g_gemm_refcount++ == 0) {
         g_gemm_C = new double[NI][NJ]();
         g_gemm_A = new double[NI][NK]();
         g_gemm_B = new double[NK][NJ]();
     }
-} _gemm_arrinit;
+}
+static void pb_teardown_gemm(const benchmark::State&) {
+    if (--g_gemm_refcount == 0) {
+        delete[] g_gemm_C; g_gemm_C = nullptr;
+        delete[] g_gemm_A; g_gemm_A = nullptr;
+        delete[] g_gemm_B; g_gemm_B = nullptr;
+    }
+}
 extern "C" void kernel_gemm(int ni, int nj, int nk) __asm__("kernel_gemm");
 extern "C" void kernel_gemm(int ni, int nj, int nk) {
     __pb_gemm_kernel(ni, nj, nk, 1.5, 1.2, g_gemm_C, g_gemm_A, g_gemm_B);
@@ -335,9 +410,17 @@ double g_gemver_w[N];
 double g_gemver_x[N];
 double g_gemver_y[N];
 double g_gemver_z[N];
-static struct GemverInit {
-    GemverInit() { g_gemver_A = new double[N][N](); }
-} _gemver_arrinit;
+static int g_gemver_refcount = 0;
+static void pb_setup_gemver(const benchmark::State&) {
+    if (g_gemver_refcount++ == 0) {
+        g_gemver_A = new double[N][N]();
+    }
+}
+static void pb_teardown_gemver(const benchmark::State&) {
+    if (--g_gemver_refcount == 0) {
+        delete[] g_gemver_A; g_gemver_A = nullptr;
+    }
+}
 extern "C" void kernel_gemver(int n) __asm__("kernel_gemver");
 extern "C" void kernel_gemver(int n) {
     __pb_gemver_kernel(n, 1.5, 1.2,
@@ -358,12 +441,19 @@ double (*g_gesummv_B)[N] = nullptr; // [N][N]
 double g_gesummv_tmp[N];
 double g_gesummv_x[N];
 double g_gesummv_y[N];
-static struct GesummvInit {
-    GesummvInit() {
+static int g_gesummv_refcount = 0;
+static void pb_setup_gesummv(const benchmark::State&) {
+    if (g_gesummv_refcount++ == 0) {
         g_gesummv_A = new double[N][N]();
         g_gesummv_B = new double[N][N]();
     }
-} _gesummv_arrinit;
+}
+static void pb_teardown_gesummv(const benchmark::State&) {
+    if (--g_gesummv_refcount == 0) {
+        delete[] g_gesummv_A; g_gesummv_A = nullptr;
+        delete[] g_gesummv_B; g_gesummv_B = nullptr;
+    }
+}
 extern "C" void kernel_gesummv(int n) __asm__("kernel_gesummv");
 extern "C" void kernel_gesummv(int n) {
     __pb_gesummv_kernel(n, 1.5, 1.2,
@@ -381,13 +471,21 @@ POLYBENCH_IMPL_1(gesummv)
 double (*g_symm_C)[N] = nullptr; // [M][N]
 double (*g_symm_A)[M] = nullptr; // [M][M]
 double (*g_symm_B)[N] = nullptr; // [M][N]
-static struct SymmInit {
-    SymmInit() {
+static int g_symm_refcount = 0;
+static void pb_setup_symm(const benchmark::State&) {
+    if (g_symm_refcount++ == 0) {
         g_symm_C = new double[M][N]();
         g_symm_A = new double[M][M]();
         g_symm_B = new double[M][N]();
     }
-} _symm_arrinit;
+}
+static void pb_teardown_symm(const benchmark::State&) {
+    if (--g_symm_refcount == 0) {
+        delete[] g_symm_C; g_symm_C = nullptr;
+        delete[] g_symm_A; g_symm_A = nullptr;
+        delete[] g_symm_B; g_symm_B = nullptr;
+    }
+}
 extern "C" void kernel_symm(int m, int n) __asm__("kernel_symm");
 extern "C" void kernel_symm(int m, int n) {
     __pb_symm_kernel(m, n, 1.5, 1.2, g_symm_C, g_symm_A, g_symm_B);
@@ -405,13 +503,21 @@ POLYBENCH_IMPL_2(symm)
 double (*g_syr2k_C)[N] = nullptr; // [N][N]
 double (*g_syr2k_A)[M] = nullptr; // [N][M]
 double (*g_syr2k_B)[M] = nullptr; // [N][M]
-static struct Syr2kInit {
-    Syr2kInit() {
+static int g_syr2k_refcount = 0;
+static void pb_setup_syr2k(const benchmark::State&) {
+    if (g_syr2k_refcount++ == 0) {
         g_syr2k_C = new double[N][N]();
         g_syr2k_A = new double[N][M]();
         g_syr2k_B = new double[N][M]();
     }
-} _syr2k_arrinit;
+}
+static void pb_teardown_syr2k(const benchmark::State&) {
+    if (--g_syr2k_refcount == 0) {
+        delete[] g_syr2k_C; g_syr2k_C = nullptr;
+        delete[] g_syr2k_A; g_syr2k_A = nullptr;
+        delete[] g_syr2k_B; g_syr2k_B = nullptr;
+    }
+}
 // Wrapper receives (spec_M, spec_N); kernel takes (n=spec_N, m=spec_M).
 extern "C" void kernel_syr2k(int spec_m, int spec_n) __asm__("kernel_syr2k");
 extern "C" void kernel_syr2k(int spec_m, int spec_n) {
@@ -430,12 +536,19 @@ POLYBENCH_IMPL_2(syr2k)
 // After include: N=2600, M=2000, DATA_TYPE=double
 double (*g_syrk_C)[N] = nullptr; // [N][N]
 double (*g_syrk_A)[M] = nullptr; // [N][M]
-static struct SyrkInit {
-    SyrkInit() {
+static int g_syrk_refcount = 0;
+static void pb_setup_syrk(const benchmark::State&) {
+    if (g_syrk_refcount++ == 0) {
         g_syrk_C = new double[N][N]();
         g_syrk_A = new double[N][M]();
     }
-} _syrk_arrinit;
+}
+static void pb_teardown_syrk(const benchmark::State&) {
+    if (--g_syrk_refcount == 0) {
+        delete[] g_syrk_C; g_syrk_C = nullptr;
+        delete[] g_syrk_A; g_syrk_A = nullptr;
+    }
+}
 // Wrapper receives (spec_M, spec_N); kernel takes (n=spec_N, m=spec_M).
 extern "C" void kernel_syrk(int spec_m, int spec_n) __asm__("kernel_syrk");
 extern "C" void kernel_syrk(int spec_m, int spec_n) {
@@ -452,12 +565,19 @@ POLYBENCH_IMPL_2(syrk)
 // After include: M=2000, N=2600, DATA_TYPE=double
 double (*g_trmm_A)[M] = nullptr; // [M][M]
 double (*g_trmm_B)[N] = nullptr; // [M][N]
-static struct TrmmInit {
-    TrmmInit() {
+static int g_trmm_refcount = 0;
+static void pb_setup_trmm(const benchmark::State&) {
+    if (g_trmm_refcount++ == 0) {
         g_trmm_A = new double[M][M]();
         g_trmm_B = new double[M][N]();
     }
-} _trmm_arrinit;
+}
+static void pb_teardown_trmm(const benchmark::State&) {
+    if (--g_trmm_refcount == 0) {
+        delete[] g_trmm_A; g_trmm_A = nullptr;
+        delete[] g_trmm_B; g_trmm_B = nullptr;
+    }
+}
 extern "C" void kernel_trmm(int m, int n) __asm__("kernel_trmm");
 extern "C" void kernel_trmm(int m, int n) {
     __pb_trmm_kernel(m, n, 1.5, g_trmm_A, g_trmm_B);
@@ -472,9 +592,17 @@ POLYBENCH_IMPL_2(trmm)
 #undef kernel_cholesky
 // After include: N=4000, DATA_TYPE=double
 double (*g_cholesky_A)[N] = nullptr; // [N][N]
-static struct CholeskyInit {
-    CholeskyInit() { g_cholesky_A = new double[N][N](); }
-} _cholesky_arrinit;
+static int g_cholesky_refcount = 0;
+static void pb_setup_cholesky(const benchmark::State&) {
+    if (g_cholesky_refcount++ == 0) {
+        g_cholesky_A = new double[N][N]();
+    }
+}
+static void pb_teardown_cholesky(const benchmark::State&) {
+    if (--g_cholesky_refcount == 0) {
+        delete[] g_cholesky_A; g_cholesky_A = nullptr;
+    }
+}
 extern "C" void kernel_cholesky(int n) __asm__("kernel_cholesky");
 extern "C" void kernel_cholesky(int n) {
     __pb_cholesky_kernel(n, g_cholesky_A);
@@ -490,6 +618,8 @@ POLYBENCH_IMPL_1(cholesky)
 // After include: N=4000, DATA_TYPE=double
 double g_durbin_r[N];
 double g_durbin_y[N];
+static void pb_setup_durbin(const benchmark::State&) {}
+static void pb_teardown_durbin(const benchmark::State&) {}
 extern "C" void kernel_durbin(int n) __asm__("kernel_durbin");
 extern "C" void kernel_durbin(int n) {
     __pb_durbin_kernel(n, g_durbin_r, g_durbin_y);
@@ -506,13 +636,21 @@ POLYBENCH_IMPL_1(durbin)
 double (*g_gramschmidt_A)[N] = nullptr; // [M][N]
 double (*g_gramschmidt_R)[N] = nullptr; // [N][N]
 double (*g_gramschmidt_Q)[N] = nullptr; // [M][N]
-static struct GramschmidtInit {
-    GramschmidtInit() {
+static int g_gramschmidt_refcount = 0;
+static void pb_setup_gramschmidt(const benchmark::State&) {
+    if (g_gramschmidt_refcount++ == 0) {
         g_gramschmidt_A = new double[M][N]();
         g_gramschmidt_R = new double[N][N]();
         g_gramschmidt_Q = new double[M][N]();
     }
-} _gramschmidt_arrinit;
+}
+static void pb_teardown_gramschmidt(const benchmark::State&) {
+    if (--g_gramschmidt_refcount == 0) {
+        delete[] g_gramschmidt_A; g_gramschmidt_A = nullptr;
+        delete[] g_gramschmidt_R; g_gramschmidt_R = nullptr;
+        delete[] g_gramschmidt_Q; g_gramschmidt_Q = nullptr;
+    }
+}
 extern "C" void kernel_gramschmidt(int m, int n) __asm__("kernel_gramschmidt");
 extern "C" void kernel_gramschmidt(int m, int n) {
     __pb_gramschmidt_kernel(m, n,
@@ -528,9 +666,17 @@ POLYBENCH_IMPL_2(gramschmidt)
 #undef kernel_lu
 // After include: N=4000, DATA_TYPE=double
 double (*g_lu_A)[N] = nullptr; // [N][N]
-static struct LuInit {
-    LuInit() { g_lu_A = new double[N][N](); }
-} _lu_arrinit;
+static int g_lu_refcount = 0;
+static void pb_setup_lu(const benchmark::State&) {
+    if (g_lu_refcount++ == 0) {
+        g_lu_A = new double[N][N]();
+    }
+}
+static void pb_teardown_lu(const benchmark::State&) {
+    if (--g_lu_refcount == 0) {
+        delete[] g_lu_A; g_lu_A = nullptr;
+    }
+}
 extern "C" void kernel_lu(int n) __asm__("kernel_lu");
 extern "C" void kernel_lu(int n) {
     __pb_lu_kernel(n, g_lu_A);
@@ -548,9 +694,17 @@ double (*g_ludcmp_A)[N] = nullptr; // [N][N]
 double g_ludcmp_b[N];
 double g_ludcmp_x[N];
 double g_ludcmp_y[N];
-static struct LudcmpInit {
-    LudcmpInit() { g_ludcmp_A = new double[N][N](); }
-} _ludcmp_arrinit;
+static int g_ludcmp_refcount = 0;
+static void pb_setup_ludcmp(const benchmark::State&) {
+    if (g_ludcmp_refcount++ == 0) {
+        g_ludcmp_A = new double[N][N]();
+    }
+}
+static void pb_teardown_ludcmp(const benchmark::State&) {
+    if (--g_ludcmp_refcount == 0) {
+        delete[] g_ludcmp_A; g_ludcmp_A = nullptr;
+    }
+}
 extern "C" void kernel_ludcmp(int n) __asm__("kernel_ludcmp");
 extern "C" void kernel_ludcmp(int n) {
     __pb_ludcmp_kernel(n, g_ludcmp_A, g_ludcmp_b, g_ludcmp_x, g_ludcmp_y);
@@ -567,9 +721,17 @@ POLYBENCH_IMPL_1(ludcmp)
 double (*g_trisolv_L)[N] = nullptr; // [N][N]
 double g_trisolv_x[N];
 double g_trisolv_b[N];
-static struct TrisolveInit {
-    TrisolveInit() { g_trisolv_L = new double[N][N](); }
-} _trisolv_arrinit;
+static int g_trisolv_refcount = 0;
+static void pb_setup_trisolv(const benchmark::State&) {
+    if (g_trisolv_refcount++ == 0) {
+        g_trisolv_L = new double[N][N]();
+    }
+}
+static void pb_teardown_trisolv(const benchmark::State&) {
+    if (--g_trisolv_refcount == 0) {
+        delete[] g_trisolv_L; g_trisolv_L = nullptr;
+    }
+}
 extern "C" void kernel_trisolv(int n) __asm__("kernel_trisolv");
 extern "C" void kernel_trisolv(int n) {
     __pb_trisolv_kernel(n, g_trisolv_L, g_trisolv_x, g_trisolv_b);
@@ -588,14 +750,23 @@ float (*g_deriche_imgIn)[H]  = nullptr; // [W][H]
 float (*g_deriche_imgOut)[H] = nullptr; // [W][H]
 float (*g_deriche_y1)[H]     = nullptr; // [W][H]
 float (*g_deriche_y2)[H]     = nullptr; // [W][H]
-static struct DericheInit {
-    DericheInit() {
+static int g_deriche_refcount = 0;
+static void pb_setup_deriche(const benchmark::State&) {
+    if (g_deriche_refcount++ == 0) {
         g_deriche_imgIn  = new float[W][H]();
         g_deriche_imgOut = new float[W][H]();
         g_deriche_y1     = new float[W][H]();
         g_deriche_y2     = new float[W][H]();
     }
-} _deriche_arrinit;
+}
+static void pb_teardown_deriche(const benchmark::State&) {
+    if (--g_deriche_refcount == 0) {
+        delete[] g_deriche_imgIn;  g_deriche_imgIn  = nullptr;
+        delete[] g_deriche_imgOut; g_deriche_imgOut = nullptr;
+        delete[] g_deriche_y1;     g_deriche_y1     = nullptr;
+        delete[] g_deriche_y2;     g_deriche_y2     = nullptr;
+    }
+}
 extern "C" void kernel_deriche(int w, int h) __asm__("kernel_deriche");
 extern "C" void kernel_deriche(int w, int h) {
     __pb_deriche_kernel(w, h, 0.25f,
@@ -613,9 +784,17 @@ POLYBENCH_IMPL_2(deriche)
 #undef kernel_floyd_warshall
 // After include: N=5600, DATA_TYPE=int
 int (*g_fw_path)[N] = nullptr; // [N][N]
-static struct FwInit {
-    FwInit() { g_fw_path = new int[N][N](); }
-} _fw_arrinit;
+static int g_fw_refcount = 0;
+static void pb_setup_fw(const benchmark::State&) {
+    if (g_fw_refcount++ == 0) {
+        g_fw_path = new int[N][N]();
+    }
+}
+static void pb_teardown_fw(const benchmark::State&) {
+    if (--g_fw_refcount == 0) {
+        delete[] g_fw_path; g_fw_path = nullptr;
+    }
+}
 extern "C" void kernel_floyd_warshall(int n) __asm__("kernel_floyd_warshall");
 extern "C" void kernel_floyd_warshall(int n) {
     __pb_fw_kernel(n, g_fw_path);
@@ -635,9 +814,17 @@ POLYBENCH_IMPL_1(floyd_warshall)
 // After include: N=5500, DATA_TYPE=int; typedef char base is visible.
 static char g_nussinov_seq[N];
 int (*g_nussinov_table)[N] = nullptr; // [N][N]
-static struct NussinovInit {
-    NussinovInit() { g_nussinov_table = new int[N][N](); }
-} _nussinov_arrinit;
+static int g_nussinov_refcount = 0;
+static void pb_setup_nussinov(const benchmark::State&) {
+    if (g_nussinov_refcount++ == 0) {
+        g_nussinov_table = new int[N][N]();
+    }
+}
+static void pb_teardown_nussinov(const benchmark::State&) {
+    if (--g_nussinov_refcount == 0) {
+        delete[] g_nussinov_table; g_nussinov_table = nullptr;
+    }
+}
 extern "C" void kernel_nussinov(int n) __asm__("kernel_nussinov");
 extern "C" void kernel_nussinov(int n) {
     __pb_nussinov_kernel(n, g_nussinov_seq, g_nussinov_table);
@@ -655,14 +842,23 @@ double (*g_adi_u)[N] = nullptr; // [N][N]
 double (*g_adi_v)[N] = nullptr; // [N][N]
 double (*g_adi_p)[N] = nullptr; // [N][N]
 double (*g_adi_q)[N] = nullptr; // [N][N]
-static struct AdiInit {
-    AdiInit() {
+static int g_adi_refcount = 0;
+static void pb_setup_adi(const benchmark::State&) {
+    if (g_adi_refcount++ == 0) {
         g_adi_u = new double[N][N]();
         g_adi_v = new double[N][N]();
         g_adi_p = new double[N][N]();
         g_adi_q = new double[N][N]();
     }
-} _adi_arrinit;
+}
+static void pb_teardown_adi(const benchmark::State&) {
+    if (--g_adi_refcount == 0) {
+        delete[] g_adi_u; g_adi_u = nullptr;
+        delete[] g_adi_v; g_adi_v = nullptr;
+        delete[] g_adi_p; g_adi_p = nullptr;
+        delete[] g_adi_q; g_adi_q = nullptr;
+    }
+}
 extern "C" void kernel_adi(int tsteps, int n) __asm__("kernel_adi");
 extern "C" void kernel_adi(int tsteps, int n) {
     __pb_adi_kernel(tsteps, n, g_adi_u, g_adi_v, g_adi_p, g_adi_q);
@@ -681,13 +877,21 @@ double (*g_fdtd2d_ex)[NY] = nullptr; // [NX][NY]
 double (*g_fdtd2d_ey)[NY] = nullptr; // [NX][NY]
 double (*g_fdtd2d_hz)[NY] = nullptr; // [NX][NY]
 double g_fdtd2d_fict[TMAX];
-static struct Fdtd2dInit {
-    Fdtd2dInit() {
+static int g_fdtd2d_refcount = 0;
+static void pb_setup_fdtd2d(const benchmark::State&) {
+    if (g_fdtd2d_refcount++ == 0) {
         g_fdtd2d_ex = new double[NX][NY]();
         g_fdtd2d_ey = new double[NX][NY]();
         g_fdtd2d_hz = new double[NX][NY]();
     }
-} _fdtd2d_arrinit;
+}
+static void pb_teardown_fdtd2d(const benchmark::State&) {
+    if (--g_fdtd2d_refcount == 0) {
+        delete[] g_fdtd2d_ex; g_fdtd2d_ex = nullptr;
+        delete[] g_fdtd2d_ey; g_fdtd2d_ey = nullptr;
+        delete[] g_fdtd2d_hz; g_fdtd2d_hz = nullptr;
+    }
+}
 extern "C" void kernel_fdtd_2d(int tmax, int nx, int ny) __asm__("kernel_fdtd_2d");
 extern "C" void kernel_fdtd_2d(int tmax, int nx, int ny) {
     __pb_fdtd2d_kernel(tmax, nx, ny,
@@ -705,12 +909,19 @@ POLYBENCH_IMPL_3(fdtd_2d)
 // After include: TSTEPS=1000, N=200, DATA_TYPE=double
 double (*g_heat3d_A)[N][N] = nullptr; // [N][N][N]
 double (*g_heat3d_B)[N][N] = nullptr; // [N][N][N]
-static struct Heat3dInit {
-    Heat3dInit() {
+static int g_heat3d_refcount = 0;
+static void pb_setup_heat3d(const benchmark::State&) {
+    if (g_heat3d_refcount++ == 0) {
         g_heat3d_A = new double[N][N][N]();
         g_heat3d_B = new double[N][N][N]();
     }
-} _heat3d_arrinit;
+}
+static void pb_teardown_heat3d(const benchmark::State&) {
+    if (--g_heat3d_refcount == 0) {
+        delete[] g_heat3d_A; g_heat3d_A = nullptr;
+        delete[] g_heat3d_B; g_heat3d_B = nullptr;
+    }
+}
 extern "C" void kernel_heat_3d(int tsteps, int n) __asm__("kernel_heat_3d");
 extern "C" void kernel_heat_3d(int tsteps, int n) {
     __pb_heat3d_kernel(tsteps, n, g_heat3d_A, g_heat3d_B);
@@ -727,6 +938,8 @@ POLYBENCH_IMPL_2(heat_3d)
 // After include: TSTEPS=1000, N=4000, DATA_TYPE=double
 double g_jacobi1d_A[N];
 double g_jacobi1d_B[N];
+static void pb_setup_jacobi1d(const benchmark::State&) {}
+static void pb_teardown_jacobi1d(const benchmark::State&) {}
 extern "C" void kernel_jacobi_1d(int tsteps, int n) __asm__("kernel_jacobi_1d");
 extern "C" void kernel_jacobi_1d(int tsteps, int n) {
     __pb_jacobi1d_kernel(tsteps, n, g_jacobi1d_A, g_jacobi1d_B);
@@ -743,12 +956,19 @@ POLYBENCH_IMPL_2(jacobi_1d)
 // After include: TSTEPS=1000, N=2800, DATA_TYPE=double
 double (*g_jacobi2d_A)[N] = nullptr; // [N][N]
 double (*g_jacobi2d_B)[N] = nullptr; // [N][N]
-static struct Jacobi2dInit {
-    Jacobi2dInit() {
+static int g_jacobi2d_refcount = 0;
+static void pb_setup_jacobi2d(const benchmark::State&) {
+    if (g_jacobi2d_refcount++ == 0) {
         g_jacobi2d_A = new double[N][N]();
         g_jacobi2d_B = new double[N][N]();
     }
-} _jacobi2d_arrinit;
+}
+static void pb_teardown_jacobi2d(const benchmark::State&) {
+    if (--g_jacobi2d_refcount == 0) {
+        delete[] g_jacobi2d_A; g_jacobi2d_A = nullptr;
+        delete[] g_jacobi2d_B; g_jacobi2d_B = nullptr;
+    }
+}
 extern "C" void kernel_jacobi_2d(int tsteps, int n) __asm__("kernel_jacobi_2d");
 extern "C" void kernel_jacobi_2d(int tsteps, int n) {
     __pb_jacobi2d_kernel(tsteps, n, g_jacobi2d_A, g_jacobi2d_B);
@@ -764,9 +984,17 @@ POLYBENCH_IMPL_2(jacobi_2d)
 #undef kernel_seidel_2d
 // After include: TSTEPS=1000, N=4000, DATA_TYPE=double
 double (*g_seidel2d_A)[N] = nullptr; // [N][N]
-static struct Seidel2dInit {
-    Seidel2dInit() { g_seidel2d_A = new double[N][N](); }
-} _seidel2d_arrinit;
+static int g_seidel2d_refcount = 0;
+static void pb_setup_seidel2d(const benchmark::State&) {
+    if (g_seidel2d_refcount++ == 0) {
+        g_seidel2d_A = new double[N][N]();
+    }
+}
+static void pb_teardown_seidel2d(const benchmark::State&) {
+    if (--g_seidel2d_refcount == 0) {
+        delete[] g_seidel2d_A; g_seidel2d_A = nullptr;
+    }
+}
 extern "C" void kernel_seidel_2d(int tsteps, int n) __asm__("kernel_seidel_2d");
 extern "C" void kernel_seidel_2d(int tsteps, int n) {
     __pb_seidel2d_kernel(tsteps, n, g_seidel2d_A);
