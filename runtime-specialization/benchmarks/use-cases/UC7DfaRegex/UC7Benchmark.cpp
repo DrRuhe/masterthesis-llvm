@@ -54,7 +54,19 @@ static constexpr int64_t CORPUS_MAX = 1000LL * 1024 * 1024;   // 1 GB for AllBen
 static constexpr int64_t CORPUS_MAX = 500LL * 1024 * 1024;  // 500 MB streaming chunk
 #endif
 
-static std::vector<char> g_corpus = make_corpus(CORPUS_MAX);
+static std::vector<char> g_corpus;
+
+static int g_uc7_refcount = 0;
+static void setup_uc7(const benchmark::State&) {
+    if (g_uc7_refcount++ == 0) {
+        g_corpus = make_corpus(CORPUS_MAX);
+    }
+}
+static void teardown_uc7(const benchmark::State&) {
+    if (--g_uc7_refcount == 0) {
+        g_corpus.clear(); g_corpus.shrink_to_fit();
+    }
+}
 
 // Multi-pattern accept states for unspecialized call (low-tier only)
 static constexpr int MULTI_ACCEPT[2] = {2, 4};
@@ -343,18 +355,18 @@ static void BM_UC7_multi_abstract_specialized_exec(benchmark::State& state) {
 // ---------------------------------------------------------------------------
 
 #define UC7_VARIANT_SPEC(BM_UNSPE, BM_JIT, BM_EXEC, VARIANT, ABSTRACTION, SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond);
 
 #define UC7_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
 UC7_VARIANT_SPEC(BM_UC7_email_low_unspecialized,      BM_UC7_email_low_jit_overhead,      BM_UC7_email_low_specialized_exec,      "email_match",         "low",      SMALL, MEDIUM, LARGE, EXTRALARGE) \
