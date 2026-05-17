@@ -192,20 +192,25 @@ SMALL ≈ 0.1 s, MEDIUM ≈ 1 s, LARGE ≈ 10 s, EXTRALARGE ≈ 60 s.
 The table below shows **initial estimates** — sizes MUST be calibrated after implementation
 (see "Size Calibration" subsection below).
 
-**Calibrated sizes (T009b, 2026-05-14)** — standalone binaries; AllBenchmarks uses original sizes via `#ifdef ALL_BENCHMARKS_BUILD`:
+**Calibrated sizes (T009b rev2, 2026-05-17)** — standalone binaries; AllBenchmarks uses original sizes via `#ifdef ALL_BENCHMARKS_BUILD`:
 
-| Use Case | SMALL | MEDIUM | LARGE | EXTRALARGE | Standalone max alloc | Status |
-|----------|-------|--------|-------|------------|---------------------|--------|
-| UC1 `n_rows` | 16M (110ms) | 150M (1.03s) | 800M (5.5s) | 1B (7.0s) ¹ | 1B × 16B = 16 GB | SMALL/MEDIUM/LARGE ✓ |
-| UC2 `(width,height)` | 1440×800 (111ms) | 3840×2880 (1.08s) | 10560×10560 (11.1s) | 25920×25920 (66.1s) | 25920² × 4B × 2 = 5.4 GB | All ✓ |
-| UC7 `corpus_bytes` | 50 MB (132ms) | 500 MB (1.33s) | 5000 MB (13.4s) | 15000 MB (40.6s) | 15 GB | All ✓ |
-| UC8 `n_rows` | 31.2M (112ms) | 300M (1.04s) | 500M (1.75s) ¹ | 700M (2.53s) ¹ | 700M × 24B = 16.8 GB | SMALL/MEDIUM ✓ |
-| UC12 `n_rows` | 31M (98.8ms) | 300M (0.96s) | 500M (1.61s) ¹ | 700M (2.28s) ¹ | 700M × 24B = 16.8 GB | SMALL/MEDIUM ✓ |
-| UC14 `n_elements` | 550K (120ms) | 5M (1.27s) | 40M (11.3s) | 200M (61.8s) | 200M × 8B = 1.6 GB | All ✓ |
+| Use Case | SMALL | MEDIUM | LARGE | EXTRALARGE | Standalone buffer | Status |
+|----------|-------|--------|-------|------------|-------------------|--------|
+| UC1 `n_rows` | 65M (~100ms) | 640M (~1000ms) | 6.4B (~10s) | 38.5B (~60s) ² | 50M × 16B = 800 MB | All ✓ |
+| UC2 `n_tiles` (3840×3840 fixed) | 1 (~174ms box) | 6 (~1044ms box) | 58 (~10.1s box) | 345 (~60s box) ² | 3840² × 4B × 2 = 115 MB | All ✓ |
+| UC7 `corpus_bytes` | 44 MB (~101ms) | 440 MB (~1011ms) | 4350 MB (~10s) | 26 000 MB (~60s) ² | 500 MB chunk | All ✓ |
+| UC8 `n_rows` | 43M (~126ms) | 430M (~1266ms) | 4.3B (~12.5s) | 26B (~76s apply / ~33s batch) ³ | 50M × 24B = 1.2 GB | All ✓ |
+| UC12 `n_rows` | 36M (~99ms) | 360M (~1001ms) | 3.6B (~10s) | 21.7B (~60s) ² | 50M × 24B = 1.2 GB | All ✓ |
+| UC14 generic_sort `n_elements` | 900K | 8M | 70M (~9s avg) | 400M (~47s avg) ⁴ | 400M × 8B × 2 = 6.4 GB | All ✓ |
+| UC14 struct/multi-key sort `n_elements` | 750K–1M | 6.5–8.5M | 50M (~7–8s) | 250M (~34–42s) ⁴ | 250M × 16B × 2 = 8 GB | All ✓ |
 
-¹ **Memory-limited**: UC1/UC8/UC12 are memory-bandwidth-bound (~2.5–7 GB/s throughput). The LARGE/EXTRALARGE FR-007 targets (5–20 s / 30–120 s) would require 35–225 GB datasets, exceeding available RAM (33 GB). UC7 `make_corpus` was replaced with a fast memcpy-based generator (same email/word mix, ~2.6 GB/s DFA scan vs 0.35 GB/s with random corpus); all four UC7 sizes are now within tolerance.
+² **Streaming (buffer-loop)**: UC1, UC7, UC8, UC12 all stream a fixed in-memory buffer one chunk at a time for LARGE/EXTRALARGE. UC2 convolves a fixed 3840×3840 tile repeatedly (see Streaming Refactor Design below). EXTRALARGE represents total bytes/rows/tiles processed, not the buffer size.
 
-AllBenchmarks total peak (all EXTRALARGE, default filter excludes EXTRALARGE): ≈ 4.6 GB.
+³ **UC8 shared size, two-kernel constraint**: `apply_row_delta` (slowest, ~3× slower than `batch_delta`) and `batch_delta` share the `n_rows` parameter. At EXTRALARGE=26B: apply_row_delta ≈ 76 s, batch_delta ≈ 33 s — both within [30, 120 s]. Targeting exactly 60 s for `apply_row_delta` (21B rows) would push `batch_delta` to ~27 s (outside [30, 120 s]). 26B is the optimal value that keeps all kernels within tolerance.
+
+⁴ **UC14 — no streaming possible**: in-place quicksort requires all elements in memory; streaming is not semantically viable. N_SORT_MAX and N_STRUCT_MAX are increased to accommodate the larger EXTRALARGE sizes (see code changes below). EXTRALARGE runtimes land at ~40–67 s (generic_sort) and ~34–42 s (struct/multi-key sort), both within [30, 120 s].
+
+AllBenchmarks total peak (all EXTRALARGE, default filter excludes EXTRALARGE): ≈ 3.3 GB (UC1 800 MB + UC2 115 MB + UC7 500 MB + UC8 1.2 GB + UC12 1.2 GB + UC14 small AllBenchmarks sizes ≈ negligible).
 
 #### Size Calibration
 
@@ -230,6 +235,200 @@ ORDER BY kernel, kv_s;
 3. For any size that misses its target by > 2×, compute the required size as `new_size = current_size × (target_s / measured_s)`, update the constant in `*Benchmark.cpp`, rebuild, and re-record.
 4. Repeat until all four sizes are within the 2× tolerance band.
 5. Update the table above with the calibrated sizes.
+
+### Streaming Refactor Design (T009c, 2026-05-17)
+
+**Goal**: All buffer-based UCs must support sizes larger than any single allocation by streaming
+through a fixed-size in-memory chunk. This enables EXTRALARGE ≈ 60 s without requiring
+>15 GB of RAM.
+
+#### UC1 / UC8 / UC12 — Already streaming (no code changes needed)
+
+All three use the pattern:
+
+```cpp
+for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
+    kernel(g_buf.data(), std::min(rem, N_ROWS_MAX), ...);
+```
+
+where `N_ROWS_MAX = 50'000'000` (50 M rows). The `n_total` parameter from
+`state.range(0)` drives the loop; EXTRALARGE values (38.5 B / 26 B / 21.7 B) already
+exceed the buffer and stream automatically.
+
+#### UC7 — Streaming refactor required
+
+**Current**: allocates `g_corpus = make_corpus(CORPUS_MAX)` where `CORPUS_MAX = 15 GB`;
+calls `dfa_match(g_corpus.data(), corpus_size, ...)` in one pass. Requires 15 GB RAM.
+
+**New**: reduce buffer to `CORPUS_CHUNK = 500 MB`; add streaming loop:
+
+```cpp
+static constexpr int64_t CORPUS_CHUNK = 500LL * 1024 * 1024;
+static std::vector<char> g_corpus = make_corpus(CORPUS_CHUNK);
+
+static void BM_UC7_email_low_unspecialized(benchmark::State& state) {
+    int64_t n_total = state.range(0);
+    for (auto _ : state) {
+        int64_t result = 0;
+        for (int64_t rem = n_total; rem > 0; rem -= CORPUS_CHUNK)
+            result += dfa_match(g_corpus.data(),
+                                std::min(rem, CORPUS_CHUNK), ...);
+        benchmark::DoNotOptimize(result);
+    }
+}
+```
+
+- SMALL (44 MB) and MEDIUM (440 MB) each fit in one chunk (single pass, same semantics).
+- LARGE (4350 MB) streams ⌈4350/500⌉ = 9 passes ≈ 10 s ✓.
+- EXTRALARGE (26 000 MB) streams 52 passes ≈ 60 s ✓.
+- **Memory**: 15 GB → 500 MB (96% reduction).
+- **DFA semantics**: state does not carry between chunks (reset at start of each call).
+  This is correct for the throughput benchmark — we measure bytes/s, not match accuracy
+  across chunk boundaries.
+- **AllBenchmarks guard**: `#ifdef ALL_BENCHMARKS_BUILD` block keeps `CORPUS_CHUNK = 1 GB`
+  and its smaller sizes; only the `#else` (standalone) block changes.
+
+**Size constants** (standalone `#else` block):
+
+```cpp
+UC7_BENCHMARK_SPEC(
+    Arg(44LL * 1024 * 1024),
+    Arg(440LL * 1024 * 1024),
+    Arg(4350LL * 1024 * 1024),
+    Arg(26000LL * 1024 * 1024)
+)
+```
+
+#### UC2 — Tile-based streaming refactor required
+
+**Current**: allocates `g_src/g_dst` at `IMG_WIDTH_MAX × IMG_HEIGHT_MAX = 25920²` (2.7 GB
+each); SMALL/MEDIUM/LARGE/EXTRALARGE use `Args({width, height})` with different image
+dimensions. EXTRALARGE = `Args({25920, 25920})` produces only ~8 s (box_filter) — far
+below the 60 s target. The 25920×25920 hardware limit prevents further growth.
+
+**New**: fix the tile at `TILE_W = 3840, TILE_H = 3840`; `width` and `height` become
+specialization constants baked into every JIT call. The variable parameter becomes
+`n_tiles` (how many times the tile is convolved). Streaming loop:
+
+```cpp
+static constexpr int TILE_W = 3840;
+static constexpr int TILE_H = 3840;
+static std::vector<float> g_src(TILE_W * TILE_H);
+static std::vector<float> g_dst(TILE_W * TILE_H);
+
+static void BM_UC2_unspecialized(benchmark::State& state) {
+    int64_t n_tiles = state.range(0);
+    for (auto _ : state) {
+        for (int64_t t = 0; t < n_tiles; ++t)
+            convolve2d(g_src.data(), g_dst.data(),
+                       TILE_W, TILE_H, g_kernel_coeffs, 5);
+        benchmark::DoNotOptimize(g_dst.data());
+    }
+}
+```
+
+The jit_overhead and specialized_exec benchmarks receive `n_tiles` via `state.range(0)` but
+only call `create_conv_specialized(TILE_W, TILE_H)` once (n_tiles ignored for JIT phase).
+
+**Parameter format**: `Arg(n_tiles)` (single range, replacing `Args({width, height})`).
+
+**Estimated runtimes** (measured: box_filter = 174 ms/tile, sep_gauss = 93 ms/tile):
+
+| n_tiles | box_filter | sep_gauss | edge_detect |
+|---------|-----------|-----------|------------|
+| 1 (SMALL) | 174 ms ✓ | 93 ms ✓ | 35 ms |
+| 6 (MEDIUM) | 1044 ms ✓ | 558 ms ✓ | 210 ms ✓ |
+| 58 (LARGE) | 10.1 s ✓ | 5.4 s ✓ | 2.0 s ✓ |
+| 345 (EXTRALARGE) | 60.0 s ✓ | 32.1 s ✓ | 12.1 s ✓ |
+
+`edge_detection` SMALL (35 ms) is below the 50 ms floor; this is an inherent property of
+the kernel's lower compute intensity and cannot be fixed with a shared tile parameter.
+
+**Memory**: 25920² × 4 B × 2 ≈ 5.4 GB → 3840² × 4 B × 2 ≈ 115 MB (98% reduction).
+
+**Size constants** (standalone `#else` block):
+
+```cpp
+UC2_BENCHMARK_SPEC(
+    Args({3840, 3840}),  // kept as Args for macro compatibility; n_tiles = range(0)
+    Args({3840, 3840}),
+    Args({3840, 3840}),
+    Args({3840, 3840})
+)
+```
+
+Wait — since the tile is fixed, all four macro positions pass the same tile. The
+distinction between SMALL/MEDIUM/LARGE/EXTRALARGE must come from a **separate**
+n_tiles argument. The macro must be updated to accept `(SMALL_TILES, MEDIUM_TILES,
+LARGE_TILES, EXTRALARGE_TILES)` as plain `Arg(N)` values:
+
+```cpp
+UC2_BENCHMARK_SPEC(
+    Arg(1),    // SMALL  (~174 ms box, ~93 ms gauss)
+    Arg(6),    // MEDIUM (~1044 ms box, ~558 ms gauss)
+    Arg(58),   // LARGE  (~10.1 s box, ~5.4 s gauss)
+    Arg(345)   // EXTRALARGE (~60 s box, ~32 s gauss)
+)
+```
+
+The benchmark functions and macro definitions in `UC2Benchmark.cpp` must be updated to
+read `state.range(0)` as `n_tiles` (not `width`/`height`).
+
+#### UC14 — Buffer increase (no streaming; quicksort is in-place)
+
+In-place quicksort requires all elements resident in memory simultaneously; chunk-based
+streaming would require an external merge-sort which is a different algorithm. The approach
+is to increase `N_SORT_MAX` and `N_STRUCT_MAX` to accommodate 60 s datasets.
+
+**generic_sort** (`int64_t`, 8 B/element):
+
+```cpp
+static constexpr int64_t N_SORT_MAX = 400'000'000;  // was 200M
+```
+
+Memory: 400 M × 8 B × 2 (reference + working) = 6.4 GB. EXTRALARGE = 400 M elements.
+Estimated runtime: (200 M / 70 M) × 2 × (6870–11628 ms) = 39 258–66 446 ms ≈ 40–66 s ✓.
+
+**struct_sort / multi_key_sort** (`SortRecord = {double, double}`, 16 B/element):
+
+```cpp
+static constexpr int64_t N_STRUCT_MAX = 250'000'000;  // was 50M
+```
+
+Memory: 250 M × 16 B × 2 = 8 GB. EXTRALARGE = 250 M elements.
+- struct_sort: (250 / 50) × 6720 ms = 33 600 ms ≈ 34 s ✓
+- multi_key_sort: (250 / 50) × 8316 ms = 41 580 ms ≈ 42 s ✓
+
+**Updated UC14 macro calls** (standalone `#else` block):
+
+```cpp
+// generic_sort variants
+UC14_BENCHMARK_SPEC(Arg(900'000), Arg(8'000'000), Arg(70'000'000), Arg(400'000'000))
+UC14_GENERIC_TRADEOFF_SPEC(Arg(900'000), Arg(8'000'000), Arg(70'000'000), Arg(400'000'000))
+UC14_GENERIC_ABSTRACT_SPEC(Arg(900'000), Arg(8'000'000), Arg(70'000'000), Arg(400'000'000))
+
+// struct_sort variants
+UC14_STRUCT_LOW_SPEC(Arg(1'000'000), Arg(8'500'000), Arg(50'000'000), Arg(250'000'000))
+UC14_STRUCT_TRADEOFF_SPEC(Arg(1'000'000), Arg(8'500'000), Arg(50'000'000), Arg(250'000'000))
+UC14_STRUCT_ABSTRACT_SPEC(Arg(1'000'000), Arg(8'500'000), Arg(50'000'000), Arg(250'000'000))
+
+// multi_key_sort variants
+UC14_MULTI_LOW_SPEC(Arg(750'000), Arg(6'500'000), Arg(50'000'000), Arg(250'000'000))
+UC14_MULTI_TRADEOFF_SPEC(Arg(750'000), Arg(6'500'000), Arg(50'000'000), Arg(250'000'000))
+UC14_MULTI_ABSTRACT_SPEC(Arg(750'000), Arg(6'500'000), Arg(50'000'000), Arg(250'000'000))
+```
+
+#### Summary of required code changes
+
+| UC | File | Change |
+|----|------|--------|
+| UC2 | `UC2Benchmark.cpp` | Replace `IMG_WIDTH_MAX/IMG_HEIGHT_MAX` with `TILE_W/TILE_H`; resize `g_src/g_dst`; rewrite benchmark functions to take `n_tiles = state.range(0)`; update macro definitions and calls |
+| UC7 | `UC7Benchmark.cpp` | Rename `CORPUS_MAX` (standalone) to `CORPUS_CHUNK = 500 MB`; add streaming loop; update EXTRALARGE to 26 000 MB |
+| UC14 | `UC14Benchmark.cpp` | Increase `N_SORT_MAX` to 400 M; increase `N_STRUCT_MAX` to 250 M; update EXTRALARGE macro args |
+
+UC1, UC8, UC12: no code changes needed (streaming already implemented).
+
+---
 
 ### Benchmark Phase Structure
 

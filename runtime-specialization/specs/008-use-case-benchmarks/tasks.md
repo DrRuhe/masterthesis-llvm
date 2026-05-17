@@ -408,6 +408,365 @@ use-case binary without errors.
 
 ---
 
+---
+
+## Phase 7: Streaming Refactor & EXTRALARGE Calibration (T009c, 2026-05-17)
+
+**Goal**: Refactor UC2, UC7, and UC14 so that all benchmarks with buffer-based kernels
+stream through a fixed-size in-memory chunk for EXTRALARGE ≈ 60 s targets.
+Tasks T015–T017 are fully independent (different files) — run in parallel.
+
+- [x] T015 [P] Refactor `benchmarks/use-cases/UC2Convolution/UC2Benchmark.cpp` from
+  dimension-based to tile-based streaming so that EXTRALARGE reaches ≈ 60 s.
+
+  **Context**: Currently every benchmark function reads `int width = state.range(0);
+  int height = state.range(1);` and calls the kernel once with that image size.
+  The buffers `g_src` and `g_dst` are `IMG_WIDTH_MAX * IMG_HEIGHT_MAX = 25920² ≈ 5.4 GB
+  each`. EXTRALARGE = `Args({25920, 25920})` produces only ~8 s for box_filter — far
+  below the 60 s target. The fix: fix the tile to 3840×3840, shrink the buffers, and
+  add a streaming loop over `n_tiles = state.range(0)`.
+
+  **Exact changes to `UC2Benchmark.cpp`**:
+
+  1. Replace the three constants at the top of the file:
+     ```cpp
+     // OLD:
+     static constexpr int IMG_WIDTH_MAX  = 25920;
+     static constexpr int IMG_HEIGHT_MAX = 25920;
+     static constexpr int N_PIXELS_MAX   = IMG_WIDTH_MAX * IMG_HEIGHT_MAX;
+     // NEW:
+     static constexpr int TILE_W = 3840;
+     static constexpr int TILE_H = 3840;
+     ```
+
+  2. Change the buffer declarations (and the init struct, if it iterates `N_PIXELS_MAX`):
+     ```cpp
+     // OLD:
+     static std::vector<float> g_src(N_PIXELS_MAX, 0.0f);
+     static std::vector<float> g_dst(N_PIXELS_MAX, 0.0f);
+     // NEW:
+     static std::vector<float> g_src(TILE_W * TILE_H, 0.0f);
+     static std::vector<float> g_dst(TILE_W * TILE_H, 0.0f);
+     ```
+     The `UC2DataInit` constructor iterates `g_src` so it automatically adjusts — no change needed there.
+
+  3. For EVERY benchmark function (there are ~27), replace the two-range parameter reads
+     with a single n_tiles read and add a streaming loop:
+
+     **Unspecialized variants** (replace the function body):
+     ```cpp
+     // OLD:
+     static void BM_UC2_unspecialized(benchmark::State& state) {
+         int width  = (int)state.range(0);
+         int height = (int)state.range(1);
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(g_src.data());
+             convolve2d(g_src.data(), g_dst.data(), width, height, g_kernel_coeffs, 5);
+             benchmark::DoNotOptimize(g_dst.data());
+         }
+     }
+     // NEW:
+     static void BM_UC2_unspecialized(benchmark::State& state) {
+         int64_t n_tiles = state.range(0);
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(g_src.data());
+             for (int64_t t = 0; t < n_tiles; ++t)
+                 convolve2d(g_src.data(), g_dst.data(), TILE_W, TILE_H, g_kernel_coeffs, 5);
+             benchmark::DoNotOptimize(g_dst.data());
+         }
+     }
+     ```
+     Apply the same pattern to all other `*_unspecialized` functions, replacing the kernel
+     call inside the loop with the appropriate kernel (box_filter, sobel_edge_detect, etc.)
+     with `TILE_W, TILE_H` as width/height.
+
+     **jit_overhead variants** (remove the width/height reads; use fixed TILE):
+     ```cpp
+     // OLD:
+     static void BM_UC2_jit_overhead(benchmark::State& state) {
+         int width  = (int)state.range(0);
+         int height = (int)state.range(1);
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(create_conv_specialized(width, height));
+         }
+     }
+     // NEW:
+     static void BM_UC2_jit_overhead(benchmark::State& state) {
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(create_conv_specialized(TILE_W, TILE_H));
+         }
+     }
+     ```
+     Apply similarly to all `*_jit_overhead` variants, passing `TILE_W, TILE_H`
+     (and any other fixed args like `ksize=2` for box_filter) directly.
+
+     **specialized_exec variants** (streaming loop calling `spec()` n_tiles times):
+     ```cpp
+     // OLD:
+     static void BM_UC2_specialized_exec(benchmark::State& state) {
+         int width  = (int)state.range(0);
+         int height = (int)state.range(1);
+         auto spec = create_conv_specialized(width, height);
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(g_src.data());
+             spec(g_src.data(), g_dst.data());
+             benchmark::DoNotOptimize(g_dst.data());
+         }
+     }
+     // NEW:
+     static void BM_UC2_specialized_exec(benchmark::State& state) {
+         int64_t n_tiles = state.range(0);
+         auto spec = create_conv_specialized(TILE_W, TILE_H);
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(g_src.data());
+             for (int64_t t = 0; t < n_tiles; ++t)
+                 spec(g_src.data(), g_dst.data());
+             benchmark::DoNotOptimize(g_dst.data());
+         }
+     }
+     ```
+     Apply similarly to all `*_specialized_exec` variants.
+
+  4. Replace the `UC2_BENCHMARK_SPEC` macro call(s) at the bottom of the file. The
+     existing `#ifdef ALL_BENCHMARKS_BUILD` block (if any) and `#else` standalone block:
+
+     **The file currently has a single call at the bottom** (no `#ifdef ALL_BENCHMARKS_BUILD` guard):
+     ```cpp
+     // OLD:
+     UC2_BENCHMARK_SPEC(
+         Args({3840, 3840}),
+         Args({10000, 10000}),
+         Args({25920, 25920}),
+         Args({25920, 25920})
+     )
+     // NEW:
+     #ifdef ALL_BENCHMARKS_BUILD
+     UC2_BENCHMARK_SPEC(
+         Arg(1),
+         Arg(6),
+         Arg(58),
+         Arg(58)
+     )
+     #else
+     UC2_BENCHMARK_SPEC(
+         Arg(1),
+         Arg(6),
+         Arg(58),
+         Arg(345)
+     )
+     #endif
+     ```
+
+  **Quality gates**:
+  1. `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release UC2Convolution` exits 0
+  2. `./tools/runtime-specialization/benchmarks/use-cases/UC2Convolution/UC2Convolution --benchmark_filter="g:uc.*s:SMALL;t:unspecialized" --benchmark_min_time=0.1` runs and produces benchmark rows (quick sanity check, do not run full EXTRALARGE)
+
+  **Commit** (from the llvm repo root at `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm`):
+  ```bash
+  git add runtime-specialization/benchmarks/use-cases/UC2Convolution/UC2Benchmark.cpp
+  git commit -m "feat(uc2): add tile-based streaming for EXTRALARGE; reduce buffer from 5.4GB to 115MB
+
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+  ```
+
+---
+
+- [x] T016 [P] Refactor `benchmarks/use-cases/UC7DfaRegex/UC7Benchmark.cpp` to stream
+  through a 500 MB corpus chunk instead of allocating 15 GB, enabling EXTRALARGE ≈ 60 s.
+
+  **Context**: Currently `CORPUS_MAX = 15000 MB` (standalone) and `g_corpus` is allocated
+  to that size, requiring 15 GB RAM. Each benchmark function calls
+  `dfa_match(g_corpus.data(), corpus_size, ...)` in one pass. EXTRALARGE = 15000 MB
+  only yields ~34.5 s. The fix: reduce `CORPUS_MAX` → `CORPUS_CHUNK = 500 MB`, add a
+  streaming loop `for rem = corpus_size; rem > 0; rem -= CORPUS_CHUNK`, and set
+  EXTRALARGE = 26000 MB → ~60 s.
+
+  **Exact changes to `UC7Benchmark.cpp`**:
+
+  1. In the `#else` (standalone) block of the `CORPUS_MAX` declaration, change:
+     ```cpp
+     // OLD (standalone):
+     static constexpr int64_t CORPUS_MAX = 15000LL * 1024 * 1024;  // 15 GB for standalone
+     // NEW (standalone):
+     static constexpr int64_t CORPUS_MAX = 500LL * 1024 * 1024;  // 500 MB streaming chunk
+     ```
+     The `#ifdef ALL_BENCHMARKS_BUILD` block (`CORPUS_MAX = 1000 MB`) stays unchanged.
+
+  2. For EVERY unspecialized benchmark function (there are ~9 variants: email_low,
+     email_tradeoff, email_abstract, url_low, url_tradeoff, url_abstract, multi_low,
+     multi_tradeoff, multi_abstract), replace the single call with a streaming loop:
+     ```cpp
+     // OLD:
+     static void BM_UC7_email_low_unspecialized(benchmark::State& state) {
+         int64_t corpus_size = state.range(0);
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(
+                 dfa_match(g_corpus.data(), corpus_size,
+                           g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
+                           DFA_START, DFA_ACCEPT));
+         }
+     }
+     // NEW:
+     static void BM_UC7_email_low_unspecialized(benchmark::State& state) {
+         int64_t corpus_size = state.range(0);
+         for (auto _ : state) {
+             int64_t result = 0;
+             for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
+                 result += dfa_match(g_corpus.data(), std::min(rem, CORPUS_MAX),
+                                     g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
+                                     DFA_START, DFA_ACCEPT);
+             benchmark::DoNotOptimize(result);
+         }
+     }
+     ```
+     Apply the same pattern to all `*_unspecialized` functions (url variants use `URL_ACCEPT`,
+     multi variants use `multi_accept_dfa_match` or whatever the multi-pattern call looks like).
+
+  3. For EVERY specialized_exec benchmark function, add the same streaming loop calling `spec()`:
+     ```cpp
+     // OLD:
+     static void BM_UC7_email_low_specialized_exec(benchmark::State& state) {
+         int64_t corpus_size = state.range(0);
+         auto spec = create_dfa_specialized();
+         for (auto _ : state) {
+             benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_size));
+         }
+     }
+     // NEW:
+     static void BM_UC7_email_low_specialized_exec(benchmark::State& state) {
+         int64_t corpus_size = state.range(0);
+         auto spec = create_dfa_specialized();
+         for (auto _ : state) {
+             int64_t result = 0;
+             for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
+                 result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
+             benchmark::DoNotOptimize(result);
+         }
+     }
+     ```
+     The `*_jit_overhead` functions do NOT need streaming (they don't process data).
+
+  4. Change the EXTRALARGE value in the standalone `#else` block from `15000 MB` to `26000 MB`:
+     ```cpp
+     // OLD:
+     UC7_BENCHMARK_SPEC(
+         Arg(44LL * 1024 * 1024),
+         Arg(440LL * 1024 * 1024),
+         Arg(4350LL * 1024 * 1024),
+         Arg(15000LL * 1024 * 1024)
+     )
+     // NEW:
+     UC7_BENCHMARK_SPEC(
+         Arg(44LL * 1024 * 1024),
+         Arg(440LL * 1024 * 1024),
+         Arg(4350LL * 1024 * 1024),
+         Arg(26000LL * 1024 * 1024)
+     )
+     ```
+
+  **Quality gates**:
+  1. `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release UC7DfaRegex` exits 0
+  2. Binary runs with `--benchmark_filter="g:uc.*s:SMALL;t:unspecialized" --benchmark_min_time=0.1` and produces rows
+
+  **Commit** (from `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm`):
+  ```bash
+  git add runtime-specialization/benchmarks/use-cases/UC7DfaRegex/UC7Benchmark.cpp
+  git commit -m "feat(uc7): add corpus streaming loop; reduce allocation from 15GB to 500MB; EXTRALARGE=26GB
+
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+  ```
+
+---
+
+- [x] T017 [P] Increase `N_SORT_MAX` and `N_STRUCT_MAX` in
+  `benchmarks/use-cases/UC14Sort/UC14Benchmark.cpp` to enable EXTRALARGE ≈ 34–66 s.
+
+  **Context**: Currently `N_SORT_MAX = 200'000'000` (generic_sort, int64_t, 8B) and
+  `N_STRUCT_MAX = 50'000'000` (struct/multi-key sort, 16B). EXTRALARGE = 200M for
+  generic_sort gives ~20–33 s (below [30, 120] for fast variants). EXTRALARGE = 50M for
+  struct/multi gives only ~6–8 s. The fix: increase N_SORT_MAX to 400M (6.4 GB total
+  allocations) and N_STRUCT_MAX to 250M (8 GB), and update the EXTRALARGE macro args.
+  In-place quicksort cannot stream, so only buffer enlargement is possible.
+
+  **Exact changes to `UC14Benchmark.cpp`**:
+
+  1. Change `N_SORT_MAX`:
+     ```cpp
+     // OLD:
+     static constexpr int64_t N_SORT_MAX = 200'000'000;
+     // NEW:
+     static constexpr int64_t N_SORT_MAX = 400'000'000;
+     ```
+
+  2. Change `N_STRUCT_MAX`:
+     ```cpp
+     // OLD:
+     static constexpr int64_t N_STRUCT_MAX = 50'000'000;
+     // NEW:
+     static constexpr int64_t N_STRUCT_MAX = 250'000'000;
+     ```
+
+  3. Update the EXTRALARGE argument in every generic_sort macro call (there are 3:
+     `UC14_BENCHMARK_SPEC`, `UC14_GENERIC_TRADEOFF_SPEC`, `UC14_GENERIC_ABSTRACT_SPEC`):
+     ```cpp
+     // OLD:
+     UC14_BENCHMARK_SPEC(
+         Arg(900'000),
+         Arg(8'000'000),
+         Arg(70'000'000),
+         Arg(200'000'000)   // ← EXTRALARGE
+     )
+     // NEW:
+     UC14_BENCHMARK_SPEC(
+         Arg(900'000),
+         Arg(8'000'000),
+         Arg(70'000'000),
+         Arg(400'000'000)   // ← EXTRALARGE
+     )
+     ```
+     Apply identically to `UC14_GENERIC_TRADEOFF_SPEC` and `UC14_GENERIC_ABSTRACT_SPEC`.
+
+  4. Update the EXTRALARGE argument in every struct/multi-key sort macro call (there are 6:
+     3 struct variants + 3 multi-key variants). Currently EXTRALARGE = 50'000'000
+     (same as LARGE). Change to 250'000'000:
+     ```cpp
+     // OLD:
+     UC14_STRUCT_LOW_SPEC(
+         Arg(1'000'000),
+         Arg(8'500'000),
+         Arg(50'000'000),
+         Arg(50'000'000)  // ← EXTRALARGE (same as LARGE, wrong)
+     )
+     // NEW:
+     UC14_STRUCT_LOW_SPEC(
+         Arg(1'000'000),
+         Arg(8'500'000),
+         Arg(50'000'000),
+         Arg(250'000'000)  // ← EXTRALARGE
+     )
+     ```
+     Apply identically to UC14_STRUCT_TRADEOFF_SPEC, UC14_STRUCT_ABSTRACT_SPEC,
+     UC14_MULTI_LOW_SPEC, UC14_MULTI_TRADEOFF_SPEC, UC14_MULTI_ABSTRACT_SPEC.
+
+  **Quality gates**:
+  1. `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release UC14Sort` exits 0
+  2. Binary runs with `--benchmark_filter="g:uc.*s:SMALL;t:unspecialized" --benchmark_min_time=0.1` and produces rows
+
+  **Commit** (from `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm`):
+  ```bash
+  git add runtime-specialization/benchmarks/use-cases/UC14Sort/UC14Benchmark.cpp
+  git commit -m "feat(uc14): increase N_SORT_MAX to 400M and N_STRUCT_MAX to 250M for EXTRALARGE≈60s
+
+  Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+  ```
+
+---
+
+**Phase 7 Checkpoint**: All three modified binaries build and run with SMALL filter.
+T015/T016/T017 each committed independently.
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies

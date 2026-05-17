@@ -460,10 +460,10 @@ UC8_BENCHMARK_SPEC(
 )
 #else
 UC8_BENCHMARK_SPEC(
-    Arg(31'200'000),
-    Arg(300'000'000),
-    Arg(1'500'000'000LL),
-    Arg(8'950'000'000LL)
+    Arg(43'000'000LL),
+    Arg(430'000'000LL),
+    Arg(4'300'000'000LL),
+    Arg(26'000'000'000LL)
 )
 #endif
 

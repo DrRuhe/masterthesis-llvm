@@ -494,10 +494,10 @@ UC12_BENCHMARK_SPEC(
 )
 #else
 UC12_BENCHMARK_SPEC(
-    Arg(31'000'000),
-    Arg(300'000'000),
-    Arg(1'550'000'000LL),
-    Arg(9'200'000'000LL)
+    Arg(36'000'000LL),
+    Arg(360'000'000LL),
+    Arg(3'600'000'000LL),
+    Arg(21'700'000'000LL)
 )
 #endif
 
