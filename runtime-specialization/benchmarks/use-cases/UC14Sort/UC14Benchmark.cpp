@@ -24,15 +24,10 @@ static constexpr int STRUCT_KEY2_OFF   = 8;
 // ---------------------------------------------------------------------------
 
 // Pre-shuffled reference copy; restored into g_sort_data before each timed call.
-static std::vector<int64_t> g_reference_data = [] {
-    std::vector<int64_t> d(N_SORT_MAX);
-    std::iota(d.begin(), d.end(), 0);
-    std::shuffle(d.begin(), d.end(), std::mt19937{42});
-    return d;
-}();
+static std::vector<int64_t> g_reference_data;
 
 // Working copy (overwritten each benchmark iteration).
-static std::vector<int64_t> g_sort_data(N_SORT_MAX);
+static std::vector<int64_t> g_sort_data;
 
 // Legacy alias kept for the original BM_UC14_* functions.
 static std::vector<int64_t>& g_data = g_sort_data;
@@ -48,16 +43,35 @@ struct SortRecord {
 
 static constexpr int64_t N_STRUCT_MAX = 250'000'000;
 
-static std::vector<SortRecord> g_struct_reference = [] {
-    std::vector<SortRecord> d(N_STRUCT_MAX);
-    std::mt19937_64 rng{42};
-    std::uniform_real_distribution<double> dist(0.0, 1.0);
-    for (auto& r : d) { r.key1 = dist(rng); r.key2 = dist(rng); }
-    std::shuffle(d.begin(), d.end(), std::mt19937{42});
-    return d;
-}();
+static std::vector<SortRecord> g_struct_reference;
 
-static std::vector<SortRecord> g_struct_data(N_STRUCT_MAX);
+static std::vector<SortRecord> g_struct_data;
+
+static int g_uc14_refcount = 0;
+static void setup_uc14(const benchmark::State&) {
+    if (g_uc14_refcount++ == 0) {
+        g_reference_data.resize(N_SORT_MAX);
+        std::iota(g_reference_data.begin(), g_reference_data.end(), int64_t{0});
+        std::shuffle(g_reference_data.begin(), g_reference_data.end(), std::mt19937{42});
+        g_sort_data.resize(N_SORT_MAX);
+        g_struct_reference.resize(N_STRUCT_MAX);
+        {
+            std::mt19937_64 rng{42};
+            std::uniform_real_distribution<double> dist(0.0, 1.0);
+            for (auto& r : g_struct_reference) { r.key1 = dist(rng); r.key2 = dist(rng); }
+        }
+        std::shuffle(g_struct_reference.begin(), g_struct_reference.end(), std::mt19937{42});
+        g_struct_data.resize(N_STRUCT_MAX);
+    }
+}
+static void teardown_uc14(const benchmark::State&) {
+    if (--g_uc14_refcount == 0) {
+        g_reference_data.clear(); g_reference_data.shrink_to_fit();
+        g_sort_data.clear(); g_sort_data.shrink_to_fit();
+        g_struct_reference.clear(); g_struct_reference.shrink_to_fit();
+        g_struct_data.clear(); g_struct_data.shrink_to_fit();
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Original BM_UC14_* (generic_sort, low level)
@@ -395,138 +409,138 @@ static void BM_generic_sort_abstract_specialized_exec(benchmark::State& state) {
 // ---------------------------------------------------------------------------
 
 #define UC14_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC14_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // generic_sort — tradeoff
 #define UC14_GENERIC_TRADEOFF_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // generic_sort — abstract
 #define UC14_GENERIC_ABSTRACT_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_generic_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:generic_sort;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // struct_sort — low
 #define UC14_STRUCT_LOW_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // struct_sort — tradeoff
 #define UC14_STRUCT_TRADEOFF_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // struct_sort — abstract
 #define UC14_STRUCT_ABSTRACT_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_struct_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:struct_sort;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // multi_key_sort — low
 #define UC14_MULTI_LOW_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_low_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // multi_key_sort — tradeoff
 #define UC14_MULTI_TRADEOFF_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_tradeoff_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // multi_key_sort — abstract
 #define UC14_MULTI_ABSTRACT_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_unspecialized)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_jit_overhead)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:multi_key_sort;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
 
 // ---------------------------------------------------------------------------
 // Instantiate all benchmark registrations
