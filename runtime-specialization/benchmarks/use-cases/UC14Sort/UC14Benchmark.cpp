@@ -12,7 +12,7 @@
 // Dataset sizing
 // ---------------------------------------------------------------------------
 
-static constexpr int64_t N_SORT_MAX = 200'000'000;
+static constexpr int64_t N_SORT_MAX = 400'000'000;
 
 // Struct layout: two double fields (key1 at offset 0, key2 at offset 8).
 static constexpr int STRUCT_ELEM_SIZE  = 16;   // sizeof({double key1, double key2})
@@ -46,7 +46,7 @@ struct SortRecord {
     double key2;
 };
 
-static constexpr int64_t N_STRUCT_MAX = 50'000'000;
+static constexpr int64_t N_STRUCT_MAX = 250'000'000;
 
 static std::vector<SortRecord> g_struct_reference = [] {
     std::vector<SortRecord> d(N_STRUCT_MAX);
@@ -533,66 +533,66 @@ BENCHMARK(BM_multi_key_sort_abstract_specialized_exec)->Name("BM_g:uc14_sort;n:m
 // ---------------------------------------------------------------------------
 
 UC14_BENCHMARK_SPEC(
-    Arg(550'000),
-    Arg(5'000'000),
-    Arg(40'000'000),
-    Arg(200'000'000)
+    Arg(900'000),
+    Arg(8'000'000),
+    Arg(70'000'000),
+    Arg(400'000'000)
 )
 
 UC14_GENERIC_TRADEOFF_SPEC(
-    Arg(550'000),
-    Arg(5'000'000),
-    Arg(40'000'000),
-    Arg(200'000'000)
+    Arg(900'000),
+    Arg(8'000'000),
+    Arg(70'000'000),
+    Arg(400'000'000)
 )
 
 UC14_GENERIC_ABSTRACT_SPEC(
-    Arg(550'000),
-    Arg(5'000'000),
-    Arg(40'000'000),
-    Arg(200'000'000)
+    Arg(900'000),
+    Arg(8'000'000),
+    Arg(70'000'000),
+    Arg(400'000'000)
 )
 
 UC14_STRUCT_LOW_SPEC(
-    Arg(300'000),
-    Arg(3'000'000),
-    Arg(20'000'000),
-    Arg(50'000'000)
+    Arg(1'000'000),
+    Arg(8'500'000),
+    Arg(50'000'000),
+    Arg(250'000'000)
 )
 
 UC14_STRUCT_TRADEOFF_SPEC(
-    Arg(300'000),
-    Arg(3'000'000),
-    Arg(20'000'000),
-    Arg(50'000'000)
+    Arg(1'000'000),
+    Arg(8'500'000),
+    Arg(50'000'000),
+    Arg(250'000'000)
 )
 
 UC14_STRUCT_ABSTRACT_SPEC(
-    Arg(300'000),
-    Arg(3'000'000),
-    Arg(20'000'000),
-    Arg(50'000'000)
+    Arg(1'000'000),
+    Arg(8'500'000),
+    Arg(50'000'000),
+    Arg(250'000'000)
 )
 
 UC14_MULTI_LOW_SPEC(
-    Arg(300'000),
-    Arg(3'000'000),
-    Arg(20'000'000),
-    Arg(50'000'000)
+    Arg(750'000),
+    Arg(6'500'000),
+    Arg(50'000'000),
+    Arg(250'000'000)
 )
 
 UC14_MULTI_TRADEOFF_SPEC(
-    Arg(300'000),
-    Arg(3'000'000),
-    Arg(20'000'000),
-    Arg(50'000'000)
+    Arg(750'000),
+    Arg(6'500'000),
+    Arg(50'000'000),
+    Arg(250'000'000)
 )
 
 UC14_MULTI_ABSTRACT_SPEC(
-    Arg(300'000),
-    Arg(3'000'000),
-    Arg(20'000'000),
-    Arg(50'000'000)
+    Arg(750'000),
+    Arg(6'500'000),
+    Arg(50'000'000),
+    Arg(250'000'000)
 )
 
 #ifndef ALL_BENCHMARKS_BUILD
