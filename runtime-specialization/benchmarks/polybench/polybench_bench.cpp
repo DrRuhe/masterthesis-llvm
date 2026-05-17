@@ -777,59 +777,59 @@ POLYBENCH_IMPL_2(seidel_2d)
 
 
 // ── Benchmark Registrations ───────────────────────────────────────────────────
-#define POLYBENCH_BENCHMARK_SPEC(K, MINI, SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:unspecialized;")->MINI; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_overhead;")->MINI; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:specialized_exec;")->MINI; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
-BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_analysis;")->MINI->Iterations(1)->UseManualTime(); \
-BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime(); \
-BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime(); \
-BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime(); \
-BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime();
+#define POLYBENCH_BENCHMARK_SPEC(K, MINI, SMALL, MEDIUM, LARGE, EXTRALARGE, K_SETUP, K_TEARDOWN) \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:unspecialized;")->MINI->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:unspecialized;")->SMALL->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:unspecialized;")->LARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_overhead;")->MINI->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_overhead;")->SMALL->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_overhead;")->LARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:specialized_exec;")->MINI->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:specialized_exec;")->SMALL->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:specialized_exec;")->LARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_analysis;")->MINI->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_analysis____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN);
 
 
-POLYBENCH_BENCHMARK_SPEC(correlation,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
-POLYBENCH_BENCHMARK_SPEC(covariance,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}))
-POLYBENCH_BENCHMARK_SPEC(2mm,Args({16, 18, 22, 24}),Args({40, 50, 70, 80}),Args({180, 190, 210, 220}),Args({800, 900, 1100, 1200}),Args({1600, 1800, 2200, 2400}))
-POLYBENCH_BENCHMARK_SPEC(3mm,Args({16, 18, 20, 22, 24}),Args({40, 50, 60, 70, 80}),Args({180, 190, 200, 210, 220}),Args({800, 900, 1000, 1100, 1200}),Args({1600, 1800, 2000, 2200, 2400}))
-POLYBENCH_BENCHMARK_SPEC(atax,Args({38, 42}),Args({116, 124}),Args({390, 410}),Args({1900, 2100}),Args({1800, 2200}))
-POLYBENCH_BENCHMARK_SPEC(bicg,Args({38, 42}),Args({116, 124}),Args({390, 410}),Args({1900, 2100}),Args({1800, 2200}))
-POLYBENCH_BENCHMARK_SPEC(doitgen,Args({8, 10, 12}),Args({20, 25, 30}),Args({40, 50, 60}),Args({140, 150, 160}),Args({220, 250, 270}))
-POLYBENCH_BENCHMARK_SPEC(mvt,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
-POLYBENCH_BENCHMARK_SPEC(gemm,Args({20, 25, 30}),Args({60, 70, 80}),Args({200, 220, 240}),Args({1000, 1100, 1200}),Args({2000, 2300, 2600}))
-POLYBENCH_BENCHMARK_SPEC(gemver,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
-POLYBENCH_BENCHMARK_SPEC(gesummv,Arg(30),Arg(90),Arg(250),Arg(1300),Arg(2800))
-POLYBENCH_BENCHMARK_SPEC(symm,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
-POLYBENCH_BENCHMARK_SPEC(syr2k,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
-POLYBENCH_BENCHMARK_SPEC(syrk,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
-POLYBENCH_BENCHMARK_SPEC(trmm,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
-POLYBENCH_BENCHMARK_SPEC(cholesky,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
-POLYBENCH_BENCHMARK_SPEC(durbin,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
-POLYBENCH_BENCHMARK_SPEC(gramschmidt,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}))
-POLYBENCH_BENCHMARK_SPEC(lu,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
-POLYBENCH_BENCHMARK_SPEC(ludcmp,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
-POLYBENCH_BENCHMARK_SPEC(trisolv,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000))
-POLYBENCH_BENCHMARK_SPEC(deriche,Args({64, 64}),Args({192, 128}),Args({720, 480}),Args({4096, 2160}),Args({7680, 4320}))
-POLYBENCH_BENCHMARK_SPEC(floyd_warshall,Arg(60),Arg(180),Arg(500),Arg(2800),Arg(5600))
-POLYBENCH_BENCHMARK_SPEC(nussinov,Arg(60),Arg(180),Arg(500),Arg(2500),Arg(5500))
-POLYBENCH_BENCHMARK_SPEC(adi,Args({20, 20}),Args({40, 60}),Args({100, 200}),Args({500, 1000}),Args({1000, 2000}))
-POLYBENCH_BENCHMARK_SPEC(fdtd_2d,Args({20, 20, 30}),Args({40, 60, 80}),Args({100, 200, 240}),Args({500, 1000, 1200}),Args({1000, 2000, 2600}))
-POLYBENCH_BENCHMARK_SPEC(heat_3d,Args({20, 10}),Args({40, 20}),Args({100, 40}),Args({500, 120}),Args({1000, 200}))
-POLYBENCH_BENCHMARK_SPEC(jacobi_1d,Args({20, 30}),Args({40, 120}),Args({100, 400}),Args({500, 2000}),Args({1000, 4000}))
-POLYBENCH_BENCHMARK_SPEC(jacobi_2d,Args({20, 30}),Args({40, 90}),Args({100, 250}),Args({500, 1300}),Args({1000, 2800}))
-POLYBENCH_BENCHMARK_SPEC(seidel_2d,Args({20, 40}),Args({40, 120}),Args({100, 400}),Args({500, 2000}),Args({1000, 4000}))
+POLYBENCH_BENCHMARK_SPEC(correlation,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}),pb_setup_correlation,pb_teardown_correlation)
+POLYBENCH_BENCHMARK_SPEC(covariance,Args({28, 32}),Args({80, 100}),Args({240, 260}),Args({1200, 1400}),Args({2600, 3000}),pb_setup_covariance,pb_teardown_covariance)
+POLYBENCH_BENCHMARK_SPEC(2mm,Args({16, 18, 22, 24}),Args({40, 50, 70, 80}),Args({180, 190, 210, 220}),Args({800, 900, 1100, 1200}),Args({1600, 1800, 2200, 2400}),pb_setup_mm2,pb_teardown_mm2)
+POLYBENCH_BENCHMARK_SPEC(3mm,Args({16, 18, 20, 22, 24}),Args({40, 50, 60, 70, 80}),Args({180, 190, 200, 210, 220}),Args({800, 900, 1000, 1100, 1200}),Args({1600, 1800, 2000, 2200, 2400}),pb_setup_mm3,pb_teardown_mm3)
+POLYBENCH_BENCHMARK_SPEC(atax,Args({38, 42}),Args({116, 124}),Args({390, 410}),Args({1900, 2100}),Args({1800, 2200}),pb_setup_atax,pb_teardown_atax)
+POLYBENCH_BENCHMARK_SPEC(bicg,Args({38, 42}),Args({116, 124}),Args({390, 410}),Args({1900, 2100}),Args({1800, 2200}),pb_setup_bicg,pb_teardown_bicg)
+POLYBENCH_BENCHMARK_SPEC(doitgen,Args({8, 10, 12}),Args({20, 25, 30}),Args({40, 50, 60}),Args({140, 150, 160}),Args({220, 250, 270}),pb_setup_doitgen,pb_teardown_doitgen)
+POLYBENCH_BENCHMARK_SPEC(mvt,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000),pb_setup_mvt,pb_teardown_mvt)
+POLYBENCH_BENCHMARK_SPEC(gemm,Args({20, 25, 30}),Args({60, 70, 80}),Args({200, 220, 240}),Args({1000, 1100, 1200}),Args({2000, 2300, 2600}),pb_setup_gemm,pb_teardown_gemm)
+POLYBENCH_BENCHMARK_SPEC(gemver,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000),pb_setup_gemver,pb_teardown_gemver)
+POLYBENCH_BENCHMARK_SPEC(gesummv,Arg(30),Arg(90),Arg(250),Arg(1300),Arg(2800),pb_setup_gesummv,pb_teardown_gesummv)
+POLYBENCH_BENCHMARK_SPEC(symm,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}),pb_setup_symm,pb_teardown_symm)
+POLYBENCH_BENCHMARK_SPEC(syr2k,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}),pb_setup_syr2k,pb_teardown_syr2k)
+POLYBENCH_BENCHMARK_SPEC(syrk,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}),pb_setup_syrk,pb_teardown_syrk)
+POLYBENCH_BENCHMARK_SPEC(trmm,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}),pb_setup_trmm,pb_teardown_trmm)
+POLYBENCH_BENCHMARK_SPEC(cholesky,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000),pb_setup_cholesky,pb_teardown_cholesky)
+POLYBENCH_BENCHMARK_SPEC(durbin,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000),pb_setup_durbin,pb_teardown_durbin)
+POLYBENCH_BENCHMARK_SPEC(gramschmidt,Args({20, 30}),Args({60, 80}),Args({200, 240}),Args({1000, 1200}),Args({2000, 2600}),pb_setup_gramschmidt,pb_teardown_gramschmidt)
+POLYBENCH_BENCHMARK_SPEC(lu,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000),pb_setup_lu,pb_teardown_lu)
+POLYBENCH_BENCHMARK_SPEC(ludcmp,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000),pb_setup_ludcmp,pb_teardown_ludcmp)
+POLYBENCH_BENCHMARK_SPEC(trisolv,Arg(40),Arg(120),Arg(400),Arg(2000),Arg(4000),pb_setup_trisolv,pb_teardown_trisolv)
+POLYBENCH_BENCHMARK_SPEC(deriche,Args({64, 64}),Args({192, 128}),Args({720, 480}),Args({4096, 2160}),Args({7680, 4320}),pb_setup_deriche,pb_teardown_deriche)
+POLYBENCH_BENCHMARK_SPEC(floyd_warshall,Arg(60),Arg(180),Arg(500),Arg(2800),Arg(5600),pb_setup_fw,pb_teardown_fw)
+POLYBENCH_BENCHMARK_SPEC(nussinov,Arg(60),Arg(180),Arg(500),Arg(2500),Arg(5500),pb_setup_nussinov,pb_teardown_nussinov)
+POLYBENCH_BENCHMARK_SPEC(adi,Args({20, 20}),Args({40, 60}),Args({100, 200}),Args({500, 1000}),Args({1000, 2000}),pb_setup_adi,pb_teardown_adi)
+POLYBENCH_BENCHMARK_SPEC(fdtd_2d,Args({20, 20, 30}),Args({40, 60, 80}),Args({100, 200, 240}),Args({500, 1000, 1200}),Args({1000, 2000, 2600}),pb_setup_fdtd2d,pb_teardown_fdtd2d)
+POLYBENCH_BENCHMARK_SPEC(heat_3d,Args({20, 10}),Args({40, 20}),Args({100, 40}),Args({500, 120}),Args({1000, 200}),pb_setup_heat3d,pb_teardown_heat3d)
+POLYBENCH_BENCHMARK_SPEC(jacobi_1d,Args({20, 30}),Args({40, 120}),Args({100, 400}),Args({500, 2000}),Args({1000, 4000}),pb_setup_jacobi1d,pb_teardown_jacobi1d)
+POLYBENCH_BENCHMARK_SPEC(jacobi_2d,Args({20, 30}),Args({40, 90}),Args({100, 250}),Args({500, 1300}),Args({1000, 2800}),pb_setup_jacobi2d,pb_teardown_jacobi2d)
+POLYBENCH_BENCHMARK_SPEC(seidel_2d,Args({20, 40}),Args({40, 120}),Args({100, 400}),Args({500, 2000}),Args({1000, 4000}),pb_setup_seidel2d,pb_teardown_seidel2d)
 
 // ── IR Embedding Trigger ──────────────────────────────────────────────────────
 // Dead code that forces the IR-dumping pass to embed all 30 kernel functions.
