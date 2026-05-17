@@ -9,16 +9,25 @@ static constexpr int TILE_H = 3840;
 
 // Global buffers sized to one tile (TILE_W * TILE_H ≈ 57 MB each).
 // Benchmarks stream n_tiles tiles over the fixed buffer via state.range(0).
-static std::vector<float> g_src(TILE_W * TILE_H, 0.0f);
-static std::vector<float> g_dst(TILE_W * TILE_H, 0.0f);
+static std::vector<float> g_src;
+static std::vector<float> g_dst;
 
-static struct UC2DataInit {
-    UC2DataInit() {
+static int g_uc2_refcount = 0;
+static void setup_uc2(const benchmark::State&) {
+    if (g_uc2_refcount++ == 0) {
+        g_src.resize(TILE_W * TILE_H, 0.0f);
+        g_dst.resize(TILE_W * TILE_H, 0.0f);
         std::mt19937 rng(42);
         std::uniform_real_distribution<float> dist(0.0f, 1.0f);
         for (auto& v : g_src) v = dist(rng);
     }
-} g_uc2_init;
+}
+static void teardown_uc2(const benchmark::State&) {
+    if (--g_uc2_refcount == 0) {
+        g_src.clear(); g_src.shrink_to_fit();
+        g_dst.clear(); g_dst.shrink_to_fit();
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Variant: separable_gaussian / low
@@ -311,122 +320,122 @@ static void BM_UC2_edge_detection_abstract_specialized_exec(benchmark::State& st
 // ---------------------------------------------------------------------------
 
 #define UC2_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_low_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_low_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_tradeoff_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_unspecialized)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_sg_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:separable_gaussian;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE; \
+BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_unspecialized)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_box_filter_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:box_filter;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
 \
-BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:SMALL;t:unspecialized;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:LARGE;t:unspecialized;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:SMALL;t:jit_overhead;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:LARGE;t:jit_overhead;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE; \
-BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:SMALL;t:specialized_exec;")->SMALL; \
-BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM; \
-BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:LARGE;t:specialized_exec;")->LARGE; \
-BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE;
+BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_unspecialized)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_jit_overhead)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc2)->Teardown(teardown_uc2); \
+BENCHMARK(BM_UC2_edge_detection_abstract_specialized_exec)->Name("BM_g:uc2_conv;n:edge_detection;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc2)->Teardown(teardown_uc2);
 
 #ifdef ALL_BENCHMARKS_BUILD
 UC2_BENCHMARK_SPEC(

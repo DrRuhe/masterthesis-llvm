@@ -16,28 +16,37 @@ static constexpr int64_t N_ROWS_MAX    = 50'000'000;
 
 // Global dataset: N_ROWS_MAX rows of ROW_STRIDE bytes.
 // Benchmarks pass size-specific n_rows via state.range(0).
-static std::vector<uint8_t> g_deltas = [] {
-    std::vector<uint8_t> data(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
-    std::mt19937 rng(42);
-    std::uniform_int_distribution<int32_t> gk_dist(0, N_BUCKETS - 1);
-    std::uniform_real_distribution<double>  val_dist(0.0, 100.0);
-    std::uniform_int_distribution<uint8_t>  byte_dist(0, 255);
-    for (int64_t i = 0; i < N_ROWS_MAX; ++i) {
-        uint8_t* row = data.data() + static_cast<size_t>(i) * ROW_STRIDE;
-        for (int b = 0; b < GROUP_COL; ++b)
-            row[b] = byte_dist(rng);
-        int32_t gk = gk_dist(rng);
-        __builtin_memcpy(row + GROUP_COL, &gk, sizeof(int32_t));
-        double val = val_dist(rng);
-        __builtin_memcpy(row + VALUE_COL, &val, sizeof(double));
-        for (int b = VALUE_COL + (int)sizeof(double); b < ROW_STRIDE; ++b)
-            row[b] = byte_dist(rng);
-    }
-    return data;
-}();
+static std::vector<uint8_t> g_deltas;
 
 static std::vector<double> g_buckets(N_BUCKETS, 0.0);
 static std::vector<double> g_count_buckets(N_BUCKETS, 0.0);
+
+static int g_uc8_refcount = 0;
+static void setup_uc8(const benchmark::State&) {
+    if (g_uc8_refcount++ == 0) {
+        g_deltas.resize(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
+        std::mt19937 rng(42);
+        std::uniform_int_distribution<int32_t> gk_dist(0, N_BUCKETS - 1);
+        std::uniform_real_distribution<double>  val_dist(0.0, 100.0);
+        std::uniform_int_distribution<uint8_t>  byte_dist(0, 255);
+        for (int64_t i = 0; i < N_ROWS_MAX; ++i) {
+            uint8_t* row = g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE;
+            for (int b = 0; b < GROUP_COL; ++b)
+                row[b] = byte_dist(rng);
+            int32_t gk = gk_dist(rng);
+            __builtin_memcpy(row + GROUP_COL, &gk, sizeof(int32_t));
+            double val = val_dist(rng);
+            __builtin_memcpy(row + VALUE_COL, &val, sizeof(double));
+            for (int b = VALUE_COL + (int)sizeof(double); b < ROW_STRIDE; ++b)
+                row[b] = byte_dist(rng);
+        }
+    }
+}
+static void teardown_uc8(const benchmark::State&) {
+    if (--g_uc8_refcount == 0) {
+        g_deltas.clear(); g_deltas.shrink_to_fit();
+    }
+}
 
 // ============================================================================
 // apply_row_delta — low
@@ -342,114 +351,114 @@ static void BM_UC8_batch_delta_abstract_exec(benchmark::State& state) {
 // ============================================================================
 
 #define UC8_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
-BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_unspecialized)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_jit_overhead)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_specialized_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_apply_row_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:apply_row_delta;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_low_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_unspecialized)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_multi_agg_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:multi_agg_delta;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_low_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:low;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_tradeoff_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:tradeoff;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
 \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Unit(benchmark::kMillisecond);
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:SMALL;t:unspecialized;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_unspecialized)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_jit)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC8_batch_delta_abstract_exec)->Name("BM_g:uc8_ivm;n:batch_delta;a:abstract;s:EXTRALARGE;t:specialized_exec;")->EXTRALARGE->Setup(setup_uc8)->Teardown(teardown_uc8)->Unit(benchmark::kMillisecond);
 
 #ifdef ALL_BENCHMARKS_BUILD
 UC8_BENCHMARK_SPEC(
