@@ -56,16 +56,12 @@ static constexpr int64_t CORPUS_MAX = 500LL * 1024 * 1024;  // 500 MB streaming 
 
 static std::vector<char> g_corpus;
 
-static int g_uc7_refcount = 0;
 static void setup_uc7(const benchmark::State&) {
-    if (g_uc7_refcount++ == 0) {
-        g_corpus = make_corpus(CORPUS_MAX);
-    }
+    if (!g_corpus.empty()) return;
+    g_corpus = make_corpus(CORPUS_MAX);
 }
 static void teardown_uc7(const benchmark::State&) {
-    if (--g_uc7_refcount == 0) {
-        g_corpus.clear(); g_corpus.shrink_to_fit();
-    }
+    // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 
 // Multi-pattern accept states for unspecialized call (low-tier only)

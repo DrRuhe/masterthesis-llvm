@@ -21,31 +21,27 @@ static std::vector<uint8_t> g_deltas;
 static std::vector<double> g_buckets(N_BUCKETS, 0.0);
 static std::vector<double> g_count_buckets(N_BUCKETS, 0.0);
 
-static int g_uc8_refcount = 0;
 static void setup_uc8(const benchmark::State&) {
-    if (g_uc8_refcount++ == 0) {
-        g_deltas.resize(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
-        std::mt19937 rng(42);
-        std::uniform_int_distribution<int32_t> gk_dist(0, N_BUCKETS - 1);
-        std::uniform_real_distribution<double>  val_dist(0.0, 100.0);
-        std::uniform_int_distribution<uint8_t>  byte_dist(0, 255);
-        for (int64_t i = 0; i < N_ROWS_MAX; ++i) {
-            uint8_t* row = g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE;
-            for (int b = 0; b < GROUP_COL; ++b)
-                row[b] = byte_dist(rng);
-            int32_t gk = gk_dist(rng);
-            __builtin_memcpy(row + GROUP_COL, &gk, sizeof(int32_t));
-            double val = val_dist(rng);
-            __builtin_memcpy(row + VALUE_COL, &val, sizeof(double));
-            for (int b = VALUE_COL + (int)sizeof(double); b < ROW_STRIDE; ++b)
-                row[b] = byte_dist(rng);
-        }
+    if (!g_deltas.empty()) return;
+    g_deltas.resize(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
+    std::mt19937 rng(42);
+    std::uniform_int_distribution<int32_t> gk_dist(0, N_BUCKETS - 1);
+    std::uniform_real_distribution<double>  val_dist(0.0, 100.0);
+    std::uniform_int_distribution<uint8_t>  byte_dist(0, 255);
+    for (int64_t i = 0; i < N_ROWS_MAX; ++i) {
+        uint8_t* row = g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE;
+        for (int b = 0; b < GROUP_COL; ++b)
+            row[b] = byte_dist(rng);
+        int32_t gk = gk_dist(rng);
+        __builtin_memcpy(row + GROUP_COL, &gk, sizeof(int32_t));
+        double val = val_dist(rng);
+        __builtin_memcpy(row + VALUE_COL, &val, sizeof(double));
+        for (int b = VALUE_COL + (int)sizeof(double); b < ROW_STRIDE; ++b)
+            row[b] = byte_dist(rng);
     }
 }
 static void teardown_uc8(const benchmark::State&) {
-    if (--g_uc8_refcount == 0) {
-        g_deltas.clear(); g_deltas.shrink_to_fit();
-    }
+    // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 
 // ============================================================================

@@ -12,21 +12,16 @@ static constexpr int TILE_H = 3840;
 static std::vector<float> g_src;
 static std::vector<float> g_dst;
 
-static int g_uc2_refcount = 0;
 static void setup_uc2(const benchmark::State&) {
-    if (g_uc2_refcount++ == 0) {
-        g_src.resize(TILE_W * TILE_H, 0.0f);
-        g_dst.resize(TILE_W * TILE_H, 0.0f);
-        std::mt19937 rng(42);
-        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-        for (auto& v : g_src) v = dist(rng);
-    }
+    if (!g_src.empty()) return;
+    g_src.resize(TILE_W * TILE_H, 0.0f);
+    g_dst.resize(TILE_W * TILE_H, 0.0f);
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    for (auto& v : g_src) v = dist(rng);
 }
 static void teardown_uc2(const benchmark::State&) {
-    if (--g_uc2_refcount == 0) {
-        g_src.clear(); g_src.shrink_to_fit();
-        g_dst.clear(); g_dst.shrink_to_fit();
-    }
+    // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 
 // ---------------------------------------------------------------------------

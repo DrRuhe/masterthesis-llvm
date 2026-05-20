@@ -24,8 +24,8 @@ Maps named ablation/sensitivity/transfer configs to their DuckDB `run_id` values
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `study_name` | VARCHAR (PK) | Logical grouping (e.g., `ablation_polybench_20260510`) |
-| `config_name` | VARCHAR (PK) | Human-readable config (e.g., `o3_only`, `workload_optimal`) |
+| `study_name` | VARCHAR (PK) | Logical grouping (e.g., `ablation_uc_20260510`) |
+| `config_name` | VARCHAR (PK) | Human-readable config (e.g., `o3_only`, `uc_workload_optimal`) |
 | `rep` | INTEGER (PK) | 0-indexed repetition (0, 1, 2 for 3 reps) |
 | `params_json` | JSON | Exact env var overrides applied for this run |
 | `run_id` | VARCHAR (FK → context) | Links to the raw benchmark data |
@@ -41,7 +41,7 @@ Joins `ablation_studies` with per-kernel timing from `v_ratios`.
 | `rep` | ablation_studies | Repetition index |
 | `params_json` | ablation_studies | Config params |
 | `kernel` | v_ratios | Benchmark kernel name |
-| `group` | v_ratios | Benchmark group (polybench / tpch) |
+| `group` | v_ratios | Benchmark group (uc* / tpch) |
 | `t_jit_ns` | v_ratios | JIT overhead in nanoseconds |
 | `t_spec_ns` | v_ratios | Specialized execution in nanoseconds |
 | `t_unspec_ns` | v_ratios | Unspecialized execution in nanoseconds |
@@ -79,7 +79,7 @@ context ──── benchmarks          (1:many via run_id)
 
 | Group | Kernel examples | Sizes used | Benchmark phases |
 |-------|----------------|-----------|-----------------|
-| `polybench` | correlation, gemm, lu, floyd_warshall, … (30 total) | MINI (smoke), EXTRALARGE (full) | jit_overhead, specialized_exec, unspecialized |
+| `uc*` | uc1_sql, uc2_conv, uc7_dfa, uc8_ivm, uc12_groupby, uc14_sort | MINI (smoke), MEDIUM (full) | jit_overhead, specialized_exec, unspecialized |
 | `tpch` | tpch_q1, tpch_q6, tpch_q3 | (single size — SF1) | jit_overhead, specialized_exec, unspecialized |
 
 ## Ablation Config Registry
@@ -100,7 +100,7 @@ The 8+1 named configs (defined as built-in constants in `ablation_benchmarks.py`
                                      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "1"}},
   {"name": "aggressive",    "env": {"CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "20",
                                      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "256"}},
-  {"name": "workload_optimal", "env": "<extracted from v_optim_best_per_kernel after Exp A>"}
+  {"name": "uc_workload_optimal", "env": "<extracted from v_optim_best_per_kernel after Exp A>"}
 ]
 ```
 
@@ -118,4 +118,4 @@ The 6 parameters for the OAT sensitivity analysis:
 | `pipeline` | `CRS_DEFAULT_PIPELINE` | 0 or 1 | {0, 1} |
 
 For each parameter sweep: all other parameters held at workload-optimal values from Exp A.
-Total sweep evaluations: 8+10+6+2+2+2 = **30 polybench runs** (each with 1 rep).
+Total sweep evaluations: 8+10+6+2+2+2 = **30 UC MEDIUM runs** (each with 1 rep).

@@ -47,30 +47,23 @@ static std::vector<SortRecord> g_struct_reference;
 
 static std::vector<SortRecord> g_struct_data;
 
-static int g_uc14_refcount = 0;
 static void setup_uc14(const benchmark::State&) {
-    if (g_uc14_refcount++ == 0) {
-        g_reference_data.resize(N_SORT_MAX);
-        std::iota(g_reference_data.begin(), g_reference_data.end(), int64_t{0});
-        std::shuffle(g_reference_data.begin(), g_reference_data.end(), std::mt19937{42});
-        g_sort_data.resize(N_SORT_MAX);
-        g_struct_reference.resize(N_STRUCT_MAX);
-        {
-            std::mt19937_64 rng{42};
-            std::uniform_real_distribution<double> dist(0.0, 1.0);
-            for (auto& r : g_struct_reference) { r.key1 = dist(rng); r.key2 = dist(rng); }
-        }
-        std::shuffle(g_struct_reference.begin(), g_struct_reference.end(), std::mt19937{42});
-        g_struct_data.resize(N_STRUCT_MAX);
+    if (!g_reference_data.empty()) return;
+    g_reference_data.resize(N_SORT_MAX);
+    std::iota(g_reference_data.begin(), g_reference_data.end(), int64_t{0});
+    std::shuffle(g_reference_data.begin(), g_reference_data.end(), std::mt19937{42});
+    g_sort_data.resize(N_SORT_MAX);
+    g_struct_reference.resize(N_STRUCT_MAX);
+    {
+        std::mt19937_64 rng{42};
+        std::uniform_real_distribution<double> dist(0.0, 1.0);
+        for (auto& r : g_struct_reference) { r.key1 = dist(rng); r.key2 = dist(rng); }
     }
+    std::shuffle(g_struct_reference.begin(), g_struct_reference.end(), std::mt19937{42});
+    g_struct_data.resize(N_STRUCT_MAX);
 }
 static void teardown_uc14(const benchmark::State&) {
-    if (--g_uc14_refcount == 0) {
-        g_reference_data.clear(); g_reference_data.shrink_to_fit();
-        g_sort_data.clear(); g_sort_data.shrink_to_fit();
-        g_struct_reference.clear(); g_struct_reference.shrink_to_fit();
-        g_struct_data.clear(); g_struct_data.shrink_to_fit();
-    }
+    // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 
 // ---------------------------------------------------------------------------

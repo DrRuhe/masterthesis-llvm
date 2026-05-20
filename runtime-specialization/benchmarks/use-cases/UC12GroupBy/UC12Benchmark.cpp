@@ -25,26 +25,22 @@ static std::vector<int64_t> g_count_buckets(N_BUCKETS12, 0);
 static std::vector<double>  g_min_buckets(N_BUCKETS12, 0.0);
 static std::vector<double>  g_max_buckets(N_BUCKETS12, 0.0);
 
-static int g_uc12_refcount = 0;
 static void setup_uc12(const benchmark::State&) {
-    if (g_uc12_refcount++ == 0) {
-        g_rows12.resize(N_ROWS_MAX12 * ROW_STRIDE12, 0);
-        std::mt19937_64 rng(42);
-        std::uniform_int_distribution<int32_t> key_dist(0, N_BUCKETS12 - 1);
-        std::uniform_real_distribution<double> val_dist(0.0, 1.0);
-        for (int64_t i = 0; i < N_ROWS_MAX12; ++i) {
-            uint8_t* row = g_rows12.data() + i * ROW_STRIDE12;
-            int32_t key = key_dist(rng);
-            std::memcpy(row + KEY_OFFSET12, &key, sizeof(int32_t));
-            double val = val_dist(rng);
-            std::memcpy(row + VALUE_OFFSET12, &val, sizeof(double));
-        }
+    if (!g_rows12.empty()) return;
+    g_rows12.resize(N_ROWS_MAX12 * ROW_STRIDE12, 0);
+    std::mt19937_64 rng(42);
+    std::uniform_int_distribution<int32_t> key_dist(0, N_BUCKETS12 - 1);
+    std::uniform_real_distribution<double> val_dist(0.0, 1.0);
+    for (int64_t i = 0; i < N_ROWS_MAX12; ++i) {
+        uint8_t* row = g_rows12.data() + i * ROW_STRIDE12;
+        int32_t key = key_dist(rng);
+        std::memcpy(row + KEY_OFFSET12, &key, sizeof(int32_t));
+        double val = val_dist(rng);
+        std::memcpy(row + VALUE_OFFSET12, &val, sizeof(double));
     }
 }
 static void teardown_uc12(const benchmark::State&) {
-    if (--g_uc12_refcount == 0) {
-        g_rows12.clear(); g_rows12.shrink_to_fit();
-    }
+    // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 
 // ---------------------------------------------------------------------------

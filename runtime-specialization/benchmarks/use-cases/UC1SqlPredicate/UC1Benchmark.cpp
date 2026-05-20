@@ -18,26 +18,21 @@ static std::vector<uint8_t> g_rows;
 // Output buffer for column_scan variants (indices written here).
 static std::vector<int32_t> g_out_indices;
 
-static int g_uc1_refcount = 0;
 static void setup_uc1(const benchmark::State&) {
-    if (g_uc1_refcount++ == 0) {
-        g_rows.resize(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
-        std::mt19937_64 rng(42);
-        std::uniform_real_distribution<double> dist(0.0, 1.0);
-        for (int64_t i = 0; i < N_ROWS_MAX; ++i) {
-            double vb = dist(rng);
-            __builtin_memcpy(g_rows.data() + i * ROW_STRIDE + COL_OFFSET_B, &vb, sizeof(double));
-            double va = dist(rng);
-            __builtin_memcpy(g_rows.data() + i * ROW_STRIDE + COL_OFFSET, &va, sizeof(double));
-        }
-        g_out_indices.resize(N_ROWS_MAX);
+    if (!g_rows.empty()) return;
+    g_rows.resize(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
+    std::mt19937_64 rng(42);
+    std::uniform_real_distribution<double> dist(0.0, 1.0);
+    for (int64_t i = 0; i < N_ROWS_MAX; ++i) {
+        double vb = dist(rng);
+        __builtin_memcpy(g_rows.data() + i * ROW_STRIDE + COL_OFFSET_B, &vb, sizeof(double));
+        double va = dist(rng);
+        __builtin_memcpy(g_rows.data() + i * ROW_STRIDE + COL_OFFSET, &va, sizeof(double));
     }
+    g_out_indices.resize(N_ROWS_MAX);
 }
 static void teardown_uc1(const benchmark::State&) {
-    if (--g_uc1_refcount == 0) {
-        g_rows.clear(); g_rows.shrink_to_fit();
-        g_out_indices.clear(); g_out_indices.shrink_to_fit();
-    }
+    // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 
 // ============================================================================
