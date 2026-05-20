@@ -7,6 +7,14 @@
 a hard gate — no user-story work begins until it passes. Experiments run sequentially
 within the iteration: A → B → C → D → E → F (Reflection).
 
+> **2026-05-20 path migration:** Output artifacts now live in the per-run folder
+> `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/` (auto-created by
+> `run_evaluation.sh`). The `benchmarks/results/` paths referenced in already-completed
+> `[X]` task descriptions below refer to iteration-1 outputs that were subsequently
+> relocated to `benchmarks/reports/260520-13-00-optimize-pipeline/`. Reflection files in
+> past runs are discoverable as `ls -d benchmarks/reports/*-optimize-pipeline*/` →
+> `reflection*.md`. Going forward, the canonical filename is `reflection.md`.
+
 ## Format: `[ID] [P?] [Story] Description`
 
 - **[P]**: Can run in parallel (different files, no concurrent dependencies)
@@ -64,7 +72,7 @@ rows (one per UC group). Each row has non-null `total_ns` ≤ Default config's c
 
 - [ ] T012 [US1] Run Experiment A — UC full optimization: `python3 benchmarks/optimize_benchmarks.py <uc_binary> --db benchmarks/benchmarks.duckdb --study-name uc_optim_20260517 --n-trials 150 --seed 42 --n-parallel 1 --benchmark-filter 'BM_g:(uc1|uc2|uc7|uc8|uc12|uc14);.*s:MEDIUM;.*t:(jit_overhead|specialized_exec)' --apply-default-filters`. **RUNNING** (22/150 trials complete as of 2026-05-17). Study name: `uc_optim_20260517`.
 
-- [ ] T013 [US1] Extract UC best config: query `v_optim_best_per_kernel` for the study name from T012 and write the result to `benchmarks/results/uc_best_config.json`. Also write `benchmarks/results/uc_workload_optimal.json` in the `--extra-config`-compatible format: a single-element JSON list with `{"name": "uc_workload_optimal", "env": {...}}` where `env` maps `CRS_DEFAULT_*` names to string values. **PRELIMINARY** versions created using 22-trial best.
+- [ ] T013 [US1] Extract UC best config: query `v_optim_best_per_kernel` for the study name from T012 and write the result to `<REPORT_DIR>/uc_best_config.json`. Also write `<REPORT_DIR>/uc_workload_optimal.json` in the `--extra-config`-compatible format: a single-element JSON list with `{"name": "uc_workload_optimal", "env": {...}}` where `env` maps `CRS_DEFAULT_*` names to string values. `<REPORT_DIR>` is the per-run folder `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/` (created by `run_evaluation.sh`). **PRELIMINARY** versions created using 22-trial best.
 
 - [X] T014 [US1] Create `benchmarks/reporting/plot_pareto.py`: reads `v_optim_breakeven` for a given study name from `benchmarks.duckdb`, plots a scatter of `(t_jit_ns, t_spec_ns)` per trial per group, marks `Options::Default()` as a reference point, draws the Pareto frontier line per group. Saves one PNG per benchmark group to `benchmarks/results/pareto_<study_name>/`. CLI: `plot_pareto.py --db PATH --study-name STR [--output-dir DIR]`. **BUG**: frontier was rendered as upper-right envelope (maximize) instead of lower-left (minimize) — fixed in T034.
 
@@ -196,7 +204,7 @@ next-iteration scope.
 
 - [X] T032 [P] Create `benchmarks/results/README.md` documenting: the DuckDB study names used in this iteration, the machine description (CPU model, RAM, OS), git SHA of the binary, and a one-line description of each output file. This is the reproducibility record for the thesis.
 
-- [ ] T033 Validate end-to-end: run `python3 -c "import duckdb; c=duckdb.connect('benchmarks/benchmarks.duckdb'); print(c.execute('SELECT study_name, COUNT(*) FROM context GROUP BY 1').fetchall())"` and confirm all expected study names are present. Confirm no NULL `run_id` in `ablation_studies`. Confirm `benchmarks/results/reflection_iteration1.md` exists. **Pending T012, T017, T027, T030.**
+- [ ] T033 Validate end-to-end: run `python3 -c "import duckdb; c=duckdb.connect('benchmarks/benchmarks.duckdb'); print(c.execute('SELECT study_name, COUNT(*) FROM context GROUP BY 1').fetchall())"` and confirm all expected study names are present. Confirm no NULL `run_id` in `ablation_studies`. Confirm `<REPORT_DIR>/reflection.md` exists in the latest `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/` folder. **Pending T012, T017, T027, T030.**
 
 ---
 

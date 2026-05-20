@@ -163,7 +163,7 @@ Workload taxonomy (updated):
 | **C** | `ablation_benchmarks.py` | UC MEDIUM + tpch | all UC + q1+q6+q3 | **3 reps × 4 configs each** | `transfer_YYYYMMDD` | `ablation_studies`, `benchmarks` | `v_ablation_medians` + Wilcoxon test |
 | **D** | *(no new runs)* | — | — | — | — | — | `v_optim_breakeven WHERE study_name='uc_optim_*'` |
 | **E** | `sensitivity_analysis.py` | UC MEDIUM | all 6 groups | **1 rep × 48 pts** | `sens_uc_YYYYMMDD` | `ablation_studies`, `benchmarks` | `v_ablation_medians` per param |
-| **F** | *(document only)* | — | — | — | — | — | `benchmarks/results/reflection_iteration1.md` |
+| **F** | *(document only)* | — | — | — | — | — | `<REPORT_DIR>/reflection.md` (per-run folder under `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`) |
 
 ### Smoke Test Design
 
@@ -276,7 +276,9 @@ Built-in configs in `ablation_benchmarks.py` (9 total including dynamic `uc_work
 
 ### Reflection Document Structure
 
-The reflection at `benchmarks/results/reflection_iteration1.md` MUST cover:
+The reflection at `<REPORT_DIR>/reflection.md` — where `<REPORT_DIR>` is the per-run folder
+`benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/` created by `run_evaluation.sh` —
+MUST cover:
 
 ```
 ## Reflection: Iteration 1

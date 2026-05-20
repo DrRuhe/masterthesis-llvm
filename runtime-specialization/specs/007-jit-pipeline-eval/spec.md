@@ -165,8 +165,8 @@ accumulates process knowledge that compounds across iterations.
   borderline? What would be needed to confirm borderline findings?
 
 **Independent Test**: A reflection document exists at
-`benchmarks/results/reflection_<iteration>.md` and contains at least one concrete,
-actionable improvement for each of the three scopes above.
+`benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/reflection.md` and contains at least
+one concrete, actionable improvement for each of the three scopes above.
 
 **Acceptance Scenarios**:
 
@@ -193,7 +193,7 @@ writing the thesis chapter.
 
 **Independent Test**:
 
-1. Run `plot_pareto_configs.py --db benchmarks/benchmarks.duckdb --study-name <study> --output-dir benchmarks/results/`.
+1. Run `plot_pareto_configs.py --db benchmarks/benchmarks.duckdb --study-name <study> --output-dir benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`.
 2. Open the resulting CSV in pandas: rows where `is_pareto_optimal=True`, sorted by
    `jit_overhead_ms` ascending, MUST have `specialized_exec_ms` monotonically
    non-increasing. Exactly one row per (group) MUST have `is_default=True`.
@@ -261,7 +261,9 @@ writing the thesis chapter.
   matches the existing `optimize_benchmarks.py` objective and implicitly assumes the number
   of calls is unknown. The Pareto frontier (FR-002) is reported as supplementary information.
 - **FR-004**: The experiment MUST record the exact `params_json` for the best config in
-  DuckDB and export it to `benchmarks/results/uc_best_config.json` for use in later experiments.
+  DuckDB and export it to `<REPORT_DIR>/uc_best_config.json` (where `<REPORT_DIR>` is the
+  per-run folder `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`) for use in later
+  experiments.
 - **FR-004b**: Optuna parameter importance MUST be extracted immediately after
   `study.optimize()` completes and stored as `importance_<study_name>.json` alongside the
   best-config output. This is needed for the sensitivity analysis and reflection phase.
@@ -305,7 +307,8 @@ writing the thesis chapter.
 **Reflection Phase (addresses SQ6)**
 
 - **FR-017**: A reflection document MUST be written at
-  `benchmarks/results/reflection_<iteration>.md` after all experiments complete.
+  `<REPORT_DIR>/reflection.md` (per-run folder created by `run_evaluation.sh` at
+  `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`) after all experiments complete.
 - **FR-018**: The reflection MUST cover three scopes:
   1. **Infrastructure**: actionable improvements to `optimize_benchmarks.py`, benchmark
      binaries, DuckDB schema, or tooling (with specific suggested changes).
@@ -361,8 +364,10 @@ writing the thesis chapter.
   the distribution is summarized (median, min, max).
 - **SC-005**: The sensitivity analysis classifies all 6 parameters as critical or insensitive;
   at least one is classified insensitive (search space can be pruned in next iteration).
-- **SC-006**: A reflection document exists at `benchmarks/results/reflection_iteration1.md`
-  with ≥ 1 actionable improvement per scope (infrastructure, process, next iteration).
+- **SC-006**: A reflection document exists at `<REPORT_DIR>/reflection.md` (the per-run
+  folder `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`) with ≥ 1 actionable
+  improvement per scope (infrastructure, process, next iteration). Past iterations remain
+  discoverable as `benchmarks/reports/*-optimize-pipeline/reflection*.md`.
 - **SC-007**: All results are stored in DuckDB with metadata (git SHA, machine info, study
   name) sufficient to reproduce thesis figures.
 
