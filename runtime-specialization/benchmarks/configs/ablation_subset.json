@@ -1,0 +1,7 @@
+[
+  {"name": "default",   "env": {}},
+  {"name": "o3_only",   "env": {"CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "1",
+                                 "CRS_DEFAULT_EARLY_PRUNE": "0",
+                                 "CRS_DEFAULT_O3_FINAL": "1"}},
+  {"name": "no_unroll", "env": {"CRS_DEFAULT_LOOP_UNROLL_COUNT": "1"}}
+]

@@ -1,0 +1,55 @@
+[
+  {
+    "name": "default",
+    "env": {}
+  },
+  {
+    "name": "o3_only",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "1",
+      "CRS_DEFAULT_EARLY_PRUNE": "0",
+      "CRS_DEFAULT_O3_FINAL": "1"
+    }
+  },
+  {
+    "name": "no_prune",
+    "env": {
+      "CRS_DEFAULT_EARLY_PRUNE": "0"
+    }
+  },
+  {
+    "name": "no_o3_final",
+    "env": {
+      "CRS_DEFAULT_O3_FINAL": "0"
+    }
+  },
+  {
+    "name": "no_unroll",
+    "env": {
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "1"
+    }
+  },
+  {
+    "name": "fixpoint_2",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "2"
+    }
+  },
+  {
+    "name": "aggressive",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "20",
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "256"
+    }
+  },
+  {
+    "name": "uc_workload_optimal",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "7",
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "4",
+      "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": "0",
+      "CRS_DEFAULT_EARLY_PRUNE": "1",
+      "CRS_DEFAULT_O3_FINAL": "1"
+    }
+  }
+]
