@@ -1,0 +1,15 @@
+{
+  "trial_id": 16,
+  "params": {
+    "fixpoint_max": 9,
+    "unroll_max": 5,
+    "large_module_max": 0,
+    "early_prune": 1,
+    "o3_final": 1
+  },
+  "obj_jit_ns": 57291121.6944581,
+  "obj_exec_ns": 69711852.03508402,
+  "obj_combined_ns": 173300650.67659873,
+  "_note": "preliminary - based on 16 trials; update after uc_optim_20260517 completes",
+  "_study_name": "uc_optim_20260517"
+}
