@@ -113,7 +113,7 @@ CREATE TABLE IF NOT EXISTS unspec_baselines (
 _SCHEMA_OPTIM_SESSIONS = """
 CREATE TABLE IF NOT EXISTS optimization_sessions (
     study_name        VARCHAR PRIMARY KEY,
-    binary            VARCHAR,
+    "binary"          VARCHAR,
     n_trials          INTEGER,
     started_at        TIMESTAMP,
     completed_at      TIMESTAMP,
@@ -245,6 +245,39 @@ WHERE os.status = 'complete'
 ORDER BY ob.study_name, ob.kernel, ob._total;
 """
 
+_SCHEMA_ABLATION_STUDIES = """
+CREATE TABLE IF NOT EXISTS ablation_studies (
+    study_name  VARCHAR NOT NULL,
+    config_name VARCHAR NOT NULL,
+    rep         INTEGER NOT NULL,
+    params_json JSON,
+    run_id      VARCHAR REFERENCES context(run_id),
+    PRIMARY KEY (study_name, config_name, rep)
+);
+"""
+
+_SCHEMA_V_ABLATION_RESULTS = """
+CREATE OR REPLACE VIEW v_ablation_results AS
+SELECT
+    a.study_name, a.config_name, a.rep, a.params_json,
+    r.kernel, r."group",
+    r.t_jit_ns, r.t_spec_ns, r.t_unspec_ns
+FROM ablation_studies a
+JOIN v_ratios r USING (run_id);
+"""
+
+_SCHEMA_V_ABLATION_MEDIANS = """
+CREATE OR REPLACE VIEW v_ablation_medians AS
+SELECT
+    study_name, config_name, kernel, "group",
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t_jit_ns)    AS med_jit_ns,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t_spec_ns)   AS med_spec_ns,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t_unspec_ns) AS med_unspec_ns,
+    COUNT(*) AS n_reps
+FROM v_ablation_results
+GROUP BY study_name, config_name, kernel, "group";
+"""
+
 # ---------------------------------------------------------------------------
 # DB path resolution
 # ---------------------------------------------------------------------------
@@ -309,6 +342,10 @@ def main():
     con.execute(_SCHEMA_V_OPTIM_RESULTS)
     con.execute(_SCHEMA_V_OPTIM_BREAKEVEN)
     con.execute(_SCHEMA_V_OPTIM_BEST_PER_KERNEL)
+
+    con.execute(_SCHEMA_ABLATION_STUDIES)
+    con.execute(_SCHEMA_V_ABLATION_RESULTS)
+    con.execute(_SCHEMA_V_ABLATION_MEDIANS)
 
     con.close()
 

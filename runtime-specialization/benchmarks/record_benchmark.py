@@ -156,6 +156,39 @@ CREATE TABLE IF NOT EXISTS pass_traces (
 );
 """
 
+_SCHEMA_ABLATION_STUDIES = """
+CREATE TABLE IF NOT EXISTS ablation_studies (
+    study_name  VARCHAR NOT NULL,
+    config_name VARCHAR NOT NULL,
+    rep         INTEGER NOT NULL,
+    params_json JSON,
+    run_id      VARCHAR REFERENCES context(run_id),
+    PRIMARY KEY (study_name, config_name, rep)
+);
+"""
+
+_SCHEMA_V_ABLATION_RESULTS = """
+CREATE OR REPLACE VIEW v_ablation_results AS
+SELECT
+    a.study_name, a.config_name, a.rep, a.params_json,
+    r.kernel, r."group",
+    r.t_jit_ns, r.t_spec_ns, r.t_unspec_ns
+FROM ablation_studies a
+JOIN v_ratios r USING (run_id);
+"""
+
+_SCHEMA_V_ABLATION_MEDIANS = """
+CREATE OR REPLACE VIEW v_ablation_medians AS
+SELECT
+    study_name, config_name, kernel, "group",
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t_jit_ns)    AS med_jit_ns,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t_spec_ns)   AS med_spec_ns,
+    PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY t_unspec_ns) AS med_unspec_ns,
+    COUNT(*) AS n_reps
+FROM v_ablation_results
+GROUP BY study_name, config_name, kernel, "group";
+"""
+
 # Fixed column names (lowercase) that are part of the base schema.
 _BASE_COLUMNS = {
     "run_id", "name", "family_index", "per_family_instance_index",
@@ -319,6 +352,11 @@ def refresh_views(con: duckdb.DuckDBPyConnection) -> None:
         con.execute(_SCHEMA_V_BUDGET_SWEEP)
     except Exception:
         pass
+    try:
+        con.execute(_SCHEMA_V_ABLATION_RESULTS)
+        con.execute(_SCHEMA_V_ABLATION_MEDIANS)
+    except Exception:
+        pass
 
 
 def open_db(db_path: Path) -> duckdb.DuckDBPyConnection:
@@ -331,6 +369,7 @@ def open_db(db_path: Path) -> duckdb.DuckDBPyConnection:
         con.execute(stmt)
     # Migrate existing DBs that predate the best_practice_full column.
     con.execute("ALTER TABLE context ADD COLUMN IF NOT EXISTS best_practice_full BOOLEAN")
+    con.execute(_SCHEMA_ABLATION_STUDIES)
     refresh_views(con)
     return con
 
@@ -933,12 +972,12 @@ def main():
         help="Do not wrap the benchmark with systemd-run memory limits.",
     )
     parser.add_argument(
-        "--mem-max", metavar="SIZE", default="20G",
-        help="Hard memory ceiling passed as MemoryMax to systemd-run (default: 20G).",
+        "--mem-max", metavar="SIZE", default="32G",
+        help="Hard memory ceiling passed as MemoryMax to systemd-run (default: 32G).",
     )
     parser.add_argument(
-        "--mem-high", metavar="SIZE", default="18G",
-        help="Soft memory high-water mark passed as MemoryHigh to systemd-run (default: 18G).",
+        "--mem-high", metavar="SIZE", default="26G",
+        help="Soft memory high-water mark passed as MemoryHigh to systemd-run (default: 26G).",
     )
 
     args = parser.parse_args()

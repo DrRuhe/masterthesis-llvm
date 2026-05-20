@@ -5,10 +5,10 @@ Minimizes jit_overhead_ns + specialized_exec_ns (per-kernel, then geomean across
 by tuning MaxFixpointIterations, LoopUnrollCount, LargeModuleInstrThreshold,
 EnableEarlyPrune, and EnableO3Final via ENV var overrides on Options::Default().
 
-Each benchmark is run in its own subprocess for timeout isolation: a JIT hang in one
-benchmark does not kill data from other kernels. Timed-out benchmarks use a fallback of
-(timeout_ns for jit, unspecialized_ns for exec) so the optimizer always receives a finite
-cost signal.
+All benchmarks for a trial are run in a single subprocess invocation to amortize expensive
+CRS initialization (e.g. AllBenchmarks loads 65 blobs / 63MB bitcode). If the entire
+subprocess times out or crashes, all kernels receive fallback costs
+(timeout_ns for jit, unspecialized_ns for exec).
 
 Usage:
     optimize_benchmarks.py BINARY [options]
@@ -17,7 +17,6 @@ import argparse
 import json
 import math
 import os
-import re
 import subprocess
 import sys
 import tempfile
@@ -44,12 +43,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 DEFAULT_SEARCH_SPACE = {
     "version": 1,
     "parameters": [
-        {"name": "fixpoint_max",     "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 0,    "max": 30     },
+        {"name": "fixpoint_max",     "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 1,    "max": 30     },
         {"name": "unroll_max",       "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,    "max": 512    },
         {"name": "large_module_max", "env_var": "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1,    "max": 100000 },
         {"name": "early_prune",      "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"                                   },
         {"name": "o3_final",         "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"                                   },
-        {"name": "pipeline",         "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "categorical","choices": [0, 1]           },
     ],
 }
 
@@ -60,6 +58,7 @@ from record_benchmark import (
     resolve_db_path,
     _parse_bm_name,
     get_git_sha,
+    refresh_views,
 )
 
 
@@ -209,6 +208,7 @@ ORDER BY ob.study_name, ob.kernel, ob._total;
 def open_optim_db(db_path: Path) -> duckdb.DuckDBPyConnection:
     """Open an existing benchmark DB and ensure optimizer tables/views exist."""
     con = _rb_open_db(db_path)
+    refresh_views(con)  # refresh base views first so optimizer views see current schema
     con.execute(_SCHEMA_OPTIM_TRIAL_PARAMS)
     con.execute(_SCHEMA_UNSPEC_BASELINES)
     con.execute(_SCHEMA_OPTIM_SESSIONS)
@@ -225,12 +225,13 @@ def store_raw_benchmarks(con: duckdb.DuckDBPyConnection, data: dict, git_sha: st
     run_id = str(uuid.uuid4())
     run_ts = datetime.now()
     con.execute(
-        "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO context VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             run_id, run_ts, git_sha,
             ctx.get("date", ""), ctx.get("host_name", ""), ctx.get("executable", ""),
             ctx.get("num_cpus"), ctx.get("mhz_per_cpu"), ctx.get("cpu_scaling_enabled"),
             ctx.get("library_version", ""), ctx.get("library_build_type", ""),
+            False,  # best_practice_full — optimization trials are not best-practice runs
         ],
     )
     ensure_columns(con, benchmarks)
@@ -295,8 +296,20 @@ def list_benchmarks(binary: str, filter_pattern: str) -> list[str]:
     return names
 
 
-def measure_unspecialized(binary: str, timeout: float) -> dict[str, float]:
-    """Run unspecialized benchmarks 3 times; return {kernel_name: median_ns}. Fatal on failure."""
+def _derive_unspec_filter(filter_pattern: str) -> str:
+    """Derive an unspecialized filter from the optimization filter by replacing the phase."""
+    import re as _re
+    # Replace t:(jit_overhead|specialized_exec) variants with t:unspecialized
+    derived = _re.sub(r"t:\([^)]+\)", "t:unspecialized", filter_pattern)
+    derived = _re.sub(r"t:(jit_overhead|specialized_exec)", "t:unspecialized", derived)
+    if derived != filter_pattern:
+        return derived
+    return "unspecialized"
+
+
+def measure_unspecialized(binary: str, timeout: float,
+                          unspec_filter: str = "unspecialized") -> dict[str, float]:
+    """Run unspecialized benchmarks once; return {kernel_name: real_time_ns}. Fatal on failure."""
     fd, out_json = tempfile.mkstemp(suffix="_unspec.json")
     os.close(fd)
     try:
@@ -305,10 +318,10 @@ def measure_unspecialized(binary: str, timeout: float) -> dict[str, float]:
                 binary,
                 "--benchmark_out_format=json",
                 f"--benchmark_out={out_json}",
-                "--benchmark_filter=unspecialized",
-                "--benchmark_repetitions=3",
+                f"--benchmark_filter={unspec_filter}",
+                "--benchmark_repetitions=1",
             ],
-            capture_output=True, timeout=timeout * 4, check=True,
+            capture_output=True, timeout=timeout * 6, check=True,
         )
         with open(out_json) as f:
             data = json.load(f)
@@ -320,7 +333,7 @@ def measure_unspecialized(binary: str, timeout: float) -> dict[str, float]:
     mult_map = {"ns": 1.0, "us": 1e3, "ms": 1e6, "s": 1e9}
     result: dict[str, float] = {}
     for b in data.get("benchmarks", []):
-        if b.get("run_type") != "aggregate" or b.get("aggregate_name") != "median":
+        if b.get("run_type") != "iteration":
             continue
         kv = _parse_bm_name(b.get("name", ""))
         kernel = kv.get("kv_n", "")
@@ -333,13 +346,13 @@ def measure_unspecialized(binary: str, timeout: float) -> dict[str, float]:
 
 
 # ---------------------------------------------------------------------------
-# Per-benchmark subprocess execution
+# Per-trial subprocess execution (single invocation for all benchmarks)
 # ---------------------------------------------------------------------------
 
-def run_single_benchmark(
-    binary: str, name: str, env: dict, timeout: float
+def run_all_benchmarks(
+    binary: str, filter_pattern: str, env: dict, trial_timeout: float
 ) -> dict | None:
-    """Run one named benchmark; return parsed JSON or None on timeout/failure."""
+    """Run all matched benchmarks in one subprocess; return parsed JSON or None on failure."""
     fd, out_json = tempfile.mkstemp(suffix=".json")
     os.close(fd)
     try:
@@ -348,10 +361,10 @@ def run_single_benchmark(
                 binary,
                 "--benchmark_out_format=json",
                 f"--benchmark_out={out_json}",
-                f"--benchmark_filter=^{re.escape(name)}$",
+                f"--benchmark_filter={filter_pattern}",
                 "--benchmark_repetitions=1",
             ],
-            env=env, timeout=timeout, check=True, capture_output=True,
+            env=env, timeout=trial_timeout, check=True, capture_output=True,
         )
         with open(out_json) as f:
             return json.load(f)
@@ -396,57 +409,72 @@ def run_trial(
     benchmark_names: list[str],
     unspec_by_kernel: dict[str, float],
     timeout: float,
+    filter_pattern: str,
 ) -> tuple[dict[str, float], dict[str, float], dict | None, bool]:
-    """Run each benchmark individually with independent timeout isolation.
+    """Run all benchmarks in a single subprocess per trial.
 
+    Total trial timeout = timeout * num_benchmarks + 30s to amortize initialization.
     Returns (jit_by_kernel, exc_by_kernel, merged_json, used_fallback).
-    Timed-out benchmarks fall back to: jit → timeout_ns, exec → unspec_ns[kernel].
+    On total failure, applies fallback: jit → timeout_ns, exec → unspec_ns[kernel].
     """
     env = {**os.environ, **_params_to_env(magic, descriptor)}
     mult_map = {"ns": 1.0, "us": 1e3, "ms": 1e6, "s": 1e9}
     timeout_ns = timeout * 1e9
+    trial_timeout = timeout * max(len(benchmark_names), 1) + 30.0
 
     jit_by_kernel: dict[str, float] = {}
     exc_by_kernel: dict[str, float] = {}
     used_fallback = False
-    all_benchmarks: list[dict] = []
-    first_context: dict | None = None
 
-    for name in benchmark_names:
-        kv = _parse_bm_name(name)
-        kernel = kv.get("kv_n", "")
-        phase = kv.get("kv_t", "")
+    json_data = run_all_benchmarks(binary, filter_pattern, env, trial_timeout)
 
-        json_data = run_single_benchmark(binary, name, env, timeout)
-
-        if json_data is not None:
-            if first_context is None:
-                first_context = json_data.get("context", {})
-            for b in json_data.get("benchmarks", []):
-                all_benchmarks.append(b)
-                if b.get("run_type") != "iteration":
-                    continue
-                bkv = _parse_bm_name(b.get("name", ""))
-                bkernel = bkv.get("kv_n", "")
-                bphase = bkv.get("kv_t", "")
-                if not bkernel or not bphase:
-                    continue
-                ns = b.get("real_time", 0.0) * mult_map.get(b.get("time_unit", "ns"), 1.0)
-                if bphase == "jit_overhead":
-                    jit_by_kernel[bkernel] = ns
-                elif bphase == "specialized_exec":
-                    exc_by_kernel[bkernel] = ns
-        elif kernel:
-            used_fallback = True
+    if json_data is None:
+        # Entire trial failed — apply fallback to all expected kernels
+        used_fallback = True
+        for name in benchmark_names:
+            kv = _parse_bm_name(name)
+            kernel = kv.get("kv_n", "")
+            phase = kv.get("kv_t", "")
+            if not kernel:
+                continue
             if phase == "jit_overhead":
                 jit_by_kernel[kernel] = timeout_ns
             elif phase == "specialized_exec":
                 exc_by_kernel[kernel] = unspec_by_kernel.get(kernel, timeout_ns)
+        return jit_by_kernel, exc_by_kernel, None, used_fallback
 
-    merged = (
-        {"context": first_context or {}, "benchmarks": all_benchmarks}
-        if all_benchmarks else None
-    )
+    all_benchmarks = json_data.get("benchmarks", [])
+    first_context = json_data.get("context", {})
+
+    for b in all_benchmarks:
+        if b.get("run_type") != "iteration":
+            continue
+        bkv = _parse_bm_name(b.get("name", ""))
+        bkernel = bkv.get("kv_n", "")
+        bphase = bkv.get("kv_t", "")
+        if not bkernel or not bphase:
+            continue
+        ns = b.get("real_time", 0.0) * mult_map.get(b.get("time_unit", "ns"), 1.0)
+        if bphase == "jit_overhead":
+            jit_by_kernel[bkernel] = ns
+        elif bphase == "specialized_exec":
+            exc_by_kernel[bkernel] = ns
+
+    # Apply fallback for any kernels that didn't appear in output
+    expected_jit = {_parse_bm_name(n).get("kv_n", "") for n in benchmark_names
+                    if _parse_bm_name(n).get("kv_t", "") == "jit_overhead"}
+    expected_exec = {_parse_bm_name(n).get("kv_n", "") for n in benchmark_names
+                     if _parse_bm_name(n).get("kv_t", "") == "specialized_exec"}
+    for kernel in expected_jit - set(jit_by_kernel):
+        if kernel:
+            jit_by_kernel[kernel] = timeout_ns
+            used_fallback = True
+    for kernel in expected_exec - set(exc_by_kernel):
+        if kernel:
+            exc_by_kernel[kernel] = unspec_by_kernel.get(kernel, timeout_ns)
+            used_fallback = True
+
+    merged = {"context": first_context, "benchmarks": all_benchmarks} if all_benchmarks else None
     return jit_by_kernel, exc_by_kernel, merged, used_fallback
 
 
@@ -464,12 +492,14 @@ def make_objective(
     unspec_by_kernel: dict[str, float],
     lock: threading.Lock,
     git_sha: str,
+    filter_pattern: str,
 ):
     def objective(trial: optuna.Trial) -> float:
         magic = _sample_params(trial, descriptor)
 
         jit_by_kernel, exc_by_kernel, merged_json, used_fallback = run_trial(
             binary, magic, descriptor, benchmark_names, unspec_by_kernel, args.timeout,
+            filter_pattern,
         )
         obj_jit, obj_exec, obj_combined = _geomean_from_dicts(jit_by_kernel, exc_by_kernel)
 
@@ -528,7 +558,8 @@ def parse_args():
     parser.add_argument("--n-parallel", type=int, default=4, metavar="N",
                         help="Concurrent trials (default: 4).")
     parser.add_argument("--timeout", type=float, default=60.0, metavar="SEC",
-                        help="Per-benchmark subprocess timeout in seconds (default: 60).")
+                        help="Per-benchmark time budget in seconds; total trial timeout = "
+                             "N × num_benchmarks + 30s (default: 60).")
     parser.add_argument("--benchmark-filter", default="jit_overhead|specialized_exec",
                         metavar="PATTERN",
                         help="--benchmark_filter passed to binary "
@@ -542,6 +573,10 @@ def parse_args():
     parser.add_argument("--apply-default-filters", action="store_true", default=False,
                         help="Prepend a filter that excludes benchmarkJITAnalysis benchmarks "
                              "(names containing '_t_jit_analysis_') from the active set.")
+    parser.add_argument("--reuse-unspec-baselines-from", default=None, metavar="STUDY_NAME",
+                        help="Load unspecialized baselines from an existing study in the DB "
+                             "instead of re-measuring them. Useful when baseline measurement "
+                             "is slow (e.g., large datasets).")
     return parser.parse_args()
 
 
@@ -603,14 +638,34 @@ def main():
 
     print(f"  {len(benchmark_names)} benchmarks matched.", flush=True)
 
-    # Measure unspecialized baseline (3 reps, median; used as exec fallback on timeout)
-    print("Measuring unspecialized baseline (3 repetitions)...", flush=True)
-    try:
-        unspec_by_kernel = measure_unspecialized(binary, args.timeout)
-    except RuntimeError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
-    print(f"  {len(unspec_by_kernel)} kernels measured.", flush=True)
+    # Measure or load unspecialized baseline
+    if args.reuse_unspec_baselines_from is not None:
+        print(f"Loading unspecialized baselines from study '{args.reuse_unspec_baselines_from}'...",
+              flush=True)
+        _src_con = duckdb.connect(str(db_path))
+        try:
+            rows = _src_con.execute(
+                "SELECT kernel, unspec_ns FROM unspec_baselines WHERE study_name = ?",
+                [args.reuse_unspec_baselines_from],
+            ).fetchall()
+        finally:
+            _src_con.close()
+        if not rows:
+            print(f"Error: no baselines found for study '{args.reuse_unspec_baselines_from}'",
+                  file=sys.stderr)
+            sys.exit(1)
+        unspec_by_kernel = {row[0]: row[1] for row in rows}
+        print(f"  Loaded {len(unspec_by_kernel)} kernels: {sorted(unspec_by_kernel)}", flush=True)
+    else:
+        print("Measuring unspecialized baseline...", flush=True)
+        unspec_filter = _derive_unspec_filter(filter_pattern)
+        print(f"  Unspecialized filter: {unspec_filter}", flush=True)
+        try:
+            unspec_by_kernel = measure_unspecialized(binary, args.timeout, unspec_filter)
+        except RuntimeError as e:
+            print(f"Error: {e}", file=sys.stderr)
+            sys.exit(1)
+        print(f"  {len(unspec_by_kernel)} kernels measured.", flush=True)
 
     # Initialize DB and persist baselines
     con = open_optim_db(db_path)
@@ -645,8 +700,9 @@ def main():
     print(f"\nStudy:   {study_name}")
     print(f"DB:      {db_path}")
     print(f"Binary:  {binary}")
+    trial_timeout_estimate = args.timeout * max(len(benchmark_names), 1) + 30.0
     print(f"Trials:  {args.n_trials}  Parallel: {args.n_parallel}  "
-          f"Timeout/benchmark: {args.timeout}s")
+          f"Timeout/benchmark: {args.timeout}s  Total/trial: {trial_timeout_estimate:.0f}s")
     print(f"Filter:  {args.benchmark_filter}")
     desc_source = str(args.search_space) if args.search_space else "built-in"
     print(f"Search space: {desc_source} ({len(descriptor['parameters'])} parameters)")
@@ -662,6 +718,7 @@ def main():
         unspec_by_kernel=unspec_by_kernel,
         lock=lock,
         git_sha=git_sha,
+        filter_pattern=filter_pattern,
     )
 
     _interrupted = False
@@ -682,6 +739,18 @@ def main():
                 )
         except Exception as e:
             print(f"Warning: could not finalise session status: {e}", file=sys.stderr)
+
+    # Extract and save parameter importance (only if not interrupted and enough trials)
+    if not _interrupted:
+        try:
+            from optuna.importance import get_param_importances
+            importance = get_param_importances(study)
+            importance_path = Path(output_best).parent / f"importance_{study_name}.json"
+            with open(importance_path, "w") as f:
+                json.dump(dict(importance), f, indent=2)
+            print(f"Parameter importance written to: {importance_path}")
+        except Exception as e:
+            print(f"Warning: could not compute parameter importance: {e}", file=sys.stderr)
 
     # Report best trial (geomean recomputed from per-kernel rows via v_optim_results)
     con = duckdb.connect(str(db_path))
