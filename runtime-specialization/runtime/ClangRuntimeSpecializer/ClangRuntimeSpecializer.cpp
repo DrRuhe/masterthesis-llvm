@@ -484,12 +484,6 @@ namespace clangRuntimeSpecializer {
                     "FuncSpecMaxGroups is ignored by the inlining pipeline (pipeline 0); "
                     "set OptimizationPipelineToUse=1 to use function-specialization cloning.");
               }
-              if (ValidPipeline == 1 && Instance->CurrentCallOptions.MaxFixpointIterations > 1) {
-                log(LogLevel::Warning,
-                    "MaxFixpointIterations > 1 has no effect on the func-spec pipeline (pipeline 1); "
-                    "the fixpoint loop is skipped for this pipeline.");
-              }
-
               // Dispatch to the selected pipeline implementation.
               PipelineRunArgs PipeArgs{
                   M,

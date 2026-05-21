@@ -334,6 +334,10 @@ namespace clangRuntimeSpecializer {
       unsigned FuncSpecMaxGroups = 0;        // 0 = unlimited; skip function if it has more distinct constant-arg groups
       int OptimizationPipelineToUse = 0;    // 0 = inlining pipeline, 1 = function-specialization pipeline
 
+      // --- Pipeline 1 budget knobs ---
+      int    P1InlineThreshold = 225;        // env: CRS_DEFAULT_P1_INLINE_THRESHOLD; LLVM O3 default
+      double P1MaxModuleGrowth = 2.0;        // env: CRS_DEFAULT_P1_MAX_MODULE_GROWTH; soft cap on post-fixpoint inst count vs pre-fixpoint
+
       // --- Budget metadata (set by FromExpectedRuntime; stored for logging/counter export) ---
       double ExpectedCallDurationNs = 0.0;  // 0 = not set
       double BudgetScale            = 1.0;
@@ -359,6 +363,8 @@ namespace clangRuntimeSpecializer {
         static const bool     kO3Final         = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
         static const int      kPipeline        = (int)_envOr("CRS_DEFAULT_PIPELINE",                    0.0);
         static const unsigned kFuncSpecMaxGroups = (unsigned)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS",  0.0);
+        static const int      kP1InlineThresh  = (int)_envOr("CRS_DEFAULT_P1_INLINE_THRESHOLD",       225.0);
+        static const double   kP1MaxGrowth     = _envOr("CRS_DEFAULT_P1_MAX_MODULE_GROWTH",             2.0);
         Options O;
         O.MaxFixpointIterations     = kFixpoint;
         O.LoopUnrollCount           = kUnroll;
@@ -367,6 +373,8 @@ namespace clangRuntimeSpecializer {
         O.EnableO3Final             = kO3Final;
         O.OptimizationPipelineToUse = kPipeline;
         O.FuncSpecMaxGroups         = kFuncSpecMaxGroups;
+        O.P1InlineThreshold         = kP1InlineThresh;
+        O.P1MaxModuleGrowth         = kP1MaxGrowth;
         return O;
       }
       static Options O3Only() {
@@ -425,6 +433,8 @@ namespace clangRuntimeSpecializer {
       Options& withOptimize(bool V)                   { Optimize = V; return *this; }
       Options& withFuncSpecMaxGroups(unsigned N)      { FuncSpecMaxGroups = N; return *this; }
       Options& withOptimizationPipeline(int P)        { OptimizationPipelineToUse = P; return *this; }
+      Options& withP1InlineThreshold(int N)           { P1InlineThreshold = N; return *this; }
+      Options& withP1MaxModuleGrowth(double G)        { P1MaxModuleGrowth = G; return *this; }
       Options& withExpectedCallDurationNs(double V)   { ExpectedCallDurationNs = V; return *this; }
       Options& withBudgetScale(double V)              { BudgetScale = V; return *this; }
       Options& withJITTimeoutSeconds(unsigned V)      { JITTimeoutSeconds = V; return *this; }
