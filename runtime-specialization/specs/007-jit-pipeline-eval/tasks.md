@@ -289,3 +289,56 @@ wait
 - All timing runs on the release build with CPU scaling disabled
 - The smoke test (T010) is a hard gate: if any of T008–T010 fail, debug infrastructure before full experiments
 - The Reflection (T030) is mandatory: without it the iteration loop has no feedback mechanism
+
+---
+
+## Phase 9: Iteration 2 — Reintroduce Pipeline 1 + Tighter Trial Budget
+
+**Goal**: Run the full evaluation loop with `pipeline` + P1-budget params in the Optuna
+search space, 50 trials, reps=5. Produce iteration-2 reflection comparing P0/P1 winners
+per kernel.
+
+**Context**: Spec 014 (commits `f3f369028ec2`, `ae132cb705a3`, `a3e6b4d3dec3`) made
+Pipeline 1 functional via `ConstantArgFunctionSpecializationPass` + budget-aware
+inlining. Iter-1 excluded P1 (RQ-11 SIGSEGV on the real binary); iter-2 reintroduces it.
+Reflection §1–§3 recommended (a) `pipeline` + P1 budget params in the search space, (b)
+50 trials (iter-1 converged in 24), (c) reps=5 for ablation. Per-kernel Optuna and RDB
+storage are deferred.
+
+**Independent test**: `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/reflection.md`
+exists, cites a study `uc_optim_iter2_<DATE>`, and either (a) demonstrates ≥ 1 UC group
+where P1 Pareto-dominates the iter-1 P0 optimum, or (b) documents P1 as a uniformly
+worse choice with measured evidence.
+
+**Execution rule (NON-NEGOTIABLE)**: each task below runs in a fresh subagent. Benchmark
+and optimization tasks (T039, T043, T044–T048) are mutually exclusive — never run two
+concurrently. Each `AllBenchmarks` invocation is ~14 GB resident and a second concurrent
+run OOMs the box (`feedback_concurrent_benchmarks.md`).
+
+### 9.0 — Pre-loop pipeline verification (BOTH pipelines)
+
+- [x] T037 [P9-verify] Build both trees in a subagent: `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug ClangRuntimeSpecializer LLVMRuntimeSpecializationComptimePlugin AllBenchmarks` then `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release ClangRuntimeSpecializer LLVMRuntimeSpecializationComptimePlugin AllBenchmarks`. Halt the iteration on any build failure.
+- [ ] T038 [P9-verify] [complex] Run full smoke suite in a subagent: `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug check-smoke-runtime-specializer`. Confirm the report lists at least the same `Passed` count as the green baseline at commit `f3f369028ec2`, and that both `CRS_DEFAULT_PIPELINE=0` and `CRS_DEFAULT_PIPELINE=1` RUN lines are present for every P1-applicable test per `specs/014-pipeline1-budget-inlining/details.md`. Halt on any regression.
+- [ ] T039 [P9-verify] [complex] P1 smoke ablation on AllBenchmarks in a subagent. Write `benchmarks/configs/p1_smoke.json` with two configs `{default, p1_default}` (the second sets `CRS_DEFAULT_PIPELINE=1`), then run `python3 benchmarks/ablation_benchmarks.py /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks --db benchmarks/eval_smoke.duckdb --study-name p1_smoke_iter2 --configs benchmarks/configs/p1_smoke.json --benchmark-filter 'BM_g:(uc1|uc2|uc7|uc8|uc12|uc14);.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)' --reps 3`. Verify `SELECT config_name, COUNT(*) FROM v_ablation_medians WHERE study_name='p1_smoke_iter2' GROUP BY 1` returns 2 × 6 = 12 non-null rows. **Halt the iteration if any P1 row is NULL** — this is the RQ-11-class crash the user explicitly asked to surface before the full loop.
+
+### 9.1 — Search-space & config updates for iteration 2
+
+- [ ] T040 [P9-config] In a subagent, patch `benchmarks/optimize_benchmarks.py` `DEFAULT_SEARCH_SPACE`: add `{pipeline: bool}`, `{p1_inline_threshold: log_int 50..2000}`, `{p1_max_module_growth: float 1.0..5.0}` and change `fixpoint_max.min` from 1 to 2 (RQ-15 SIGSEGV guard). Bump `version` to 2. Single-file change.
+- [ ] T041 [P9-config] In a subagent, patch `benchmarks/run_evaluation.sh`: Phase A `--n-trials 150` → `50`; Phase B / Phase C `--reps 3` → `5`; rename `STUDY_A=uc_optim_${DATE}` to `STUDY_A=uc_optim_iter2_${DATE}` (and propagate to `STUDY_B`, `STUDY_C_UC`, `STUDY_C_TPCH`, `STUDY_E`). Add a `--phase-only=A|B|C|E|R` flag so subagents can run a single phase without re-running the full chain.
+- [ ] T042 [P9-config] In a subagent, rewrite `benchmarks/configs/ablation_uc.json`: keep the existing 8 configs and add `pipeline_1_default` (`CRS_DEFAULT_PIPELINE=1`), `pipeline_1_aggressive_budget` (`CRS_DEFAULT_PIPELINE=1` + `CRS_DEFAULT_P1_INLINE_THRESHOLD=1000` + `CRS_DEFAULT_P1_MAX_MODULE_GROWTH=4.0`), and `pipeline_1_tight_budget` (`CRS_DEFAULT_PIPELINE=1` + `CRS_DEFAULT_P1_INLINE_THRESHOLD=100` + `CRS_DEFAULT_P1_MAX_MODULE_GROWTH=1.5`). RQ-11 is obsolete after spec 014.
+- [ ] T043 [P9-config] [complex] In a subagent, sanity-check the edits: `python3 -c "import json; json.load(open('benchmarks/configs/ablation_uc.json'))"` then `bash benchmarks/run_evaluation.sh <UC_BINARY> /dev/null --smoke-only --db benchmarks/eval_smoke.duckdb`. Smoke must pass before any full-scale phase runs.
+
+### 9.2 — Run the iteration (each step in its own subagent; STRICTLY SEQUENTIAL)
+
+- [ ] T044 [P9-run] [complex] Phase A in a subagent: `bash benchmarks/run_evaluation.sh <UC_BINARY> /dev/null --db benchmarks/benchmarks.duckdb --phase-only=A`. Verify `SELECT COUNT(*) FROM optim_trial_params WHERE study_name LIKE 'uc_optim_iter2_%'` ≥ 50.
+- [ ] T045 [P9-run] [complex] Phase B in a subagent: same script with `--phase-only=B`. Verify `v_ablation_medians WHERE study_name LIKE 'ablation_uc_iter2_%'` returns 11 config_names × 6 groups = 66 non-null rows. Halt on any NULL P1 row and diagnose before continuing.
+- [ ] T046 [P9-run] [complex] Phase C in a subagent: same script with `--phase-only=C`. The subagent must first check `[ -x /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark ]`. If absent, document as "Exp C still skipped (RQ-12 unchanged)" and move on; if present, run it and halt only on crash.
+- [ ] T047 [P9-run] [complex] Phase E in a subagent: same script with `--phase-only=E`. Sweep only `fixpoint_max`, `early_prune`, `o3_final`, `pipeline`, `p1_inline_threshold`, `p1_max_module_growth` (skip `unroll_max` and `large_module_max` per iter-1 reflection §3). Reps=5 per sweep point.
+- [ ] T048 [P9-run] Phase R in a subagent: same script with `--phase-only=R`. Outputs to `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`. Lightweight task — plotting only, no benchmark execution.
+
+### 9.3 — Reflection & close
+
+- [ ] T049 [P9-reflect] [complex] In a subagent, write `benchmarks/reports/<run-dir>/reflection.md`. Mandatory sections: (1) Headline result citing `v_optim_best_per_kernel` for `uc_optim_iter2_*` — name the winning `pipeline` value(s) and P1 threshold/growth band; (2) Cross-iteration delta vs the iter-1 winner (`uc_optim_20260517` best: fixpoint_max=7, unroll_max=4, large_module_max=0, early_prune=1, o3_final=1, pipeline=0) per UC group with 5 % noise band; (3) Pipeline-1 verdict — did P1 Pareto-dominate P0 for any kernel, and if not what did it lose on; (4) Next-iteration scope including a recommendation about whether iteration 3 is warranted. Every claim must cite a study name and a query / plot file.
+- [ ] T050 [P9-reflect] In a subagent, validate end-to-end: `python3 -c "import duckdb; c=duckdb.connect('benchmarks/benchmarks.duckdb'); print(c.execute(\"SELECT study_name, COUNT(*) FROM context WHERE study_name LIKE '%iter2%' GROUP BY 1\").fetchall())"`. Verify all four iter-2 study names are present; verify no unexplained NULL `run_id` rows in `ablation_studies`; verify `reflection.md` exists at the run dir.
+
+**Checkpoint**: Iteration 2 closed. Reflection seeds the iteration-3 scope decision.
