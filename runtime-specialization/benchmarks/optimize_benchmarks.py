@@ -37,17 +37,20 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).parent))
 
 # ---------------------------------------------------------------------------
-# Built-in default search-space descriptor (version 1)
+# Built-in default search-space descriptor (version 2)
 # ---------------------------------------------------------------------------
 
 DEFAULT_SEARCH_SPACE = {
-    "version": 1,
+    "version": 2,
     "parameters": [
-        {"name": "fixpoint_max",     "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 1,    "max": 30     },
-        {"name": "unroll_max",       "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,    "max": 512    },
-        {"name": "large_module_max", "env_var": "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1,    "max": 100000 },
-        {"name": "early_prune",      "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"                                   },
-        {"name": "o3_final",         "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"                                   },
+        {"name": "fixpoint_max",          "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 2,    "max": 30     },
+        {"name": "unroll_max",            "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,    "max": 512    },
+        {"name": "large_module_max",      "env_var": "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1,    "max": 100000 },
+        {"name": "early_prune",           "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"                                   },
+        {"name": "o3_final",              "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"                                   },
+        {"name": "pipeline",              "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "bool"                                   },
+        {"name": "p1_inline_threshold",   "env_var": "CRS_DEFAULT_P1_INLINE_THRESHOLD",         "type": "log_int",    "min": 50,   "max": 2000   },
+        {"name": "p1_max_module_growth",  "env_var": "CRS_DEFAULT_P1_MAX_MODULE_GROWTH",        "type": "float",      "min": 1.0,  "max": 5.0    },
     ],
 }
 
@@ -72,7 +75,7 @@ def _load_descriptor(path: "Path | None") -> dict:
         return DEFAULT_SEARCH_SPACE
     with open(path) as f:
         d = json.load(f)
-    if d.get("version") != 1:
+    if d.get("version") not in (1, 2):
         raise SystemExit(f"Unsupported search-space descriptor version: {d.get('version')!r}")
     seen_names, seen_envvars = set(), set()
     valid_types = {"int", "log_int", "float", "log_float", "bool", "categorical", "int_or_zero"}
