@@ -51,5 +51,27 @@
       "CRS_DEFAULT_EARLY_PRUNE": "1",
       "CRS_DEFAULT_O3_FINAL": "1"
     }
+  },
+  {
+    "name": "pipeline_1_default",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "1"
+    }
+  },
+  {
+    "name": "pipeline_1_aggressive_budget",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "1",
+      "CRS_DEFAULT_P1_INLINE_THRESHOLD": "1000",
+      "CRS_DEFAULT_P1_MAX_MODULE_GROWTH": "4.0"
+    }
+  },
+  {
+    "name": "pipeline_1_tight_budget",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "1",
+      "CRS_DEFAULT_P1_INLINE_THRESHOLD": "100",
+      "CRS_DEFAULT_P1_MAX_MODULE_GROWTH": "1.5"
+    }
   }
 ]

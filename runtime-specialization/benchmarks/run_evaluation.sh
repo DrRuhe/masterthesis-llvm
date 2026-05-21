@@ -287,9 +287,12 @@ configs = [
     {'name': 'no_unroll', 'env': {'CRS_DEFAULT_LOOP_UNROLL_COUNT': '1'}},
     # fixpoint_1 excluded — fixpoint_max=1 + early_prune=1 (default) + o3_final=1 (default) = SIGSEGV (RQ-15)
     {'name': 'fixpoint_2', 'env': {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '2'}},
-    # pipeline_1 excluded — CRS_DEFAULT_PIPELINE=1 causes core dump on full UC filter (RQ-11)
     {'name': 'aggressive', 'env': {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '20', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '256'}},
     opt,
+    # Pipeline 1 (budget-aware inlining, spec 014) — functional after RQ-11 resolution.
+    {'name': 'pipeline_1_default', 'env': {'CRS_DEFAULT_PIPELINE': '1'}},
+    {'name': 'pipeline_1_aggressive_budget', 'env': {'CRS_DEFAULT_PIPELINE': '1', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '1000', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '4.0'}},
+    {'name': 'pipeline_1_tight_budget', 'env': {'CRS_DEFAULT_PIPELINE': '1', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '100', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '1.5'}},
 ]
 out_path = report_dir / "configs" / "ablation_uc.json"
 out_path.parent.mkdir(parents=True, exist_ok=True)
