@@ -100,6 +100,9 @@ namespace SqlParser {
 
 
 int main(int argc, char* argv[]) {
+    clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
+    clangRuntimeSpecializer::ClangRuntimeSpecializer::setLogLevel(clangRuntimeSpecializer::ClangRuntimeSpecializer::LogLevel::Debug);
+
     std::string sql_query = argsToString(argc, argv);
     Operator* query_plan = SqlParser::parse(sql_query);
 
