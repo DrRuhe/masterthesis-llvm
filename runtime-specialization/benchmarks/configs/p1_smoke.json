@@ -1,0 +1,4 @@
+[
+  {"name": "default", "env": {}},
+  {"name": "p1_default", "env": {"CRS_DEFAULT_PIPELINE": "1"}}
+]
