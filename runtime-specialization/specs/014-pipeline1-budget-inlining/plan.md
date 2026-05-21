@@ -1,0 +1,40 @@
+# Spec 014 — Implementation Plan
+
+- [x] Confirm `ninja check-smoke-runtime-specializer` is currently green on the debug build before any change (`/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug`)
+- [x] Confirm `pure-specialized-function-is-equivalent.cpp` currently passes under `CRS_DEFAULT_PIPELINE=0` (the P0 reference)
+- [x] Confirm `pipeline-dispatch.cpp` currently passes under both `CRS_DEFAULT_PIPELINE=0` and `=1`
+- [x] Add `P1InlineThreshold` (int, default 225) and `P1MaxModuleGrowth` (double, default 2.0) fields to `Options` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
+- [x] Add fluent setters `withP1InlineThreshold(int)` and `withP1MaxModuleGrowth(double)` to `Options`
+- [x] Add env-var overrides `CRS_DEFAULT_P1_INLINE_THRESHOLD` and `CRS_DEFAULT_P1_MAX_MODULE_GROWTH` inside `Options::Default()`
+- [x] Remove the warning at `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp:487-491` ("MaxFixpointIterations > 1 has no effect on the func-spec pipeline")
+- [x] Verify `ConstantArgFunctionSpecializationPass.cpp` does NOT add `Attribute::AlwaysInline` on the in-place case (lines 90–100) or on clones (lines 102–124). If a previous draft added it, revert
+- [x] [complex] Rewrite `runFuncSpecPipeline` in `runtime/ClangRuntimeSpecializer/JITPipelineFuncSpec.cpp` per `details.md`: honor `Opts.MaxFixpointIterations`, run `ConstantArgFunctionSpecializationPass` + intra-clone cleanup + budget-aware `ModuleInlinerWrapperPass` (threshold from `Opts.P1InlineThreshold`) + GlobalDCE inside the fixpoint, plus a final small cleanup pass (no full O3). Guard FPM and IPSCCP behind `!Args.IsLargeModule`
+- [x] [complex] Add the soft module-size cap: capture `StartingInsts = countInstrs(M)` before the loop; after each fixpoint iteration, break if `countInstrs(M) > StartingInsts * Opts.P1MaxModuleGrowth` (log a warning)
+- [x] Build the debug tree: `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug ClangRuntimeSpecializer LLVMRuntimeSpecializationComptimePlugin`
+- [x] [complex] Verify SC-002: run `test/smoke/pure-specialized-function-is-equivalent.cpp` with `CRS_DEFAULT_PIPELINE=1` and confirm the IR dump contains `ret i32 9`. If not, debug — likely InstCombine/LoopUnroll not folding the clone body before the inliner sees it
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/call-specialized.cpp` (no FileCheck — just `%t.exe 2`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/call-specialized-instance.cpp` (reuse `EXE` prefix)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/db-operators-modifies-argument-state.cpp` (reuse existing prefix)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/instruction-count.cpp` (reuse `EXE-10`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/o3-compilation-basic.cpp` (only the `%t.o3.exe` build)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/pure-specialized-method-is-equivalent.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-basic.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-complex-no-funcname.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-equivalence.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-no-captures.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-no-captures-no-funcname.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-raii.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-void.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-lambda-zero-arg-no-funcname.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-method-is-equivalent.cpp` (reuse `EXE` or runtime-only)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/speconly-funcptr.cpp` (reuse `EXE`)
+- [x] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/zero-arg-lambda-equals-speconly.cpp` (reuse `EXE`)
+- [x] [complex] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/pure-specialized-function-is-equivalent.cpp` (try reusing `EXE`; if FileCheck fails, split to `P0-EXE`/`P1-EXE` and relax the P1 expectations to assert only `ret i32 9` without entry-block layout)
+- [x] [complex] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/specialized-function-is-equivalent.cpp` (same split strategy if needed)
+- [x] [complex] Add `CRS_DEFAULT_PIPELINE=1` RUN lines to `test/smoke/struct-arg-hide.cpp` (same split strategy if needed)
+- [x] Run `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug check-smoke-runtime-specializer`
+- [x] [complex] Debug any failing P1 tests: inspect the JIT IR dump (`LogLevel::Debug`) for `_cspec_` clones, check that `Pipeline1TargetFuncName` resolved correctly, and confirm the cost-based inliner actually inlined the clone for small kernels. Adjust pass schedule or P1 default threshold if necessary
+- [x] [complex] Verify SC-004: confirm no P0 RUN line regresses by re-running the full smoke suite and checking the per-test results match the pre-change baseline (same number passing under P0)
+- [x] [complex] Verify SC-005: pick one bucket-B kernel, run with `CRS_DEFAULT_P1_INLINE_THRESHOLD=10000` and with the default — confirm IR output is identical (i.e. small kernels already inline at the default)
+- [x] Verify SC-001: full `ninja check-smoke-runtime-specializer` is green
+- [x] Commit each logical group of changes separately (Options additions; pipeline rewrite; test fanout; any debugging fixes), referencing the relevant task line in the commit message
