@@ -25,7 +25,7 @@ section for the canonical code pattern.
 **Purpose**: Create the directory skeleton and wire the new benchmark group into the
 existing CMake build so that Phase 3 tasks can proceed in parallel.
 
-- [ ] T001 Create `benchmarks/use-cases/` directory skeleton, parent CMakeLists.txt
+- [x] T001 Create `benchmarks/use-cases/` directory skeleton, parent CMakeLists.txt
   (with six `add_subdirectory` calls), and wire `add_subdirectory(use-cases)` into
   `benchmarks/CMakeLists.txt`
 
@@ -39,7 +39,7 @@ existing CMake build so that Phase 3 tasks can proceed in parallel.
 (`CLANG_EXE`, `PLUGIN_LIB`, `CXX_FLAGS_LIST`) and the `AllBenchmarks` integration
 plumbing before any per-use-case target is registered.
 
-- [ ] T002 Implement `benchmarks/use-cases/CMakeLists.txt` with shared CMake variables,
+- [x] T002 Implement `benchmarks/use-cases/CMakeLists.txt` with shared CMake variables,
   six `add_subdirectory` stubs, and `AllBenchmarks` object-file accumulation pattern
   (PARENT_SCOPE exports); edit `benchmarks/CMakeLists.txt` to consume the exported
   object-file variables and link them into the `AllBenchmarks` target
@@ -69,7 +69,7 @@ files). Run them in parallel. Each task ends with `git commit`.
 
 ### UC1 — SQL Predicate Evaluation
 
-- [ ] T003 [P] [US1] Implement UC1 SQL predicate benchmark in
+- [x] T003 [P] [US1] Implement UC1 SQL predicate benchmark in
   `benchmarks/use-cases/UC1SqlPredicate/` (UC1Kernels.h, UC1Kernels.cpp,
   UC1Benchmark.cpp, CMakeLists.txt)
 
@@ -117,7 +117,7 @@ files). Run them in parallel. Each task ends with `git commit`.
 
 ### UC2 — Image Convolution with Fixed Kernel
 
-- [ ] T004 [P] [US1] Implement UC2 convolution benchmark in
+- [x] T004 [P] [US1] Implement UC2 convolution benchmark in
   `benchmarks/use-cases/UC2Convolution/` (UC2Kernels.h, UC2Kernels.cpp,
   UC2Benchmark.cpp, CMakeLists.txt)
 
@@ -149,7 +149,7 @@ files). Run them in parallel. Each task ends with `git commit`.
 
 ### UC7 — DFA Regex Matching with Fixed Pattern
 
-- [ ] T005 [P] [US1] Implement UC7 DFA regex benchmark in
+- [x] T005 [P] [US1] Implement UC7 DFA regex benchmark in
   `benchmarks/use-cases/UC7DfaRegex/` (UC7Kernels.h, UC7Kernels.cpp,
   UC7Benchmark.cpp, CMakeLists.cpp)
 
@@ -183,7 +183,7 @@ files). Run them in parallel. Each task ends with `git commit`.
 
 ### UC8 — Incremental View Maintenance
 
-- [ ] T006 [P] [US1] Implement UC8 IVM benchmark in
+- [x] T006 [P] [US1] Implement UC8 IVM benchmark in
   `benchmarks/use-cases/UC8IVM/` (UC8Kernels.h, UC8Kernels.cpp,
   UC8Benchmark.cpp, CMakeLists.txt)
 
@@ -211,7 +211,7 @@ files). Run them in parallel. Each task ends with `git commit`.
 
 ### UC12 — Columnar Analytics GROUP BY SUM
 
-- [ ] T007 [P] [US1] Implement UC12 GROUP BY benchmark in
+- [x] T007 [P] [US1] Implement UC12 GROUP BY benchmark in
   `benchmarks/use-cases/UC12GroupBy/` (UC12Kernels.h, UC12Kernels.cpp,
   UC12Benchmark.cpp, CMakeLists.txt)
 
@@ -237,7 +237,7 @@ files). Run them in parallel. Each task ends with `git commit`.
 
 ### UC14 — Sort with Fixed Comparator
 
-- [ ] T008 [P] [US1] Implement UC14 sort benchmark in
+- [x] T008 [P] [US1] Implement UC14 sort benchmark in
   `benchmarks/use-cases/UC14Sort/` (UC14Kernels.h, UC14Kernels.cpp,
   UC14Benchmark.cpp, CMakeLists.txt)
 
@@ -326,7 +326,7 @@ AllBenchmarks object files must reflect calibrated values.
 
 ## Phase 4: AllBenchmarks Integration & Build Verification (US1 continued)
 
-- [ ] T009 [US1] Edit `benchmarks/CMakeLists.txt` to integrate all six use-case kernel and
+- [x] T009 [US1] Edit `benchmarks/CMakeLists.txt` to integrate all six use-case kernel and
   benchmark objects into the existing `AllBenchmarks` target, following the
   `add_custom_command` + `PARENT_SCOPE` variable pattern used for the TPC-H benchmarks.
   Then verify `ninja -C llvm/llvm/build/release AllBenchmarks` succeeds.
@@ -353,7 +353,7 @@ least two of UC1, UC2, UC7.
 `SELECT kernel, unspec_ns / spec_ns AS speedup FROM v_optim_best_per_kernel`
 for these three archetypes and verify speedup > 1.10 for ≥ 2.
 
-- [ ] T010 [US2] Run all six benchmarks in release mode, record to `benchmarks/benchmarks.duckdb`
+- [x] T010 [US2] Run all six benchmarks in release mode, record to `benchmarks/benchmarks.duckdb`
   via `record_benchmark.py`, and document speedup results; if ≥ 2 archetypes show < 10%
   speedup, open a finding comment in `specs/008-use-case-benchmarks/plan.md` under a
   new "## Speedup Findings" section documenting the actual ratios and any architectural

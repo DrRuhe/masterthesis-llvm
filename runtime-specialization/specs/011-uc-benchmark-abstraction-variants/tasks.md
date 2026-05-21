@@ -285,9 +285,9 @@
 
 - [X] T081 Build and smoke-test `AllBenchmarks` target: `ninja AllBenchmarks` must succeed. Run `./AllBenchmarks --benchmark_filter="s:SMALL" --benchmark_list_tests | grep -c "a:"` and verify count equals number of scenarios with `a:` tags (at minimum 54 × 3 phases × 4 sizes = 648 entries expected, verify no missing UCs).
 
-- [ ] T082 [US3] Verify `record_benchmark.py` import: run `python benchmarks/record_benchmark.py ./AllBenchmarks --benchmark_filter="a:low|a:tradeoff|a:abstract" --benchmark_format=json` (or equivalent). Verify `kv_a` column is created and populated in `benchmarks.duckdb`. Run `duckdb benchmarks/benchmarks.duckdb "SELECT kv_a, COUNT(*) FROM benchmarks GROUP BY kv_a ORDER BY kv_a"` — expect `abstract`, `low`, `tradeoff` rows.
+- [X] T082 [US3] Verify `record_benchmark.py` import: run `python benchmarks/record_benchmark.py ./AllBenchmarks --benchmark_filter="a:low|a:tradeoff|a:abstract" --benchmark_format=json` (or equivalent). Verify `kv_a` column is created and populated in `benchmarks.duckdb`. Run `duckdb benchmarks/benchmarks.duckdb "SELECT kv_a, COUNT(*) FROM benchmarks GROUP BY kv_a ORDER BY kv_a"` — expect `abstract`, `low`, `tradeoff` rows.
 
-- [ ] T083 [US1] Verify SC-001 (54 benchmark scenarios): run `duckdb benchmarks/benchmarks.duckdb "SELECT kv_g, kv_n, kv_a, COUNT(*) FROM benchmarks WHERE kv_a IS NOT NULL GROUP BY kv_g, kv_n, kv_a ORDER BY kv_g, kv_n, kv_a"` and confirm 18 distinct (group, variant) pairs × 3 levels = 54 rows.
+- [X] T083 [US1] Verify SC-001 (54 benchmark scenarios): run `duckdb benchmarks/benchmarks.duckdb "SELECT kv_g, kv_n, kv_a, COUNT(*) FROM benchmarks WHERE kv_a IS NOT NULL GROUP BY kv_g, kv_n, kv_a ORDER BY kv_g, kv_n, kv_a"` and confirm 18 distinct (group, variant) pairs × 3 levels = 54 rows.
 
 - [X] T084 [US1] Verify SC-004 (numerical equivalence): all 6 individual UC binaries must run to completion without throwing `ClangRuntimeSpecializerChangesBehaviorError`. Run each with `--benchmark_filter="NOTHING"` so only `main()` validation logic executes: `for b in UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort; do ninja $b && ./$b --benchmark_filter=NOTHING; done`.
 
