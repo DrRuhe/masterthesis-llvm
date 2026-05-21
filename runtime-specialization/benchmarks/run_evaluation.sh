@@ -38,8 +38,8 @@ TS="$(date +%y%m%d-%H-%M)"
 UC_FILTER='BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec)'
 UC_FILTER_WITH_UNSPEC='BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)'
 TPCH_FILTER='g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)'
-SMOKE_UC_FILTER='BM_g:(uc7|uc8)_[a-z]+;.*a:low;.*s:MINI;.*t:(jit_overhead|specialized_exec)'
-SMOKE_UC_FILTER_WITH_UNSPEC='BM_g:(uc7|uc8)_[a-z]+;.*a:low;.*s:MINI;.*t:(jit_overhead|specialized_exec|unspecialized)'
+SMOKE_UC_FILTER='BM_g:(uc7|uc8)_[a-z]+;.*a:low;.*s:SMALL;.*t:(jit_overhead|specialized_exec)'
+SMOKE_UC_FILTER_WITH_UNSPEC='BM_g:(uc7|uc8)_[a-z]+;.*a:low;.*s:SMALL;.*t:(jit_overhead|specialized_exec|unspecialized)'
 
 usage() {
     cat <<USAGE

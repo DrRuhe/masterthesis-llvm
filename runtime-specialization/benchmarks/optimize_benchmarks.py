@@ -610,11 +610,10 @@ def main():
     git_sha = get_git_sha()
     descriptor = _load_descriptor(args.search_space)
 
-    # Resolve benchmark filter (apply default exclusions if requested)
+    # Resolve benchmark filter. The Google Benchmark regex engine does not
+    # support PCRE lookahead, so we apply default exclusions in Python after
+    # listing rather than via a (?!...) regex wrapper.
     filter_pattern = args.benchmark_filter
-    if args.apply_default_filters:
-        jit_analysis_exclusion = "(?!.*_t_jit_analysis_)"
-        filter_pattern = f"{jit_analysis_exclusion}({filter_pattern})"
 
     # Enumerate benchmarks to run (once per study)
     print("Listing benchmarks...", flush=True)
@@ -626,6 +625,15 @@ def main():
     if not benchmark_names:
         print(f"Error: no benchmarks matched filter '{filter_pattern}'", file=sys.stderr)
         sys.exit(1)
+
+    if args.apply_default_filters:
+        # Strip jit-analysis benchmarks (require CRS_PASS_TRACE_DIR / CRS_CHROME_TRACE_DIR
+        # and are incompatible with optimization trials).
+        benchmark_names = [n for n in benchmark_names if "_t_jit_analysis_" not in n]
+        if not benchmark_names:
+            print(f"Error: no benchmarks remain after stripping jit_analysis names "
+                  f"(filter '{filter_pattern}')", file=sys.stderr)
+            sys.exit(1)
 
     jit_analysis_names = [n for n in benchmark_names if "_t_jit_analysis_" in n]
     if jit_analysis_names:
