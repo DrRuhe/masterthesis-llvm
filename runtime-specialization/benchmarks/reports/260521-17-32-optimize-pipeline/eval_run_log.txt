@@ -1,0 +1,8 @@
+
+--- Phase C (TPC-H) outcome ---
+SKIPPED: TPCHBenchmark binary exists but segfaults on jit_overhead filter
+(library_build_type=debug embedded in release tree; q1 jit_overhead
+crashes with SIGSEGV during JIT). UC half of Phase C succeeded
+(transfer_uc_iter2_20260521: 3 configs × 5 reps × 6 groups, 0 NULLs).
+TPC-H half: 0 rows in transfer_tpch_iter2_20260521. Treat as
+evolving RQ-12 — see iter-2 reflection §3 for details.

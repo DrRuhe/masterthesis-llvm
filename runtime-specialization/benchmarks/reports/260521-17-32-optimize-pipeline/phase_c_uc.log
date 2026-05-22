@@ -1,0 +1,36 @@
+
+Study:   transfer_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Configs: 3  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+
+Config [default]  (env: default)
+  [default] rep 1/5... OK
+  [default] rep 2/5... OK
+  [default] rep 3/5... OK
+  [default] rep 4/5... OK
+  [default] rep 5/5... OK
+  [default       ]  5/5 reps OK  jit=67.7ms  spec=212.5ms  unspec=579.0ms  speedup=2.72x
+
+Config [aggressive]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '20', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '256'})
+  [aggressive] rep 1/5... OK
+  [aggressive] rep 2/5... OK
+  [aggressive] rep 3/5... OK
+  [aggressive] rep 4/5... OK
+  [aggressive] rep 5/5... OK
+  [aggressive    ]  5/5 reps OK  jit=42.0ms  spec=20.2ms  unspec=13.1ms  speedup=0.65x
+
+Config [uc_workload_optimal]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '7', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '27', 'CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD': '0', 'CRS_DEFAULT_EARLY_PRUNE': '1', 'CRS_DEFAULT_O3_FINAL': '1', 'CRS_DEFAULT_PIPELINE': '0', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '572', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '1.6429245153475713'})
+  [uc_workload_optimal] rep 1/5... OK
+  [uc_workload_optimal] rep 2/5... OK
+  [uc_workload_optimal] rep 3/5... OK
+  [uc_workload_optimal] rep 4/5... OK
+  [uc_workload_optimal] rep 5/5... OK
+  [uc_workload_optimal]  5/5 reps OK  jit=41.8ms  spec=90.4ms  unspec=113.5ms  speedup=1.26x
+
+Done. 15 runs (15 OK, 0 failed).
+Study 'transfer_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='transfer_uc_iter2_20260521' ORDER BY config_name, kernel;

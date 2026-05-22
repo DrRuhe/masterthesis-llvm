@@ -1,0 +1,104 @@
+Listing benchmarks...
+  36 benchmarks matched.
+Measuring unspecialized baseline...
+  Unspecialized filter: BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:unspecialized
+  18 kernels measured.
+
+Study:   uc_optim_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Trials:  50  Parallel: 1  Timeout/benchmark: 60.0s  Total/trial: 2190s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec)
+Search space: built-in (8 parameters)
+
+  Trial   0: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=12  unroll_max=364  large_module_max=0  early_prune=0  o3_final=1  pipeline=1  p1_inline_threshold=53  p1_max_module_growth=4.879639408647977
+  Trial   1: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=26  unroll_max=2  large_module_max=21  early_prune=0  o3_final=1  pipeline=1  p1_inline_threshold=192  p1_max_module_growth=2.8242799368681437
+  Trial   2: combined=177.9ms  jit=61.1ms  exec=69.4ms | fixpoint_max=24  unroll_max=2  large_module_max=1  early_prune=0  o3_final=1  pipeline=0  p1_inline_threshold=153  p1_max_module_growth=1.3906884560255355
+  Trial   3: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=21  unroll_max=11  large_module_max=1  early_prune=0  o3_final=0  pipeline=1  p1_inline_threshold=98  p1_max_module_growth=4.878338511058234
+  Trial   4: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=24  unroll_max=337  large_module_max=0  early_prune=0  o3_final=0  pipeline=1  p1_inline_threshold=135  p1_max_module_growth=4.314950036607717
+  Trial   5: combined=193.9ms  jit=57.2ms  exec=81.4ms | fixpoint_max=12  unroll_max=4  large_module_max=0  early_prune=0  o3_final=0  pipeline=0  p1_inline_threshold=1011  p1_max_module_growth=3.8274293753904685
+  Trial   6: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=23  unroll_max=105  large_module_max=2  early_prune=0  o3_final=0  pipeline=1  p1_inline_threshold=736  p1_max_module_growth=3.5502298854208525
+  Trial   7: combined=178.1ms  jit=68.2ms  exec=64.2ms | fixpoint_max=27  unroll_max=13  large_module_max=5394  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=74  p1_max_module_growth=1.125716742746937
+  Trial   8: combined=189.6ms  jit=53.3ms  exec=82.0ms | fixpoint_max=20  unroll_max=4  large_module_max=10  early_prune=1  o3_final=0  pipeline=0  p1_inline_threshold=1542  p1_max_module_growth=4.232481518257668
+  Trial   9: combined=177.2ms  jit=61.4ms  exec=69.0ms | fixpoint_max=20  unroll_max=210  large_module_max=0  early_prune=0  o3_final=1  pipeline=0  p1_inline_threshold=115  p1_max_module_growth=2.7084311545050253
+  Trial  10: combined=172.2ms  jit=57.1ms  exec=69.2ms | fixpoint_max=4  unroll_max=64  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=382  p1_max_module_growth=2.3014399918851387
+  Trial  11: combined=172.9ms  jit=57.5ms  exec=69.3ms | fixpoint_max=4  unroll_max=55  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=445  p1_max_module_growth=2.3509074992835006
+  Trial  12: combined=172.3ms  jit=57.2ms  exec=69.0ms | fixpoint_max=2  unroll_max=58  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=382  p1_max_module_growth=2.0979398931299236
+  Trial  13: combined=172.6ms  jit=57.3ms  exec=69.2ms | fixpoint_max=2  unroll_max=33  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=302  p1_max_module_growth=1.9450055865924107
+  Trial  14: combined=171.2ms  jit=56.8ms  exec=68.5ms | fixpoint_max=6  unroll_max=38  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=411  p1_max_module_growth=1.8417177125546975
+  Trial  15: combined=171.0ms  jit=56.8ms  exec=68.5ms | fixpoint_max=7  unroll_max=27  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=572  p1_max_module_growth=1.6429245153475713
+  Trial  16: combined=172.8ms  jit=57.2ms  exec=69.3ms | fixpoint_max=9  unroll_max=20  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=674  p1_max_module_growth=1.6267143594773295
+  Trial  17: combined=172.4ms  jit=57.2ms  exec=69.1ms | fixpoint_max=8  unroll_max=9  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=241  p1_max_module_growth=1.043019546950863
+  Trial  18: combined=171.4ms  jit=56.8ms  exec=68.8ms | fixpoint_max=15  unroll_max=137  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=1980  p1_max_module_growth=1.700340162317235
+  Trial  19: combined=171.9ms  jit=57.0ms  exec=68.9ms | fixpoint_max=7  unroll_max=31  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=610  p1_max_module_growth=3.1763981843622826
+  Trial  20: combined=171.7ms  jit=57.0ms  exec=68.7ms | fixpoint_max=15  unroll_max=1  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=1019  p1_max_module_growth=2.45569554309453
+  Trial  21: combined=173.3ms  jit=57.5ms  exec=69.4ms | fixpoint_max=16  unroll_max=134  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=1991  p1_max_module_growth=1.6808947438728143
+  Trial  22: combined=173.1ms  jit=57.7ms  exec=69.4ms | fixpoint_max=11  unroll_max=134  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=1111  p1_max_module_growth=1.851991802377587
+  Trial  23: combined=171.8ms  jit=57.0ms  exec=69.1ms | fixpoint_max=15  unroll_max=25  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=522  p1_max_module_growth=1.4351571658470104
+  Trial  24: combined=172.6ms  jit=57.1ms  exec=69.3ms | fixpoint_max=6  unroll_max=78  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=272  p1_max_module_growth=1.4220634696186496
+  Trial  25: combined=171.0ms  jit=56.9ms  exec=68.4ms | fixpoint_max=30  unroll_max=203  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=870  p1_max_module_growth=2.094608227388954
+  Trial  26: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=30  unroll_max=488  large_module_max=0  early_prune=1  o3_final=0  pipeline=1  p1_inline_threshold=820  p1_max_module_growth=2.182396075142969
+  Trial  27: combined=171.8ms  jit=57.0ms  exec=68.8ms | fixpoint_max=5  unroll_max=7  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=1318  p1_max_module_growth=2.552033789375153
+  Trial  28: combined=171.8ms  jit=57.0ms  exec=69.2ms | fixpoint_max=10  unroll_max=40  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=495  p1_max_module_growth=1.9963567092980785
+  Trial  29: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=12  unroll_max=193  large_module_max=0  early_prune=1  o3_final=1  pipeline=1  p1_inline_threshold=877  p1_max_module_growth=1.2292841401131454
+  Trial  30: combined=172.4ms  jit=57.1ms  exec=69.3ms | fixpoint_max=30  unroll_max=17  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=225  p1_max_module_growth=3.0385318534810004
+  Trial  31: combined=171.9ms  jit=57.0ms  exec=69.0ms | fixpoint_max=13  unroll_max=295  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=1791  p1_max_module_growth=1.7135150576902618
+  Trial  32: combined=172.6ms  jit=57.2ms  exec=69.1ms | fixpoint_max=18  unroll_max=204  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=1387  p1_max_module_growth=1.5976358249745093
+  Trial  33: combined=171.6ms  jit=56.9ms  exec=68.9ms | fixpoint_max=17  unroll_max=98  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=580  p1_max_module_growth=1.8926837074097265
+  Trial  34: combined=177.6ms  jit=55.7ms  exec=74.1ms | fixpoint_max=27  unroll_max=41  large_module_max=98182  early_prune=1  o3_final=1  pipeline=1  p1_inline_threshold=375  p1_max_module_growth=2.760959745526585
+  Trial  35: combined=177.9ms  jit=61.1ms  exec=69.5ms | fixpoint_max=8  unroll_max=156  large_module_max=0  early_prune=0  o3_final=1  pipeline=0  p1_inline_threshold=1221  p1_max_module_growth=1.281961010827386
+  Trial  36: combined=173.8ms  jit=61.5ms  exec=65.2ms | fixpoint_max=14  unroll_max=314  large_module_max=510  early_prune=1  o3_final=0  pipeline=0  p1_inline_threshold=878  p1_max_module_growth=2.166404559747453
+  Trial  37: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=10  unroll_max=89  large_module_max=0  early_prune=0  o3_final=1  pipeline=1  p1_inline_threshold=184  p1_max_module_growth=1.4697029766104035
+  Trial  38: combined=172.3ms  jit=60.8ms  exec=64.8ms | fixpoint_max=22  unroll_max=21  large_module_max=487  early_prune=1  o3_final=0  pipeline=0  p1_inline_threshold=722  p1_max_module_growth=3.4008874624598056
+  Trial  39: combined=60287.4ms  jit=60000.0ms  exec=80.9ms [FALLBACK] | fixpoint_max=26  unroll_max=446  large_module_max=0  early_prune=0  o3_final=1  pipeline=1  p1_inline_threshold=1616  p1_max_module_growth=4.994563730237143
+  Trial  40: combined=173.7ms  jit=61.4ms  exec=65.2ms | fixpoint_max=18  unroll_max=5  large_module_max=78876  early_prune=1  o3_final=0  pipeline=0  p1_inline_threshold=497  p1_max_module_growth=1.792500216049679
+  Trial  41: combined=172.0ms  jit=57.1ms  exec=69.0ms | fixpoint_max=17  unroll_max=119  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=644  p1_max_module_growth=1.9368897062082273
+  Trial  42: combined=171.2ms  jit=56.8ms  exec=68.6ms | fixpoint_max=24  unroll_max=48  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=614  p1_max_module_growth=2.5168109906817944
+  Trial  43: combined=171.8ms  jit=57.1ms  exec=69.0ms | fixpoint_max=24  unroll_max=68  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=430  p1_max_module_growth=2.5376055304508602
+  Trial  44: combined=171.4ms  jit=57.0ms  exec=68.5ms | fixpoint_max=28  unroll_max=54  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=333  p1_max_module_growth=2.385468265579569
+  Trial  45: combined=177.3ms  jit=61.3ms  exec=69.1ms | fixpoint_max=28  unroll_max=13  large_module_max=0  early_prune=0  o3_final=1  pipeline=0  p1_inline_threshold=57  p1_max_module_growth=2.314324408972875
+  Trial  46: combined=171.8ms  jit=57.1ms  exec=68.9ms | fixpoint_max=29  unroll_max=48  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=323  p1_max_module_growth=2.941830178855615
+  Trial  47: combined=171.9ms  jit=56.9ms  exec=69.0ms | fixpoint_max=25  unroll_max=29  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=338  p1_max_module_growth=2.7205213054466304
+  Trial  48: combined=171.5ms  jit=56.8ms  exec=68.9ms | fixpoint_max=28  unroll_max=9  large_module_max=0  early_prune=1  o3_final=1  pipeline=0  p1_inline_threshold=444  p1_max_module_growth=2.092304975946038
+  Trial  49: combined=174.0ms  jit=61.3ms  exec=65.6ms | fixpoint_max=26  unroll_max=42  large_module_max=5173  early_prune=1  o3_final=0  pipeline=0  p1_inline_threshold=163  p1_max_module_growth=2.5761831958531416
+Warning: could not compute parameter importance: Tried to import 'sklearn' but failed. Please make sure that the package is installed correctly to use this feature. Actual error: No module named 'sklearn'.
+
+Study 'uc_optim_iter2_20260521' complete: 50 trials.
+Best config written to: benchmarks/reports/260521-17-32-optimize-pipeline/best_uc_optim_iter2_20260521.json
+
+  trial: 15
+  fixpoint_max: 7
+  unroll_max: 27
+  large_module_max: 0
+  early_prune: 1
+  o3_final: 1
+  pipeline: 0
+  p1_inline_threshold: 572
+  p1_max_module_growth: 1.6429245153475713
+  jit:      56.76 ms  (geomean)
+  exec:     68.54 ms  (geomean)
+  combined: 170.99 ms  (geomean)
+
+Break-even per kernel (calls needed for specialization to pay off):
+  apply_row_delta                           3 calls  (1.72x speedup)
+  batch_delta                    never (no exec speedup) calls  (0.19x speedup)
+  box_filter                                0 calls  (2.91x speedup)
+  column_scan                    never (no exec speedup) calls  (0.22x speedup)
+  count_matching_rows                    7389 calls  (1.04x speedup)
+  edge_detection                            1 calls  (1.51x speedup)
+  email_match                               2 calls  (1.24x speedup)
+  generic_sort                              0 calls  (2.69x speedup)
+  grouped_count                             3 calls  (2.43x speedup)
+  grouped_minmax                            3 calls  (2.22x speedup)
+  grouped_sum                               3 calls  (2.37x speedup)
+  multi_agg_delta                never (no exec speedup) calls  (0.64x speedup)
+  multi_key_sort                            0 calls  (1.39x speedup)
+  multi_pattern_match                       2 calls  (1.29x speedup)
+  multi_predicate                never (no exec speedup) calls  (0.31x speedup)
+  separable_gaussian                        0 calls  (1.98x speedup)
+  struct_sort                               0 calls  (1.56x speedup)
+  url_match                                 2 calls  (1.27x speedup)
+
+SQL to explore results:
+  SELECT * FROM v_optim_best_per_kernel WHERE study_name='uc_optim_iter2_20260521' ORDER BY kernel;
+  SELECT * FROM v_optim_breakeven      WHERE study_name='uc_optim_iter2_20260521' ORDER BY kernel;

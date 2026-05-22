@@ -1,0 +1,20 @@
+
+Study:   transfer_tpch_iter2_20260521
+DB:      benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark
+Configs: 3  Reps: 5  Timeout: 300.0s
+Filter:  g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)
+
+Config [default]  (env: default)
+  [default] rep 1/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmp247b377j.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [default] rep 2/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmpg2p3773o.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [default] rep 3/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmprr1xxkh2.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [default] rep 4/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmpxyzo8iyr.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [default] rep 5/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmpuw1t0pe7.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [default       ]  0/5 reps OK
+
+Config [aggressive]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '20', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '256'})
+  [aggressive] rep 1/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmp_tv_v11s.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [aggressive] rep 2/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmpqnvodh06.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [aggressive] rep 3/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmp1abs8dna.json', '--benchmark_filter=g:tpch;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [aggressive] rep 4/5... 

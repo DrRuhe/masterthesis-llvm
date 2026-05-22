@@ -1,0 +1,8 @@
+=== eval run: Thu May 21 04:54:38 PM CEST 2026 ===
+Report dir: reports/260521-16-54-optimize-pipeline
+UC binary: /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+TPCH binary: /dev/null
+Phase-only: <full chain>
+--- Phase 0: Smoke test ---
+Smoke test PASSED
+Smoke-only mode -- done.

@@ -1,0 +1,16 @@
+{
+  "trial_id": 15,
+  "params": {
+    "fixpoint_max": 7,
+    "unroll_max": 27,
+    "large_module_max": 0,
+    "early_prune": 1,
+    "o3_final": 1,
+    "pipeline": 0,
+    "p1_inline_threshold": 572,
+    "p1_max_module_growth": 1.6429245153475713
+  },
+  "obj_jit_ns": 56764915.15567296,
+  "obj_exec_ns": 68543831.2938981,
+  "obj_combined_ns": 170990174.74098468
+}

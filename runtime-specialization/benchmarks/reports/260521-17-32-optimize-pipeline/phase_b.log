@@ -1,0 +1,100 @@
+
+Study:   ablation_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Configs: 11  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+
+Config [default]  (env: default)
+  [default] rep 1/5... OK
+  [default] rep 2/5... OK
+  [default] rep 3/5... OK
+  [default] rep 4/5... OK
+  [default] rep 5/5... OK
+  [default       ]  5/5 reps OK  jit=2358.5ms  spec=7.7ms  unspec=8.4ms  speedup=1.09x
+
+Config [o3_only]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '1', 'CRS_DEFAULT_EARLY_PRUNE': '0', 'CRS_DEFAULT_O3_FINAL': '1'})
+  [o3_only] rep 1/5... OK
+  [o3_only] rep 2/5... OK
+  [o3_only] rep 3/5... OK
+  [o3_only] rep 4/5... OK
+  [o3_only] rep 5/5... OK
+  [o3_only       ]  5/5 reps OK  jit=54.9ms  spec=95.6ms  unspec=115.9ms  speedup=1.21x
+
+Config [no_prune]  (env: {'CRS_DEFAULT_EARLY_PRUNE': '0'})
+  [no_prune] rep 1/5... OK
+  [no_prune] rep 2/5... OK
+  [no_prune] rep 3/5... OK
+  [no_prune] rep 4/5... OK
+  [no_prune] rep 5/5... OK
+  [no_prune      ]  5/5 reps OK  jit=56.4ms  spec=95.1ms  unspec=116.3ms  speedup=1.22x
+
+Config [no_o3_final]  (env: {'CRS_DEFAULT_O3_FINAL': '0'})
+  [no_o3_final] rep 1/5... OK
+  [no_o3_final] rep 2/5... OK
+  [no_o3_final] rep 3/5... OK
+  [no_o3_final] rep 4/5... OK
+  [no_o3_final] rep 5/5... OK
+  [no_o3_final   ]  5/5 reps OK  jit=46.7ms  spec=94.7ms  unspec=116.4ms  speedup=1.23x
+
+Config [no_unroll]  (env: {'CRS_DEFAULT_LOOP_UNROLL_COUNT': '1'})
+  [no_unroll] rep 1/5... OK
+  [no_unroll] rep 2/5... OK
+  [no_unroll] rep 3/5... OK
+  [no_unroll] rep 4/5... OK
+  [no_unroll] rep 5/5... OK
+  [no_unroll     ]  5/5 reps OK  jit=53.4ms  spec=53.0ms  unspec=16.5ms  speedup=0.31x
+
+Config [fixpoint_2]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '2'})
+  [fixpoint_2] rep 1/5... OK
+  [fixpoint_2] rep 2/5... OK
+  [fixpoint_2] rep 3/5... OK
+  [fixpoint_2] rep 4/5... OK
+  [fixpoint_2] rep 5/5... OK
+  [fixpoint_2    ]  5/5 reps OK  jit=69.6ms  spec=681.1ms  unspec=1039.8ms  speedup=1.53x
+
+Config [aggressive]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '20', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '256'})
+  [aggressive] rep 1/5... OK
+  [aggressive] rep 2/5... OK
+  [aggressive] rep 3/5... OK
+  [aggressive] rep 4/5... OK
+  [aggressive] rep 5/5... OK
+  [aggressive    ]  5/5 reps OK  jit=52.8ms  spec=95.1ms  unspec=116.5ms  speedup=1.22x
+
+Config [uc_workload_optimal]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '7', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '27', 'CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD': '0', 'CRS_DEFAULT_EARLY_PRUNE': '1', 'CRS_DEFAULT_O3_FINAL': '1', 'CRS_DEFAULT_PIPELINE': '0', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '572', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '1.6429245153475713'})
+  [uc_workload_optimal] rep 1/5... OK
+  [uc_workload_optimal] rep 2/5... OK
+  [uc_workload_optimal] rep 3/5... OK
+  [uc_workload_optimal] rep 4/5... OK
+  [uc_workload_optimal] rep 5/5... OK
+  [uc_workload_optimal]  5/5 reps OK  jit=49.9ms  spec=380.3ms  unspec=1086.1ms  speedup=2.86x
+
+Config [pipeline_1_default]  (env: {'CRS_DEFAULT_PIPELINE': '1'})
+  [pipeline_1_default] rep 1/5... OK
+  [pipeline_1_default] rep 2/5... OK
+  [pipeline_1_default] rep 3/5... OK
+  [pipeline_1_default] rep 4/5... OK
+  [pipeline_1_default] rep 5/5... OK
+  [pipeline_1_default]  5/5 reps OK  jit=43.0ms  spec=54.3ms  unspec=16.7ms  speedup=0.31x
+
+Config [pipeline_1_aggressive_budget]  (env: {'CRS_DEFAULT_PIPELINE': '1', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '1000', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '4.0'})
+  [pipeline_1_aggressive_budget] rep 1/5... OK
+  [pipeline_1_aggressive_budget] rep 2/5... OK
+  [pipeline_1_aggressive_budget] rep 3/5... OK
+  [pipeline_1_aggressive_budget] rep 4/5... OK
+  [pipeline_1_aggressive_budget] rep 5/5... OK
+  [pipeline_1_aggressive_budget]  5/5 reps OK  jit=43.1ms  spec=12.3ms  unspec=28.0ms  speedup=2.27x
+
+Config [pipeline_1_tight_budget]  (env: {'CRS_DEFAULT_PIPELINE': '1', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '100', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '1.5'})
+  [pipeline_1_tight_budget] rep 1/5... OK
+  [pipeline_1_tight_budget] rep 2/5... OK
+  [pipeline_1_tight_budget] rep 3/5... OK
+  [pipeline_1_tight_budget] rep 4/5... OK
+  [pipeline_1_tight_budget] rep 5/5... OK
+  [pipeline_1_tight_budget]  5/5 reps OK  jit=46.3ms  spec=152.4ms  unspec=209.5ms  speedup=1.37x
+
+Done. 55 runs (55 OK, 0 failed).
+Study 'ablation_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='ablation_uc_iter2_20260521' ORDER BY config_name, kernel;

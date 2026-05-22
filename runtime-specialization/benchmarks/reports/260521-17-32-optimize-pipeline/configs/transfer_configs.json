@@ -1,0 +1,26 @@
+[
+  {
+    "name": "default",
+    "env": {}
+  },
+  {
+    "name": "aggressive",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "20",
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "256"
+    }
+  },
+  {
+    "name": "uc_workload_optimal",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "7",
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "27",
+      "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": "0",
+      "CRS_DEFAULT_EARLY_PRUNE": "1",
+      "CRS_DEFAULT_O3_FINAL": "1",
+      "CRS_DEFAULT_PIPELINE": "0",
+      "CRS_DEFAULT_P1_INLINE_THRESHOLD": "572",
+      "CRS_DEFAULT_P1_MAX_MODULE_GROWTH": "1.6429245153475713"
+    }
+  }
+]

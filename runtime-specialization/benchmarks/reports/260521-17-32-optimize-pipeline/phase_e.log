@@ -1,0 +1,289 @@
+=== Sweeping fixpoint_max values=2,3,5,8,15,30 ===
+
+Study:   sens_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Param:   fixpoint_max  (CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS)
+Values:  ['2', '3', '5', '8', '15', '30']
+Points:  6  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+Optimal: benchmarks/reports/260521-17-32-optimize-pipeline/best_uc_optim_iter2_20260521.json
+
+Point [sens_fixpoint_max_2]  (fixpoint_max=2)
+  [sens_fixpoint_max_2] rep 1/5... OK
+  [sens_fixpoint_max_2] rep 2/5... OK
+  [sens_fixpoint_max_2] rep 3/5... OK
+  [sens_fixpoint_max_2] rep 4/5... OK
+  [sens_fixpoint_max_2] rep 5/5... OK
+  [sens_fixpoint_max_2           ]  5/5 reps OK  jit=53.5ms  spec=693.1ms  unspec=957.9ms  speedup=1.38x
+
+Point [sens_fixpoint_max_3]  (fixpoint_max=3)
+  [sens_fixpoint_max_3] rep 1/5... OK
+  [sens_fixpoint_max_3] rep 2/5... OK
+  [sens_fixpoint_max_3] rep 3/5... OK
+  [sens_fixpoint_max_3] rep 4/5... OK
+  [sens_fixpoint_max_3] rep 5/5... OK
+  [sens_fixpoint_max_3           ]  5/5 reps OK  jit=50.5ms  spec=281.7ms  unspec=744.3ms  speedup=2.64x
+
+Point [sens_fixpoint_max_5]  (fixpoint_max=5)
+  [sens_fixpoint_max_5] rep 1/5... OK
+  [sens_fixpoint_max_5] rep 2/5... OK
+  [sens_fixpoint_max_5] rep 3/5... OK
+  [sens_fixpoint_max_5] rep 4/5... OK
+  [sens_fixpoint_max_5] rep 5/5... OK
+  [sens_fixpoint_max_5           ]  5/5 reps OK  jit=42.6ms  spec=12.0ms  unspec=28.6ms  speedup=2.38x
+
+Point [sens_fixpoint_max_8]  (fixpoint_max=8)
+  [sens_fixpoint_max_8] rep 1/5... OK
+  [sens_fixpoint_max_8] rep 2/5... OK
+  [sens_fixpoint_max_8] rep 3/5... OK
+  [sens_fixpoint_max_8] rep 4/5... OK
+  [sens_fixpoint_max_8] rep 5/5... OK
+  [sens_fixpoint_max_8           ]  5/5 reps OK  jit=54.7ms  spec=298.6ms  unspec=582.6ms  speedup=1.95x
+
+Point [sens_fixpoint_max_15]  (fixpoint_max=15)
+  [sens_fixpoint_max_15] rep 1/5... OK
+  [sens_fixpoint_max_15] rep 2/5... OK
+  [sens_fixpoint_max_15] rep 3/5... OK
+  [sens_fixpoint_max_15] rep 4/5... OK
+  [sens_fixpoint_max_15] rep 5/5... OK
+  [sens_fixpoint_max_15          ]  5/5 reps OK  jit=45.3ms  spec=38.5ms  unspec=8.3ms  speedup=0.21x
+
+Point [sens_fixpoint_max_30]  (fixpoint_max=30)
+  [sens_fixpoint_max_30] rep 1/5... OK
+  [sens_fixpoint_max_30] rep 2/5... OK
+  [sens_fixpoint_max_30] rep 3/5... OK
+  [sens_fixpoint_max_30] rep 4/5... OK
+  [sens_fixpoint_max_30] rep 5/5... OK
+  [sens_fixpoint_max_30          ]  5/5 reps OK  jit=43.3ms  spec=95.2ms  unspec=116.2ms  speedup=1.22x
+
+Done. 30 runs (30 OK, 0 failed).
+Study 'sens_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='sens_uc_iter2_20260521' ORDER BY config_name, kernel;
+=== Sweeping early_prune values=0,1 ===
+
+Study:   sens_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Param:   early_prune  (CRS_DEFAULT_EARLY_PRUNE)
+Values:  ['0', '1']
+Points:  2  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+Optimal: benchmarks/reports/260521-17-32-optimize-pipeline/best_uc_optim_iter2_20260521.json
+
+Point [sens_early_prune_0]  (early_prune=0)
+  [sens_early_prune_0] rep 1/5... OK
+  [sens_early_prune_0] rep 2/5... OK
+  [sens_early_prune_0] rep 3/5... OK
+  [sens_early_prune_0] rep 4/5... OK
+  [sens_early_prune_0] rep 5/5... OK
+  [sens_early_prune_0            ]  5/5 reps OK  jit=56.9ms  spec=693.8ms  unspec=961.1ms  speedup=1.39x
+
+Point [sens_early_prune_1]  (early_prune=1)
+  [sens_early_prune_1] rep 1/5... OK
+  [sens_early_prune_1] rep 2/5... OK
+  [sens_early_prune_1] rep 3/5... OK
+  [sens_early_prune_1] rep 4/5... OK
+  [sens_early_prune_1] rep 5/5... OK
+  [sens_early_prune_1            ]  5/5 reps OK  jit=54.5ms  spec=297.3ms  unspec=576.7ms  speedup=1.94x
+
+Done. 10 runs (10 OK, 0 failed).
+Study 'sens_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='sens_uc_iter2_20260521' ORDER BY config_name, kernel;
+=== Sweeping o3_final values=0,1 ===
+
+Study:   sens_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Param:   o3_final  (CRS_DEFAULT_O3_FINAL)
+Values:  ['0', '1']
+Points:  2  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+Optimal: benchmarks/reports/260521-17-32-optimize-pipeline/best_uc_optim_iter2_20260521.json
+
+Point [sens_o3_final_0]  (o3_final=0)
+  [sens_o3_final_0] rep 1/5... OK
+  [sens_o3_final_0] rep 2/5... OK
+  [sens_o3_final_0] rep 3/5... OK
+  [sens_o3_final_0] rep 4/5... OK
+  [sens_o3_final_0] rep 5/5... OK
+  [sens_o3_final_0               ]  5/5 reps OK  jit=43.4ms  spec=129.9ms  unspec=209.1ms  speedup=1.61x
+
+Point [sens_o3_final_1]  (o3_final=1)
+  [sens_o3_final_1] rep 1/5... OK
+  [sens_o3_final_1] rep 2/5... OK
+  [sens_o3_final_1] rep 3/5... OK
+  [sens_o3_final_1] rep 4/5... OK
+  [sens_o3_final_1] rep 5/5... OK
+  [sens_o3_final_1               ]  5/5 reps OK  jit=44.1ms  spec=96.0ms  unspec=117.2ms  speedup=1.22x
+
+Done. 10 runs (10 OK, 0 failed).
+Study 'sens_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='sens_uc_iter2_20260521' ORDER BY config_name, kernel;
+=== Sweeping pipeline values=0,1 ===
+
+Study:   sens_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Param:   pipeline  (CRS_DEFAULT_PIPELINE)
+Values:  ['0', '1']
+Points:  2  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+Optimal: benchmarks/reports/260521-17-32-optimize-pipeline/best_uc_optim_iter2_20260521.json
+
+Point [sens_pipeline_0]  (pipeline=0)
+  [sens_pipeline_0] rep 1/5... OK
+  [sens_pipeline_0] rep 2/5... OK
+  [sens_pipeline_0] rep 3/5... OK
+  [sens_pipeline_0] rep 4/5... OK
+  [sens_pipeline_0] rep 5/5... OK
+  [sens_pipeline_0               ]  5/5 reps OK  jit=41.6ms  spec=17.8ms  unspec=28.5ms  speedup=1.60x
+
+Point [sens_pipeline_1]  (pipeline=1)
+  [sens_pipeline_1] rep 1/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmp8_qknzeh.json', '--benchmark_filter=BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [sens_pipeline_1] rep 2/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmpughpwxy2.json', '--benchmark_filter=BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [sens_pipeline_1] rep 3/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmphuna8687.json', '--benchmark_filter=BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [sens_pipeline_1] rep 4/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmp70nenc2j.json', '--benchmark_filter=BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [sens_pipeline_1] rep 5/5...   Warning: run failed: Command '['/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks', '--benchmark_out_format=json', '--benchmark_out=/tmp/tmp71_wk916.json', '--benchmark_filter=BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)', '--benchmark_repetitions=1']' died with <Signals.SIGSEGV: 11>.
+  [sens_pipeline_1               ]  0/5 reps OK
+
+Done. 10 runs (5 OK, 5 failed).
+Study 'sens_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='sens_uc_iter2_20260521' ORDER BY config_name, kernel;
+=== Sweeping p1_inline_threshold values=50,100,225,500,1000,2000 ===
+
+Study:   sens_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Param:   p1_inline_threshold  (CRS_DEFAULT_P1_INLINE_THRESHOLD)
+Values:  ['50', '100', '225', '500', '1000', '2000']
+Points:  6  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+Optimal: benchmarks/reports/260521-17-32-optimize-pipeline/best_uc_optim_iter2_20260521.json
+
+Point [sens_p1_inline_threshold_50]  (p1_inline_threshold=50)
+  [sens_p1_inline_threshold_50] rep 1/5... OK
+  [sens_p1_inline_threshold_50] rep 2/5... OK
+  [sens_p1_inline_threshold_50] rep 3/5... OK
+  [sens_p1_inline_threshold_50] rep 4/5... OK
+  [sens_p1_inline_threshold_50] rep 5/5... OK
+  [sens_p1_inline_threshold_50   ]  5/5 reps OK  jit=49.5ms  spec=382.3ms  unspec=1084.2ms  speedup=2.84x
+
+Point [sens_p1_inline_threshold_100]  (p1_inline_threshold=100)
+  [sens_p1_inline_threshold_100] rep 1/5... OK
+  [sens_p1_inline_threshold_100] rep 2/5... OK
+  [sens_p1_inline_threshold_100] rep 3/5... OK
+  [sens_p1_inline_threshold_100] rep 4/5... OK
+  [sens_p1_inline_threshold_100] rep 5/5... OK
+  [sens_p1_inline_threshold_100  ]  5/5 reps OK  jit=50.1ms  spec=382.3ms  unspec=1086.4ms  speedup=2.84x
+
+Point [sens_p1_inline_threshold_225]  (p1_inline_threshold=225)
+  [sens_p1_inline_threshold_225] rep 1/5... OK
+  [sens_p1_inline_threshold_225] rep 2/5... OK
+  [sens_p1_inline_threshold_225] rep 3/5... OK
+  [sens_p1_inline_threshold_225] rep 4/5... OK
+  [sens_p1_inline_threshold_225] rep 5/5... OK
+  [sens_p1_inline_threshold_225  ]  5/5 reps OK  jit=50.1ms  spec=382.8ms  unspec=1081.2ms  speedup=2.82x
+
+Point [sens_p1_inline_threshold_500]  (p1_inline_threshold=500)
+  [sens_p1_inline_threshold_500] rep 1/5... OK
+  [sens_p1_inline_threshold_500] rep 2/5... OK
+  [sens_p1_inline_threshold_500] rep 3/5... OK
+  [sens_p1_inline_threshold_500] rep 4/5... OK
+  [sens_p1_inline_threshold_500] rep 5/5... OK
+  [sens_p1_inline_threshold_500  ]  5/5 reps OK  jit=42.0ms  spec=90.8ms  unspec=114.3ms  speedup=1.26x
+
+Point [sens_p1_inline_threshold_1000]  (p1_inline_threshold=1000)
+  [sens_p1_inline_threshold_1000] rep 1/5... OK
+  [sens_p1_inline_threshold_1000] rep 2/5... OK
+  [sens_p1_inline_threshold_1000] rep 3/5... OK
+  [sens_p1_inline_threshold_1000] rep 4/5... OK
+  [sens_p1_inline_threshold_1000] rep 5/5... OK
+  [sens_p1_inline_threshold_1000 ]  5/5 reps OK  jit=54.7ms  spec=305.8ms  unspec=583.0ms  speedup=1.91x
+
+Point [sens_p1_inline_threshold_2000]  (p1_inline_threshold=2000)
+  [sens_p1_inline_threshold_2000] rep 1/5... OK
+  [sens_p1_inline_threshold_2000] rep 2/5... OK
+  [sens_p1_inline_threshold_2000] rep 3/5... OK
+  [sens_p1_inline_threshold_2000] rep 4/5... OK
+  [sens_p1_inline_threshold_2000] rep 5/5... OK
+  [sens_p1_inline_threshold_2000 ]  5/5 reps OK  jit=45.4ms  spec=38.5ms  unspec=8.2ms  speedup=0.21x
+
+Done. 30 runs (30 OK, 0 failed).
+Study 'sens_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='sens_uc_iter2_20260521' ORDER BY config_name, kernel;
+=== Sweeping p1_max_module_growth values=1.0,1.5,2.0,3.0,4.0,5.0 ===
+
+Study:   sens_uc_iter2_20260521
+DB:      benchmarks/benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Param:   p1_max_module_growth  (CRS_DEFAULT_P1_MAX_MODULE_GROWTH)
+Values:  ['1.0', '1.5', '2.0', '3.0', '4.0', '5.0']
+Points:  6  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec|unspecialized)
+Optimal: benchmarks/reports/260521-17-32-optimize-pipeline/best_uc_optim_iter2_20260521.json
+
+Point [sens_p1_max_module_growth_1.0]  (p1_max_module_growth=1.0)
+  [sens_p1_max_module_growth_1.0] rep 1/5... OK
+  [sens_p1_max_module_growth_1.0] rep 2/5... OK
+  [sens_p1_max_module_growth_1.0] rep 3/5... OK
+  [sens_p1_max_module_growth_1.0] rep 4/5... OK
+  [sens_p1_max_module_growth_1.0] rep 5/5... OK
+  [sens_p1_max_module_growth_1.0 ]  5/5 reps OK  jit=49.8ms  spec=384.7ms  unspec=1095.5ms  speedup=2.85x
+
+Point [sens_p1_max_module_growth_1.5]  (p1_max_module_growth=1.5)
+  [sens_p1_max_module_growth_1.5] rep 1/5... OK
+  [sens_p1_max_module_growth_1.5] rep 2/5... OK
+  [sens_p1_max_module_growth_1.5] rep 3/5... OK
+  [sens_p1_max_module_growth_1.5] rep 4/5... OK
+  [sens_p1_max_module_growth_1.5] rep 5/5... OK
+  [sens_p1_max_module_growth_1.5 ]  5/5 reps OK  jit=42.3ms  spec=20.4ms  unspec=13.2ms  speedup=0.65x
+
+Point [sens_p1_max_module_growth_2.0]  (p1_max_module_growth=2.0)
+  [sens_p1_max_module_growth_2.0] rep 1/5... OK
+  [sens_p1_max_module_growth_2.0] rep 2/5... OK
+  [sens_p1_max_module_growth_2.0] rep 3/5... OK
+  [sens_p1_max_module_growth_2.0] rep 4/5... OK
+  [sens_p1_max_module_growth_2.0] rep 5/5... OK
+  [sens_p1_max_module_growth_2.0 ]  5/5 reps OK  jit=52.3ms  spec=687.1ms  unspec=951.3ms  speedup=1.38x
+
+Point [sens_p1_max_module_growth_3.0]  (p1_max_module_growth=3.0)
+  [sens_p1_max_module_growth_3.0] rep 1/5... OK
+  [sens_p1_max_module_growth_3.0] rep 2/5... OK
+  [sens_p1_max_module_growth_3.0] rep 3/5... OK
+  [sens_p1_max_module_growth_3.0] rep 4/5... OK
+  [sens_p1_max_module_growth_3.0] rep 5/5... OK
+  [sens_p1_max_module_growth_3.0 ]  5/5 reps OK  jit=40.9ms  spec=88.5ms  unspec=110.8ms  speedup=1.25x
+
+Point [sens_p1_max_module_growth_4.0]  (p1_max_module_growth=4.0)
+  [sens_p1_max_module_growth_4.0] rep 1/5... OK
+  [sens_p1_max_module_growth_4.0] rep 2/5... OK
+  [sens_p1_max_module_growth_4.0] rep 3/5... OK
+  [sens_p1_max_module_growth_4.0] rep 4/5... OK
+  [sens_p1_max_module_growth_4.0] rep 5/5... OK
+  [sens_p1_max_module_growth_4.0 ]  5/5 reps OK  jit=42.2ms  spec=93.0ms  unspec=114.2ms  speedup=1.23x
+
+Point [sens_p1_max_module_growth_5.0]  (p1_max_module_growth=5.0)
+  [sens_p1_max_module_growth_5.0] rep 1/5... OK
+  [sens_p1_max_module_growth_5.0] rep 2/5... OK
+  [sens_p1_max_module_growth_5.0] rep 3/5... OK
+  [sens_p1_max_module_growth_5.0] rep 4/5... OK
+  [sens_p1_max_module_growth_5.0] rep 5/5... OK
+  [sens_p1_max_module_growth_5.0 ]  5/5 reps OK  jit=41.7ms  spec=11.7ms  unspec=27.6ms  speedup=2.35x
+
+Done. 30 runs (30 OK, 0 failed).
+Study 'sens_uc_iter2_20260521' stored in benchmarks/benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='sens_uc_iter2_20260521' ORDER BY config_name, kernel;
+Phase E done.
