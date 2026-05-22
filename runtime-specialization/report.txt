@@ -1,0 +1,58 @@
+Targets
+    Occurrences of '- [ ] T' in Directory /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization/specs with mask 'tasks.md'
+Found occurrences in Directory /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization/specs with mask 'tasks.md'  (41 usages found)
+    Unclassified  (41 usages found)
+        Masterarbeit  (41 usages found)
+            Masterarbeit  (41 usages found)
+                llvm  (41 usages found)
+                    runtime-specialization  (41 usages found)
+                        specs  (41 usages found)
+                            007-jit-pipeline-eval  (3 usages found)
+                                007-jit-pipeline-eval/tasks.md  (3 usages found)
+                                    73 - [ ] T012 [US1] Run Experiment A — UC full optimization: `python3 benchmarks/optimize_benchmarks.py <uc_bi
+                                    75 - [ ] T013 [US1] Extract UC best config: query `v_optim_best_per_kernel` for the study name from T012 and w
+                                    207 - [ ] T033 Validate end-to-end: run `python3 -c "import duckdb; c=duckdb.connect('benchmarks/benchmarks.duc
+                            008-use-case-benchmarks  (14 usages found)
+                                008-use-case-benchmarks/tasks.md  (14 usages found)
+                                    28 - [ ] T001 Create `benchmarks/use-cases/` directory skeleton, parent CMakeLists.txt
+                                    42 - [ ] T002 Implement `benchmarks/use-cases/CMakeLists.txt` with shared CMake variables,
+                                    72 - [ ] T003 [P] [US1] Implement UC1 SQL predicate benchmark in
+                                    120 - [ ] T004 [P] [US1] Implement UC2 convolution benchmark in
+                                    152 - [ ] T005 [P] [US1] Implement UC7 DFA regex benchmark in
+                                    186 - [ ] T006 [P] [US1] Implement UC8 IVM benchmark in
+                                    214 - [ ] T007 [P] [US1] Implement UC12 GROUP BY benchmark in
+                                    240 - [ ] T008 [P] [US1] Implement UC14 sort benchmark in
+                                    329 - [ ] T009 [US1] Edit `benchmarks/CMakeLists.txt` to integrate all six use-case kernel and
+                                    356 - [ ] T010 [US2] Run all six benchmarks in release mode, record to `benchmarks/benchmarks.duckdb`
+                                    385 - [ ] T011 [US3] Run `optimize_benchmarks.py` against `UC1SqlPredicate` (5 trials) and
+                                    396 - [ ] T012 [P] Run `ninja check-smoke-runtime-specializer` in debug build directory; confirm
+                                    399 - [ ] T013 Run `ninja -C llvm/llvm/build/debug UC1SqlPredicate UC2Convolution UC7DfaRegex
+                                    403 - [ ] T014 [P] Update `specs/008-use-case-benchmarks/plan.md` "## Speedup Findings" section
+                            011-uc-benchmark-abstraction-variants  (3 usages found)
+                                011-uc-benchmark-abstraction-variants/tasks.md  (3 usages found)
+                                    288 - [ ] T082 [US3] Verify `record_benchmark.py` import: run `python benchmarks/record_benchmark.py ./AllBench
+                                    290 - [ ] T083 [US1] Verify SC-001 (54 benchmark scenarios): run `duckdb benchmarks/benchmarks.duckdb "SELECT k
+                                    294 - [ ] T085 [US1] Verify SC-005 (JIT overhead no regression): after recording a full run, query `SELECT kv_n
+                            012-o3-compilation-mode  (21 usages found)
+                                012-o3-compilation-mode/tasks.md  (21 usages found)
+                                    18 - [ ] T001 Create `test/WIP/o3-compilation-basic.cpp` — a minimal test that compiles with `-O3 -fpass-plugi
+                                    28 - [ ] T002 [US3] Update `comptime/RuntimeSpecializerPass.h` — add `IRRewritingPass : public PassInfoMixin<IRRewritingPass>` class declaration (mirrors the existing `IRDumpingPass` declaration)
+                                    30 - [ ] T003 [US3] Create `comptime/IRRewritingPass.cpp` — move from `IRDumpingPass.cpp`: `SpecLambdaSite`/`S
+                                    32 - [ ] T004 [US3] Update `comptime/IRDumpingPass.cpp` — remove Phases 0, 0b, N, N2 and the function-name col
+                                    34 - [ ] T005 [US3] Update `comptime/PassPlugin.cpp` — add `#include "IRRewritingPass.h"` (or declare `IRRewri
+                                    36 - [ ] T006 [US3] Update `comptime/CMakeLists.txt` — add `IRRewritingPass.cpp` to the `add_llvm_pass_plugin(
+                                    38 - [ ] T007 [US3] Build (`ninja LLVMRuntimeSpecializationComptimePlugin`) and run `ninja check-smoke-runtime
+                                    50 - [ ] T008 [US1] Update `benchmarks/CMakeLists.txt` — in the `foreach(UC IN ITEMS UC1 UC2 UC7 UC8 UC12 UC14
+                                    52 - [ ] T009 [P] [US1] Update `benchmarks/use-cases/UC1SqlPredicate/CMakeLists.txt` — change `-O0` to `-O3` in the standalone UC1 kernel compile command (the one that uses `-fpass-plugin`)
+                                    54 - [ ] T010 [P] [US1] Update `benchmarks/use-cases/UC2Convolution/CMakeLists.txt` — change `-O0` to `-O3` in the standalone UC2 kernel compile command
+                                    56 - [ ] T011 [P] [US1] Update `benchmarks/use-cases/UC7DfaRegex/CMakeLists.txt` — change `-O0` to `-O3` in the standalone UC7 kernel compile command
+                                    58 - [ ] T012 [P] [US1] Update `benchmarks/use-cases/UC8IVM/CMakeLists.txt` — change `-O0` to `-O3` in the standalone UC8 kernel compile command
+                                    60 - [ ] T013 [P] [US1] Update `benchmarks/use-cases/UC12GroupBy/CMakeLists.txt` — change `-O0` to `-O3` in the standalone UC12 kernel compile command
+                                    62 - [ ] T014 [P] [US1] Update `benchmarks/use-cases/UC14Sort/CMakeLists.txt` — change `-O0` to `-O3` in the standalone UC14 kernel compile command
+                                    64 - [ ] T015 [US1] Build `AllBenchmarks` (`ninja AllBenchmarks`) and execute one UC benchmark (e.g., UC1) to 
+                                    76 - [ ] T016 [P] [US2] Add `-O3 RUN:` lines to the `specializeLambda`-based smoke tests — for each of the fol
+                                    78 - [ ] T017 [P] [US2] Add `-O3 RUN:` lines to the `specializeOnly`/`callSpecialized`/function-equivalence sm
+                                    80 - [ ] T018 [P] [US2] Add `-O3 RUN:` lines to the remaining plugin-exercising smoke tests — same pattern for
+                                    82 - [ ] T019 [US2] Run `ninja check-smoke-runtime-specializer` — confirm 100% of both -O0 and -O3 `RUN:` line
+                                    92 - [ ] T020 Promote `test/WIP/o3-compilation-basic.cpp` to `test/smoke/o3-compilation-basic.cpp` and update 
+                                    94 - [ ] T021 Run `ninja check-smoke-runtime-specializer` one final time on the complete suite (all -O0 and -O
