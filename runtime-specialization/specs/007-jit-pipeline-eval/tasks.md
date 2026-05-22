@@ -334,7 +334,7 @@ run OOMs the box (`feedback_concurrent_benchmarks.md`).
 - [x] T045 [P9-run] [complex] Phase B in a subagent: same script with `--phase-only=B`. Verify `v_ablation_medians WHERE study_name LIKE 'ablation_uc_iter2_%'` returns 11 config_names × 6 groups = 66 non-null rows. Halt on any NULL P1 row and diagnose before continuing.
 - [x] T046 [P9-run] [complex] Phase C in a subagent: same script with `--phase-only=C`. The subagent must first check `[ -x /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark ]`. If absent, document as "Exp C still skipped (RQ-12 unchanged)" and move on; if present, run it and halt only on crash.
 - [x] T047 [P9-run] [complex] Phase E in a subagent: same script with `--phase-only=E`. Sweep only `fixpoint_max`, `early_prune`, `o3_final`, `pipeline`, `p1_inline_threshold`, `p1_max_module_growth` (skip `unroll_max` and `large_module_max` per iter-1 reflection §3). Reps=5 per sweep point.
-- [ ] T048 [P9-run] Phase R in a subagent: same script with `--phase-only=R`. Outputs to `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`. Lightweight task — plotting only, no benchmark execution.
+- [x] T048 [P9-run] Phase R in a subagent: same script with `--phase-only=R`. Outputs to `benchmarks/reports/<YYMMDD-HH-MM>-optimize-pipeline/`. Lightweight task — plotting only, no benchmark execution.
 
 ### 9.3 — Reflection & close
 
