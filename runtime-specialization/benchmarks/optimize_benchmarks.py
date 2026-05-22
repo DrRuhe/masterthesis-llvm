@@ -272,10 +272,15 @@ def store_unspec_baselines(
     study_name: str,
     unspec_by_kernel: dict[str, float],
 ) -> None:
-    con.execute("DELETE FROM unspec_baselines WHERE study_name = ?", [study_name])
+    # DuckDB has a known index limitation where in-transaction DELETEs are not
+    # observed by subsequent INSERTs in the same transaction's PK index, causing
+    # spurious "Duplicate key" constraint errors if rows for this study already
+    # existed before this transaction began. Use UPSERT semantics instead so the
+    # operation is idempotent and robust to stale rows from previous failed runs.
     for kernel, ns in unspec_by_kernel.items():
         con.execute(
-            "INSERT INTO unspec_baselines (study_name, kernel, unspec_ns) VALUES (?, ?, ?)",
+            "INSERT INTO unspec_baselines (study_name, kernel, unspec_ns) VALUES (?, ?, ?) "
+            "ON CONFLICT (study_name, kernel) DO UPDATE SET unspec_ns = EXCLUDED.unspec_ns",
             [study_name, kernel, ns],
         )
 
