@@ -1,0 +1,31 @@
+<_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ38create_multi_agg_delta_low_specializediiiiE3$_0JPKhPdS5_EEET_PT0_DpT1_>:
+mov %rdx,%r8
+mov (%rdi),%r9d
+movslq 0x4(%rdi),%rax
+movslq 0x8(%rdi),%rdi
+mov (%rsi,%rax,1),%eax
+cltd
+idiv %r9d
+lea (%rdx,%r9,1),%eax
+cltd
+idiv %r9d
+movsd (%rsi,%rdi,1),%xmm0
+movslq %edx,%rax
+addsd (%r8,%rax,8),%xmm0
+movsd %xmm0,(%r8,%rax,8)
+movsd (%rcx,%rax,8),%xmm0
+addsd -0x50774e(%rip),%xmm0 # 4a86360 <.LCPI0_0>
+movsd %xmm0,(%rcx,%rax,8)
+ret
+int3
+int3
+int3
+int3
+int3
+int3
+int3
+int3
+int3
+int3
+int3
+int3
