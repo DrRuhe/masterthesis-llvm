@@ -1,4 +1,3 @@
 test/.lit_test_times.txt
 test/**/Output
 *.gdbinit
-benchmarks/*.duckdb
