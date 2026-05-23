@@ -277,11 +277,18 @@ def extract_orig_asm(binary: Path, func_name: str, out_path: Path, objdump: str)
 # Artifact routing
 # ---------------------------------------------------------------------------
 
-def _find_asm_for_kernel(kernel_tag: str, staging_asm: Path) -> list[Path]:
-    """Return specialized ASM files whose stem contains kernel_tag."""
-    if not kernel_tag:
-        return list(staging_asm.glob("*__specialized.asm"))
-    return [p for p in staging_asm.glob("*__specialized.asm") if kernel_tag in p.stem]
+def _find_asm_for_benchmark(kv: dict[str, str], staging_asm: Path) -> list[Path]:
+    """Return specialized ASM files matching the benchmark's kernel and level tags."""
+    kernel_tag = kv.get("n", "")
+    abstraction_tag = kv.get("a", "")
+
+    candidates = list(staging_asm.glob("*__specialized.asm"))
+    if kernel_tag:
+        candidates = [p for p in candidates if kernel_tag in p.stem]
+    if abstraction_tag:
+        abstraction_token = f"_{abstraction_tag}_specialized"
+        candidates = [p for p in candidates if abstraction_token in p.stem]
+    return candidates
 
 
 def route_artifacts(
@@ -294,7 +301,6 @@ def route_artifacts(
     for run in runs:
         run.subdir.mkdir(parents=True, exist_ok=True)
         kv          = _parse_bm_name(run.name)
-        kernel_tag  = kv.get("n", "")
 
         # ── Pass trace JSON + plot ─────────────────────────────────────
         if config.pass_trace:
@@ -326,9 +332,10 @@ def route_artifacts(
 
         # ── Specialized ASM + original ASM (with callees) ────────────
         if config.asm and objdump:
-            spec_files = _find_asm_for_kernel(kernel_tag, staging["asm"])
-            if not spec_files and not kernel_tag:
-                spec_files = list(staging["asm"].glob("*__specialized.asm"))
+            spec_files = _find_asm_for_benchmark(kv, staging["asm"])
+            if not spec_files:
+                print(f"  WARNING: specialized ASM not found for {run.name}",
+                      file=sys.stderr)
             for spec_src in spec_files:
                 func_name = spec_src.stem.replace("__specialized", "")
                 spec_dst  = run.subdir / spec_src.name
