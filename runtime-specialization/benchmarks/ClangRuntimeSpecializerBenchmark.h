@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -218,6 +219,48 @@ void benchmarkJITAnalysis(
             std::chrono::steady_clock::now() - T0).count();
         state.SetIterationTime(Ms / 1000.0);
     }
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+
+    writePassTraceJSON(state.name(), ClangRuntimeSpecializer::getLastPassTrace());
+}
+
+// Factory-based analysis benchmark for use cases that specialize lambdas via
+// create_*_specialized() helpers. The factory must perform exactly one JIT
+// specialization when invoked.
+template <class Factory>
+__attribute__((always_inline))
+void benchmarkLambdaJITAnalysis(
+    benchmark::State& state,
+    Factory&& factory,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+
+    const char* ChromeDir = std::getenv("CRS_CHROME_TRACE_DIR");
+    if (!ChromeDir)
+        throw std::runtime_error(
+            "CRS_CHROME_TRACE_DIR must be set before running benchmarkJITAnalysis. "
+            "Use record_benchmark.py or export CRS_CHROME_TRACE_DIR=/path/to/dir.");
+    std::string ChromeTraceFilename = state.name() + "_chrome_trace.json";
+    for (char& C : ChromeTraceFilename)
+        if (C != '.' && C != '-' && C != '_' &&
+            !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
+            C = '_';
+    opts.TimeTraceOutputPath = std::string(ChromeDir) + "/" + ChromeTraceFilename;
+    opts.EnablePassTrace = true;
+
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    RS->setOptions(opts);
+    auto&& FactoryRef = factory;
+    for (auto _ : state) {
+        auto T0 = std::chrono::steady_clock::now();
+        benchmark::DoNotOptimize(std::invoke(FactoryRef));
+        double Ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - T0).count();
+        state.SetIterationTime(Ms / 1000.0);
+    }
+    RS->setOptions(ClangRuntimeSpecializer::Options::Default());
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
 
     writePassTraceJSON(state.name(), ClangRuntimeSpecializer::getLastPassTrace());

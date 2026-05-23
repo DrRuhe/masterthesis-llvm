@@ -351,7 +351,103 @@ static void BM_UC1_column_scan_abstract_specialized_exec(benchmark::State& state
 }
 
 // ============================================================================
+// ---------------------------------------------------------------------------
+// JIT analysis benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_UC1_count_matching_rows_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_sql_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
+    });
+}
+
+static void BM_UC1_count_matching_rows_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_count_matching_rows_tradeoff_specialized(COL_OFFSET, ROW_STRIDE, 0.5);
+    });
+}
+
+static void BM_UC1_count_matching_rows_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_count_matching_rows_abstract_specialized(COL_OFFSET, ROW_STRIDE, 0.5);
+    });
+}
+
+static void BM_UC1_multi_predicate_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_predicate_low_specialized(ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5);
+    });
+}
+
+static void BM_UC1_multi_predicate_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_predicate_tradeoff_specialized(ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5);
+    });
+}
+
+static void BM_UC1_multi_predicate_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_predicate_abstract_specialized(ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5);
+    });
+}
+
+static void BM_UC1_column_scan_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_column_scan_low_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
+    });
+}
+
+static void BM_UC1_column_scan_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_column_scan_tradeoff_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
+    });
+}
+
+static void BM_UC1_column_scan_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_column_scan_abstract_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
+    });
+}
+
 // BENCHMARK macros
+#define UC1_JIT_ANALYSIS_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
+BENCHMARK(BM_UC1_count_matching_rows_low_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_low_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_low_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_low_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_count_matching_rows_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:count_matching_rows;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_low_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_low_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_low_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_low_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_multi_predicate_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:multi_predicate;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_low_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_low_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_low_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_low_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_tradeoff_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC1_column_scan_abstract_jit_analysis)->Name("BM_g:uc1_sql;n:column_scan;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc1)->Teardown(teardown_uc1)->Unit(benchmark::kMillisecond);
+
 // ============================================================================
 
 // count_matching_rows / low  (original 12 macros — kept for backward compatibility)
@@ -504,6 +600,7 @@ UC1_BENCHMARK_MP_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(
 UC1_BENCHMARK_CS_LOW(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
 UC1_BENCHMARK_CS_TRADEOFF(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
 UC1_BENCHMARK_CS_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
+UC1_JIT_ANALYSIS_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
 #else
 UC1_BENCHMARK_SPEC(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
 UC1_BENCHMARK_CMR_TRADEOFF(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
@@ -514,6 +611,7 @@ UC1_BENCHMARK_MP_ABSTRACT(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'0
 UC1_BENCHMARK_CS_LOW(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
 UC1_BENCHMARK_CS_TRADEOFF(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
 UC1_BENCHMARK_CS_ABSTRACT(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
+UC1_JIT_ANALYSIS_SPEC(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
 #endif
 
 #ifndef ALL_BENCHMARKS_BUILD

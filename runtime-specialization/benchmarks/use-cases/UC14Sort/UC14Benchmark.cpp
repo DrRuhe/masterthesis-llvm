@@ -398,7 +398,71 @@ static void BM_generic_sort_abstract_specialized_exec(benchmark::State& state) {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// JIT analysis benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_generic_sort_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_sort_specialized(int64_asc_cmp, sizeof(int64_t));
+    });
+}
+
+static void BM_generic_sort_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_generic_sort_tradeoff_specialized(sizeof(int64_t));
+    });
+}
+
+static void BM_generic_sort_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_generic_sort_abstract_specialized(sizeof(int64_t));
+    });
+}
+
+static void BM_struct_sort_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_struct_sort_low_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+    });
+}
+
+static void BM_struct_sort_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_struct_sort_tradeoff_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+    });
+}
+
+static void BM_struct_sort_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_struct_sort_abstract_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+    });
+}
+
+static void BM_multi_key_sort_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_key_sort_low_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+    });
+}
+
+static void BM_multi_key_sort_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_key_sort_tradeoff_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+    });
+}
+
+static void BM_multi_key_sort_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_key_sort_abstract_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+    });
+}
+
 // Benchmark registration macros
+#define UC14_JIT_ANALYSIS_VARIANT(BM, NAME, ABSTRACTION, SMALL, MEDIUM, LARGE, EXTRALARGE) \
+BENCHMARK(BM)->Name("BM_g:uc14_sort;n:" NAME ";a:" ABSTRACTION ";s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM)->Name("BM_g:uc14_sort;n:" NAME ";a:" ABSTRACTION ";s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM)->Name("BM_g:uc14_sort;n:" NAME ";a:" ABSTRACTION ";s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM)->Name("BM_g:uc14_sort;n:" NAME ";a:" ABSTRACTION ";s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc14)->Teardown(teardown_uc14)->Unit(benchmark::kMillisecond);
+
 // ---------------------------------------------------------------------------
 
 #define UC14_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
@@ -545,6 +609,7 @@ UC14_BENCHMARK_SPEC(
     Arg(70'000'000),
     Arg(400'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_generic_sort_low_jit_analysis, "generic_sort", "low", Arg(900'000), Arg(8'000'000), Arg(70'000'000), Arg(400'000'000))
 
 UC14_GENERIC_TRADEOFF_SPEC(
     Arg(900'000),
@@ -552,6 +617,7 @@ UC14_GENERIC_TRADEOFF_SPEC(
     Arg(70'000'000),
     Arg(400'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_generic_sort_tradeoff_jit_analysis, "generic_sort", "tradeoff", Arg(900'000), Arg(8'000'000), Arg(70'000'000), Arg(400'000'000))
 
 UC14_GENERIC_ABSTRACT_SPEC(
     Arg(900'000),
@@ -559,6 +625,7 @@ UC14_GENERIC_ABSTRACT_SPEC(
     Arg(70'000'000),
     Arg(400'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_generic_sort_abstract_jit_analysis, "generic_sort", "abstract", Arg(900'000), Arg(8'000'000), Arg(70'000'000), Arg(400'000'000))
 
 UC14_STRUCT_LOW_SPEC(
     Arg(1'000'000),
@@ -566,6 +633,7 @@ UC14_STRUCT_LOW_SPEC(
     Arg(50'000'000),
     Arg(250'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_struct_sort_low_jit_analysis, "struct_sort", "low", Arg(1'000'000), Arg(8'500'000), Arg(50'000'000), Arg(250'000'000))
 
 UC14_STRUCT_TRADEOFF_SPEC(
     Arg(1'000'000),
@@ -573,6 +641,7 @@ UC14_STRUCT_TRADEOFF_SPEC(
     Arg(50'000'000),
     Arg(250'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_struct_sort_tradeoff_jit_analysis, "struct_sort", "tradeoff", Arg(1'000'000), Arg(8'500'000), Arg(50'000'000), Arg(250'000'000))
 
 UC14_STRUCT_ABSTRACT_SPEC(
     Arg(1'000'000),
@@ -580,6 +649,7 @@ UC14_STRUCT_ABSTRACT_SPEC(
     Arg(50'000'000),
     Arg(250'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_struct_sort_abstract_jit_analysis, "struct_sort", "abstract", Arg(1'000'000), Arg(8'500'000), Arg(50'000'000), Arg(250'000'000))
 
 UC14_MULTI_LOW_SPEC(
     Arg(750'000),
@@ -587,6 +657,7 @@ UC14_MULTI_LOW_SPEC(
     Arg(50'000'000),
     Arg(250'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_multi_key_sort_low_jit_analysis, "multi_key_sort", "low", Arg(750'000), Arg(6'500'000), Arg(50'000'000), Arg(250'000'000))
 
 UC14_MULTI_TRADEOFF_SPEC(
     Arg(750'000),
@@ -594,6 +665,7 @@ UC14_MULTI_TRADEOFF_SPEC(
     Arg(50'000'000),
     Arg(250'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_multi_key_sort_tradeoff_jit_analysis, "multi_key_sort", "tradeoff", Arg(750'000), Arg(6'500'000), Arg(50'000'000), Arg(250'000'000))
 
 UC14_MULTI_ABSTRACT_SPEC(
     Arg(750'000),
@@ -601,6 +673,7 @@ UC14_MULTI_ABSTRACT_SPEC(
     Arg(50'000'000),
     Arg(250'000'000)
 )
+UC14_JIT_ANALYSIS_VARIANT(BM_multi_key_sort_abstract_jit_analysis, "multi_key_sort", "abstract", Arg(750'000), Arg(6'500'000), Arg(50'000'000), Arg(250'000'000))
 
 #ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {

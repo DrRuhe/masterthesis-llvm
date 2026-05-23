@@ -347,7 +347,103 @@ static void BM_UC7_multi_abstract_specialized_exec(benchmark::State& state) {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// JIT analysis benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_UC7_email_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_dfa_specialized();
+    });
+}
+
+static void BM_UC7_email_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_email_match_tradeoff_specialized();
+    });
+}
+
+static void BM_UC7_email_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_email_match_abstract_specialized();
+    });
+}
+
+static void BM_UC7_url_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_url_match_low_specialized();
+    });
+}
+
+static void BM_UC7_url_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_url_match_tradeoff_specialized();
+    });
+}
+
+static void BM_UC7_url_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_url_match_abstract_specialized();
+    });
+}
+
+static void BM_UC7_multi_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_pattern_match_low_specialized();
+    });
+}
+
+static void BM_UC7_multi_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_pattern_match_tradeoff_specialized();
+    });
+}
+
+static void BM_UC7_multi_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_multi_pattern_match_abstract_specialized();
+    });
+}
+
 // Benchmark registration macros
+#define UC7_JIT_ANALYSIS_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
+BENCHMARK(BM_UC7_email_low_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_low_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_low_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_low_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_email_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:email_match;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_low_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_low_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_low_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_low_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_url_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:url_match;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_low_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_low_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_low_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_low_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_tradeoff_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC7_multi_abstract_jit_analysis)->Name("BM_g:uc7_dfa;n:multi_pattern_match;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond);
+
 // ---------------------------------------------------------------------------
 
 #define UC7_VARIANT_SPEC(BM_UNSPE, BM_JIT, BM_EXEC, VARIANT, ABSTRACTION, SMALL, MEDIUM, LARGE, EXTRALARGE) \
@@ -382,6 +478,7 @@ UC7_BENCHMARK_SPEC(
     Arg(500LL * 1024 * 1024),
     Arg(1000LL * 1024 * 1024)
 )
+UC7_JIT_ANALYSIS_SPEC(Arg(5LL * 1024 * 1024), Arg(50LL * 1024 * 1024), Arg(500LL * 1024 * 1024), Arg(1000LL * 1024 * 1024))
 #else
 UC7_BENCHMARK_SPEC(
     Arg(44LL * 1024 * 1024),
@@ -389,6 +486,7 @@ UC7_BENCHMARK_SPEC(
     Arg(4350LL * 1024 * 1024),
     Arg(26000LL * 1024 * 1024)
 )
+UC7_JIT_ANALYSIS_SPEC(Arg(44LL * 1024 * 1024), Arg(440LL * 1024 * 1024), Arg(4350LL * 1024 * 1024), Arg(26000LL * 1024 * 1024))
 #endif
 
 // ---------------------------------------------------------------------------

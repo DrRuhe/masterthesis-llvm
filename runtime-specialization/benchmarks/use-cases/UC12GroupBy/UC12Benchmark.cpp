@@ -377,7 +377,103 @@ static void BM_UC12_grouped_minmax_abstract_specialized_exec(benchmark::State& s
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// JIT analysis benchmarks
+// ---------------------------------------------------------------------------
+
+static void BM_UC12_grouped_sum_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_groupby_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_sum_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_sum_tradeoff_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_sum_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_sum_abstract_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_count_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_count_low_specialized(ROW_STRIDE12, KEY_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_count_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_count_tradeoff_specialized(ROW_STRIDE12, KEY_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_count_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_count_abstract_specialized(ROW_STRIDE12, KEY_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_minmax_low_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_minmax_low_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_minmax_tradeoff_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_minmax_tradeoff_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
+    });
+}
+
+static void BM_UC12_grouped_minmax_abstract_jit_analysis(benchmark::State& state) {
+    clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
+        return create_grouped_minmax_abstract_specialized(ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12);
+    });
+}
+
 // Benchmark registration macros
+#define UC12_JIT_ANALYSIS_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
+BENCHMARK(BM_UC12_grouped_sum_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_sum_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_sum;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_count_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_count;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:low;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:low;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:low;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_low_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:low;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:tradeoff;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:tradeoff;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:tradeoff;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_tradeoff_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:tradeoff;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:abstract;s:SMALL;t:jit_analysis;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:abstract;s:MEDIUM;t:jit_analysis;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:abstract;s:LARGE;t:jit_analysis;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_UC12_grouped_minmax_abstract_jit_analysis)->Name("BM_g:uc12_groupby;n:grouped_minmax;a:abstract;s:EXTRALARGE;t:jit_analysis;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc12)->Teardown(teardown_uc12)->Unit(benchmark::kMillisecond);
+
 // ---------------------------------------------------------------------------
 
 #define UC12_BENCHMARK_SPEC(SMALL, MEDIUM, LARGE, EXTRALARGE) \
@@ -497,6 +593,7 @@ UC12_BENCHMARK_SPEC(
     Arg(30'000'000),
     Arg(50'000'000)
 )
+UC12_JIT_ANALYSIS_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
 #else
 UC12_BENCHMARK_SPEC(
     Arg(36'000'000LL),
@@ -504,6 +601,7 @@ UC12_BENCHMARK_SPEC(
     Arg(3'600'000'000LL),
     Arg(21'700'000'000LL)
 )
+UC12_JIT_ANALYSIS_SPEC(Arg(36'000'000LL), Arg(360'000'000LL), Arg(3'600'000'000LL), Arg(21'700'000'000LL))
 #endif
 
 #ifndef ALL_BENCHMARKS_BUILD
