@@ -86,8 +86,16 @@ llvm::Error runFuncSpecPipeline(PipelineRunArgs& Args) {
   }
   for (auto &F : M) {
     if (F.isDeclaration()) continue;
-    if (ToConvert.count(&F))
-      F.setLinkage(llvm::GlobalValue::InternalLinkage);
+    if (ToConvert.count(&F)) {
+      // Only convert AvailableExternally functions to Internal — that is the
+      // sole purpose of this scrub (let the JIT compile their bodies instead
+      // of resolving from the host). WeakODR functions already have their
+      // bodies compiled by the JIT and MUST stay WeakODR: if downgraded to
+      // Internal they become Scope::Local ELF symbols that JITLink excludes
+      // from InternedResult, causing a "Missing definitions" link error.
+      if (F.hasAvailableExternallyLinkage())
+        F.setLinkage(llvm::GlobalValue::InternalLinkage);
+    }
     // Strip alwaysinline from everything, including the wrapper. The
     // wrapper is the JIT entry — nothing inlines INTO the JIT host. Leaving
     // alwaysinline on the caller blocks the cost-based inliner from
