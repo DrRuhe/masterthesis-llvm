@@ -123,7 +123,7 @@ def create_report_dir(cwd: Path) -> tuple[Path, dict[str, Path]]:
     Returns (report_dir, staging_paths) where staging_paths maps
     'asm' | 'pass_trace' | 'chrome_trace' to their Path.
     """
-    ts = datetime.now().strftime("%Y%m%d-%H%M%S")
+    ts = datetime.now().strftime("%y%m%d-%H%M%S")
     report_dir = cwd / "reports" / f"{ts}-analysis"
     staging = {
         "asm":          report_dir / "_staging" / "asm",
