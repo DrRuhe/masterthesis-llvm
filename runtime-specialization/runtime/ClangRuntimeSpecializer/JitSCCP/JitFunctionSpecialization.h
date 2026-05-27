@@ -82,6 +82,7 @@
 #ifndef CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITFUNCTIONSPECIALIZATION_H
 #define CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITFUNCTIONSPECIALIZATION_H
 
+#include "../ClangRuntimeSpecializer.h"
 #include "JitSCCPSolver.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Analysis/CodeMetrics.h"
@@ -259,6 +260,9 @@ class JitFunctionSpecializer {
   llvm::DenseMap<llvm::Function *, unsigned> FunctionGrowth;
   unsigned NGlobals = 0;
 
+  /// Options controlling specialization behaviour.
+  JitFunctionSpecializationOptions FSOpts;
+
 public:
   JitFunctionSpecializer(
       JitSCCPSolver &Solver, llvm::Module &M,
@@ -266,9 +270,11 @@ public:
       std::function<llvm::BlockFrequencyInfo &(llvm::Function &)> GetBFI,
       std::function<const llvm::TargetLibraryInfo &(llvm::Function &)> GetTLI,
       std::function<llvm::TargetTransformInfo &(llvm::Function &)> GetTTI,
-      std::function<llvm::AssumptionCache &(llvm::Function &)> GetAC)
+      std::function<llvm::AssumptionCache &(llvm::Function &)> GetAC,
+      JitFunctionSpecializationOptions FSOpts =
+          JitFunctionSpecializationOptions{})
       : Solver(Solver), M(M), FAM(FAM), GetBFI(GetBFI), GetTLI(GetTLI),
-        GetTTI(GetTTI), GetAC(GetAC) {}
+        GetTTI(GetTTI), GetAC(GetAC), FSOpts(FSOpts) {}
 
   ~JitFunctionSpecializer();
 

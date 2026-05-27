@@ -31,16 +31,6 @@ using namespace llvm;
 
 STATISTIC(NumSpecsCreated, "Number of specializations created");
 
-static cl::opt<bool> JitForceSpecialization(
-    "jit-force-specialization", cl::init(false), cl::Hidden, cl::desc(
-    "Force JIT function specialization for every call site with a constant "
-    "argument"));
-
-static cl::opt<unsigned> JitMaxClones(
-    "jit-funcspec-max-clones", cl::init(3), cl::Hidden, cl::desc(
-    "The maximum number of clones allowed for a single JIT function "
-    "specialization"));
-
 static cl::opt<unsigned>
     JitMaxDiscoveryIterations("jit-funcspec-max-discovery-iterations",
                               cl::init(100), cl::Hidden,
@@ -57,11 +47,6 @@ static cl::opt<unsigned> JitMaxBlockPredecessors(
     "jit-funcspec-max-block-predecessors", cl::init(2), cl::Hidden, cl::desc(
     "The maximum number of predecessors a basic block can have to be "
     "considered during the JIT estimation of dead code"));
-
-static cl::opt<unsigned> JitMinFunctionSize(
-    "jit-funcspec-min-function-size", cl::init(500), cl::Hidden,
-    cl::desc("Don't JIT-specialize functions that have less than this number "
-             "of instructions"));
 
 static cl::opt<unsigned> JitMaxCodeSizeGrowth(
     "jit-funcspec-max-codesize-growth", cl::init(3), cl::Hidden, cl::desc(
@@ -81,16 +66,6 @@ static cl::opt<unsigned> JitMinInliningBonus(
     "jit-funcspec-min-inlining-bonus", cl::init(300), cl::Hidden,
     cl::desc("Reject JIT specializations whose inlining bonus is less than "
              "this much percent of the original function size"));
-
-static cl::opt<bool> JitSpecializeOnAddress(
-    "jit-funcspec-on-address", cl::init(false), cl::Hidden, cl::desc(
-    "Enable JIT function specialization on the address of global values"));
-
-static cl::opt<bool> JitSpecializeLiteralConstant(
-    "jit-funcspec-for-literal-constant", cl::init(true), cl::Hidden,
-    cl::desc(
-        "Enable JIT specialization of functions that take a literal constant "
-        "as an argument"));
 
 bool InstCostVisitor::canEliminateSuccessor(BasicBlock *BB,
                                             BasicBlock *Succ) const {
@@ -704,23 +679,23 @@ bool JitFunctionSpecializer::run() {
     }
 
     // When specializing literal constants is enabled, always require functions
-    // to be larger than JitMinFunctionSize, to prevent excessive specialization.
+    // to be larger than FSOpts.MinFunctionSize, to prevent excessive specialization.
     const bool RequireMinSize =
-        !JitForceSpecialization &&
-        (JitSpecializeLiteralConstant || !F.hasFnAttribute(Attribute::NoInline));
+        !FSOpts.ForceSpecialization &&
+        (FSOpts.SpecializeLiteralConstant || !F.hasFnAttribute(Attribute::NoInline));
 
     // If the code metrics reveal that we shouldn't duplicate the function,
     // or if the code size implies that this function is easy to get inlined,
     // then we shouldn't specialize it.
     if (Metrics.notDuplicatable || !Metrics.NumInsts.isValid() ||
-        (RequireMinSize && Metrics.NumInsts < JitMinFunctionSize))
+        (RequireMinSize && Metrics.NumInsts < FSOpts.MinFunctionSize))
       continue;
 
     // When specialization on literal constants is disabled, only consider
     // recursive functions when running multiple times to save wasted analysis,
     // as we will not be able to specialize on any newly found literal constant
     // return values.
-    if (!JitSpecializeLiteralConstant && !Inserted && !Metrics.isRecursive)
+    if (!FSOpts.SpecializeLiteralConstant && !Inserted && !Metrics.isRecursive)
       continue;
 
     int64_t Sz = Metrics.NumInsts.getValue();
@@ -759,8 +734,11 @@ bool JitFunctionSpecializer::run() {
       return AllSpecs[I].Score > AllSpecs[J].Score;
     return I > J;
   };
+  // MaxClones == 0 means unlimited: allow all discovered specializations.
   const unsigned NSpecs =
-      std::min(NumCandidates * JitMaxClones, unsigned(AllSpecs.size()));
+      FSOpts.MaxClones == 0
+          ? unsigned(AllSpecs.size())
+          : std::min(NumCandidates * FSOpts.MaxClones, unsigned(AllSpecs.size()));
   SmallVector<unsigned> BestSpecs(NSpecs + 1);
   std::iota(BestSpecs.begin(), BestSpecs.begin() + NSpecs, 0);
   if (AllSpecs.size() > NSpecs) {
@@ -957,7 +935,7 @@ bool JitFunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
 
       auto IsProfitable = [&]() -> bool {
         // No check required.
-        if (JitForceSpecialization)
+        if (FSOpts.ForceSpecialization)
           return true;
 
         LLVM_DEBUG(
@@ -1130,7 +1108,7 @@ bool JitFunctionSpecializer::isArgumentInteresting(Argument *A) {
     return false;
 
   Type *Ty = A->getType();
-  if (!Ty->isPointerTy() && (!JitSpecializeLiteralConstant ||
+  if (!Ty->isPointerTy() && (!FSOpts.SpecializeLiteralConstant ||
       (!Ty->isIntegerTy() && !Ty->isFloatingPointTy() && !Ty->isStructTy())))
     return false;
 
@@ -1177,7 +1155,7 @@ Constant *JitFunctionSpecializer::getCandidateConstant(Value *V) {
   // global variable, unless explicitly enabled.
   if (C && C->getType()->isPointerTy() && !C->isNullValue())
     if (auto *GV = dyn_cast<GlobalVariable>(getUnderlyingObject(C));
-        GV && !(GV->isConstant() || JitSpecializeOnAddress))
+        GV && !(GV->isConstant() || FSOpts.SpecializeOnAddress))
       return nullptr;
 
   return C;

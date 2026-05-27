@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "JitIPSCCPPass.h"
+#include "../ClangRuntimeSpecializer.h"
 #include "JitFunctionSpecialization.h"
 #include "JitSCCPSolver.h"
 #include "llvm/ADT/SetVector.h"
@@ -45,10 +46,6 @@ STATISTIC(NumGlobalConst, "Number of globals found to be constant");
 STATISTIC(NumDeadBlocks , "Number of basic blocks unreachable");
 STATISTIC(NumInstReplaced,
           "Number of instructions replaced with (simpler) instruction");
-
-static cl::opt<unsigned> JitFuncSpecMaxIters(
-    "jit-funcspec-max-iters", cl::init(10), cl::Hidden, cl::desc(
-    "The maximum number of iterations JIT function specialization is run"));
 
 static void findReturnsToZap(Function &F,
                              SmallVector<ReturnInst *, 8> &ReturnsToZap,
@@ -115,10 +112,11 @@ static bool runIPSCCP(
     std::function<AssumptionCache &(Function &)> GetAC,
     std::function<DominatorTree &(Function &)> GetDT,
     std::function<BlockFrequencyInfo &(Function &)> GetBFI,
-    bool IsFuncSpecEnabled) {
+    bool IsFuncSpecEnabled,
+    JitFunctionSpecializationOptions FSOpts) {
   JitSCCPSolver Solver(DL, GetTLI, M.getContext());
   JitFunctionSpecializer Specializer(Solver, M, FAM, GetBFI, GetTLI, GetTTI,
-                                  GetAC);
+                                  GetAC, FSOpts);
 
   // Loop over all functions, marking arguments to those with their addresses
   // taken or that are external as overdefined.
@@ -163,7 +161,7 @@ static bool runIPSCCP(
 
   if (IsFuncSpecEnabled) {
     unsigned Iters = 0;
-    while (Iters++ < JitFuncSpecMaxIters && Specializer.run());
+    while (Iters++ < FSOpts.FuncSpecMaxIters && Specializer.run());
   }
 
   // Iterate over all of the instructions in the module, replacing them with
@@ -356,6 +354,16 @@ static bool runIPSCCP(
   return MadeChanges;
 }
 
+JitIPSCCPPass::JitIPSCCPPass(const JitFunctionSpecializationOptions& FSOpts) {
+  Options.AllowFuncSpec  = true;
+  P2MinFunctionSize      = FSOpts.MinFunctionSize;
+  P2MaxClones            = FSOpts.MaxClones;
+  P2FuncSpecMaxIters     = FSOpts.FuncSpecMaxIters;
+  P2ForceSpec            = FSOpts.ForceSpecialization;
+  P2SpecOnAddress        = FSOpts.SpecializeOnAddress;
+  P2SpecLiteral          = FSOpts.SpecializeLiteralConstant;
+}
+
 PreservedAnalyses JitIPSCCPPass::run(Module &M, ModuleAnalysisManager &AM) {
   const DataLayout &DL = M.getDataLayout();
   auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
@@ -376,8 +384,16 @@ PreservedAnalyses JitIPSCCPPass::run(Module &M, ModuleAnalysisManager &AM) {
   };
 
 
+  JitFunctionSpecializationOptions FSOpts;
+  FSOpts.MinFunctionSize         = P2MinFunctionSize;
+  FSOpts.MaxClones               = P2MaxClones;
+  FSOpts.FuncSpecMaxIters        = P2FuncSpecMaxIters;
+  FSOpts.ForceSpecialization     = P2ForceSpec;
+  FSOpts.SpecializeOnAddress     = P2SpecOnAddress;
+  FSOpts.SpecializeLiteralConstant = P2SpecLiteral;
+
   if (!runIPSCCP(M, DL, &FAM, GetTLI, GetTTI, GetAC, GetDT, GetBFI,
-                 isFuncSpecEnabled()))
+                 isFuncSpecEnabled(), FSOpts))
     return PreservedAnalyses::all();
 
   PreservedAnalyses PA;
