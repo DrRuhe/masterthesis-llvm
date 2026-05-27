@@ -25,18 +25,15 @@
 
 namespace clangRuntimeSpecializer {
 
+// Forward declaration — defined in ClangRuntimeSpecializer.h at namespace scope.
+struct JitFunctionSpecializationOptions;
+
 /// A set of parameters to control various transforms performed by JitIPSCCPPass.
-/// Each of the boolean parameters can be set to:
-///   true - enabling the transformation.
-///   false - disabling the transformation.
-/// Intended use is to create a default object, modify parameters with
-/// additional setters and then pass it to JitIPSCCPPass.
 struct JitIPSCCPOptions {
   bool AllowFuncSpec;
 
   JitIPSCCPOptions(bool AllowFuncSpec = true) : AllowFuncSpec(AllowFuncSpec) {}
 
-  /// Enables or disables Specialization of Functions.
   JitIPSCCPOptions &setFuncSpec(bool FuncSpec) {
     AllowFuncSpec = FuncSpec;
     return *this;
@@ -44,19 +41,32 @@ struct JitIPSCCPOptions {
 };
 
 /// Pass to perform interprocedural constant propagation.
-class JitIPSCCPPass
-    : public llvm::PassInfoMixin<JitIPSCCPPass> {
+class JitIPSCCPPass : public llvm::PassInfoMixin<JitIPSCCPPass> {
   JitIPSCCPOptions Options;
+  // Cost-model knobs from JitFunctionSpecializationOptions (stored by value
+  // to avoid include dependency on ClangRuntimeSpecializer.h in this header).
+  unsigned P2MinFunctionSize  = 1;
+  unsigned P2MaxClones        = 0;
+  unsigned P2FuncSpecMaxIters = 10;
+  bool     P2ForceSpec        = false;
+  bool     P2SpecOnAddress    = false;
+  bool     P2SpecLiteral      = true;
 
 public:
   JitIPSCCPPass() = default;
+  explicit JitIPSCCPPass(JitIPSCCPOptions Options) : Options(Options) {}
+  explicit JitIPSCCPPass(const JitFunctionSpecializationOptions& FSOpts);
 
-  JitIPSCCPPass(JitIPSCCPOptions Options) : Options(Options) {}
-
-  llvm::PreservedAnalyses run(llvm::Module &M,
-                              llvm::ModuleAnalysisManager &AM);
+  llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &AM);
 
   bool isFuncSpecEnabled() const { return Options.AllowFuncSpec; }
+
+  unsigned getMinFunctionSize()  const { return P2MinFunctionSize; }
+  unsigned getMaxClones()        const { return P2MaxClones; }
+  unsigned getFuncSpecMaxIters() const { return P2FuncSpecMaxIters; }
+  bool     isForceSpec()         const { return P2ForceSpec; }
+  bool     isSpecOnAddress()     const { return P2SpecOnAddress; }
+  bool     isSpecLiteral()       const { return P2SpecLiteral; }
 };
 
 } // namespace clangRuntimeSpecializer

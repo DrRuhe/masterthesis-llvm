@@ -246,6 +246,17 @@ namespace clangRuntimeSpecializer {
     llvm::orc::ExecutionSession*  ES    = nullptr;
   };
 
+  /// Cost-model knobs for the Pipeline 2 JIT-IPSCCP function specializer.
+  /// Backed by CRS_P2_* env vars in Options::Default().
+  struct JitFunctionSpecializationOptions {
+    unsigned MinFunctionSize      = 1;     // minimum instruction count for specialization
+    unsigned MaxClones            = 0;     // 0 = unlimited
+    unsigned FuncSpecMaxIters     = 10;    // max specialization iterations inside the solver
+    bool     ForceSpecialization  = false; // bypass profitability check
+    bool     SpecializeOnAddress  = false;
+    bool     SpecializeLiteralConstant = true;
+  };
+
   class ClangRuntimeSpecializer {
   public:
     enum class LogLevel {
@@ -338,6 +349,9 @@ namespace clangRuntimeSpecializer {
       int    P1InlineThreshold = 225;        // env: CRS_DEFAULT_P1_INLINE_THRESHOLD; LLVM O3 default
       double P1MaxModuleGrowth = 2.0;        // env: CRS_DEFAULT_P1_MAX_MODULE_GROWTH; soft cap on post-fixpoint inst count vs pre-fixpoint
 
+      // --- Pipeline 2 IPSCCP knobs ---
+      JitFunctionSpecializationOptions P2FuncSpec;
+
       // --- Budget metadata (set by FromExpectedRuntime; stored for logging/counter export) ---
       double ExpectedCallDurationNs = 0.0;  // 0 = not set
       double BudgetScale            = 1.0;
@@ -365,6 +379,10 @@ namespace clangRuntimeSpecializer {
         static const unsigned kFuncSpecMaxGroups = (unsigned)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS",  0.0);
         static const int      kP1InlineThresh  = (int)_envOr("CRS_DEFAULT_P1_INLINE_THRESHOLD",       225.0);
         static const double   kP1MaxGrowth     = _envOr("CRS_DEFAULT_P1_MAX_MODULE_GROWTH",             2.0);
+        static const unsigned kP2MinFuncSize   = (unsigned)_envOr("CRS_P2_MIN_FUNC_SIZE",               1.0);
+        static const unsigned kP2MaxClones     = (unsigned)_envOr("CRS_P2_MAX_CLONES",                  0.0);
+        static const unsigned kP2FuncSpecIters = (unsigned)_envOr("CRS_P2_FUNC_SPEC_ITERS",            10.0);
+        static const bool     kP2ForceSpec     = _envOr("CRS_P2_FORCE_SPEC",                            0.0) != 0.0;
         Options O;
         O.MaxFixpointIterations     = kFixpoint;
         O.LoopUnrollCount           = kUnroll;
@@ -375,6 +393,10 @@ namespace clangRuntimeSpecializer {
         O.FuncSpecMaxGroups         = kFuncSpecMaxGroups;
         O.P1InlineThreshold         = kP1InlineThresh;
         O.P1MaxModuleGrowth         = kP1MaxGrowth;
+        O.P2FuncSpec.MinFunctionSize  = kP2MinFuncSize;
+        O.P2FuncSpec.MaxClones        = kP2MaxClones;
+        O.P2FuncSpec.FuncSpecMaxIters = kP2FuncSpecIters;
+        O.P2FuncSpec.ForceSpecialization = kP2ForceSpec;
         return O;
       }
       static Options O3Only() {
@@ -435,6 +457,10 @@ namespace clangRuntimeSpecializer {
       Options& withOptimizationPipeline(int P)        { OptimizationPipelineToUse = P; return *this; }
       Options& withP1InlineThreshold(int N)           { P1InlineThreshold = N; return *this; }
       Options& withP1MaxModuleGrowth(double G)        { P1MaxModuleGrowth = G; return *this; }
+      Options& withP2MinFuncSize(unsigned N)          { P2FuncSpec.MinFunctionSize = N; return *this; }
+      Options& withP2MaxClones(unsigned N)            { P2FuncSpec.MaxClones = N; return *this; }
+      Options& withP2FuncSpecIters(unsigned N)        { P2FuncSpec.FuncSpecMaxIters = N; return *this; }
+      Options& withP2ForceSpec(bool V)                { P2FuncSpec.ForceSpecialization = V; return *this; }
       Options& withExpectedCallDurationNs(double V)   { ExpectedCallDurationNs = V; return *this; }
       Options& withBudgetScale(double V)              { BudgetScale = V; return *this; }
       Options& withJITTimeoutSeconds(unsigned V)      { JITTimeoutSeconds = V; return *this; }
