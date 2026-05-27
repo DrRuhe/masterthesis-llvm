@@ -337,13 +337,13 @@ namespace clangRuntimeSpecializer {
 
     struct Options {
       // --- Pipeline configuration ---
-      int MaxFixpointIterations = 23;        // 0 = skip fixpoint loop entirely
+      int MaxFixpointIterations = 10;        // 0 = skip fixpoint loop entirely
       size_t LargeModuleInstrThreshold = 0; // instrs after prune; > threshold → conservative unroll
-      int LoopUnrollCount = 188;             // full-unroll max count (small modules only)
+      int LoopUnrollCount = 128;             // full-unroll max count (small modules only)
       bool EnableEarlyPrune = true;          // run GlobalDCE before fixpoint
-      bool EnableO3Final = false;            // run O3 as final pass
+      bool EnableO3Final = true;             // run O3 as final pass
       unsigned FuncSpecMaxGroups = 0;        // 0 = unlimited; skip function if it has more distinct constant-arg groups
-      int OptimizationPipelineToUse = 1;    // 0 = inlining pipeline, 1 = function-specialization pipeline
+      int OptimizationPipelineToUse = 0;    // 0 = inlining pipeline, 1 = function-specialization pipeline
 
       // --- Pipeline 1 budget knobs ---
       int    P1InlineThreshold = 225;        // env: CRS_DEFAULT_P1_INLINE_THRESHOLD; LLVM O3 default
@@ -370,12 +370,12 @@ namespace clangRuntimeSpecializer {
       // --- Preset factories ---
       static Options Default() {
         // ENV-var overrides (read once per process — each optimizer trial is a fresh subprocess).
-        static const int      kFixpoint        = (int)_envOr("CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",      23.0);
-        static const int      kUnroll          = (int)_envOr("CRS_DEFAULT_LOOP_UNROLL_COUNT",            188.0);
+        static const int      kFixpoint        = (int)_envOr("CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",      10.0);
+        static const int      kUnroll          = (int)_envOr("CRS_DEFAULT_LOOP_UNROLL_COUNT",            128.0);
         static const size_t   kLargeMod        = (size_t)_envOr("CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", 0.0);
         static const bool     kEarlyPrune      = _envOr("CRS_DEFAULT_EARLY_PRUNE", 1.0) != 0.0;
-        static const bool     kO3Final         = _envOr("CRS_DEFAULT_O3_FINAL",    0.0) != 0.0;
-        static const int      kPipeline        = (int)_envOr("CRS_DEFAULT_PIPELINE",                    1.0);
+        static const bool     kO3Final         = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
+        static const int      kPipeline        = (int)_envOr("CRS_DEFAULT_PIPELINE",                    0.0);
         static const unsigned kFuncSpecMaxGroups = (unsigned)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS",  0.0);
         static const int      kP1InlineThresh  = (int)_envOr("CRS_DEFAULT_P1_INLINE_THRESHOLD",       225.0);
         static const double   kP1MaxGrowth     = _envOr("CRS_DEFAULT_P1_MAX_MODULE_GROWTH",             2.0);
