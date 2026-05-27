@@ -96,6 +96,7 @@ All new benchmarks follow the existing naming convention so that `record_benchma
 - **FR-009**: Tradeoff-tier implementations MUST use compile-time polymorphism (templates, policy classes, or `std::function` with known callables at specialization time).
 - **FR-010**: The existing low-level benchmarks MUST be re-tagged (or aliased) with `a:low` so comparison queries work uniformly.
 - **FR-011**: Every kernel MUST process its entire input without early exit. No kernel may return a result after the first matching element; all kernels MUST compute an aggregate over the full dataset (count, sum, sorted array, convolved image, etc.).
+- **FR-012**: Pareto optimality MUST be evaluated separately for each (group, kernel) combination. Configs from different kernels MUST NOT be compared on the same frontier (their absolute runtimes differ by nature and are not comparable). `plot_pareto_configs.py --per-group` MUST emit one PNG + CSV per (group, kernel) pair. Within each plot, points MUST be colored by abstraction level (low=blue `#1f77b4`, tradeoff=orange `#ff7f0e`, abstract=green `#2ca02c`), one Pareto frontier polyline per level, and one global frontier across all levels in neutral gray `#555555` (dashed). The default config MUST be marked with a star, colored to match its abstraction level.
 
 ### Key Entities
 

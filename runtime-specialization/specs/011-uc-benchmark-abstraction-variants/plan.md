@@ -419,6 +419,33 @@ GROUP BY kv_a, kernel;
 ```
 Compare against pre-feature baseline; flag any >10% increase.
 
+### Phase 5: Pareto Visualization Update
+
+*Addresses FR-012: per-kernel Pareto analysis with abstraction-level coloring.*
+
+#### 5.1 — `benchmarks/reporting/plot_pareto_configs.py`
+
+Changes already applied (see git history):
+
+- `fetch_rows()`: queries `kv_a` from `v_ratios` when the column exists (guarded via `information_schema.columns`); falls back to `NULL` for pre-011 data.
+- `_flag_default()`: groups by `(group, kernel, kv_a)` so the default star is placed once per abstraction level per kernel.
+- `render_kernel()`: new per-kernel render function. When `kv_a` is present, colors dots and per-level frontier lines by level (low=blue `#1f77b4`, tradeoff=orange `#ff7f0e`, abstract=green `#2ca02c`) and draws the global frontier as a dashed gray `#555555` line on top.
+- `main()` with `--per-group`: iterates over `(group, kernel)` pairs — not just group — emitting one PNG + CSV per pair.
+- CSV: `is_pareto_optimal` is now computed per-kernel; `kv_a` column added (empty string for pre-011 data).
+
+#### 5.2 — Re-run existing pareto reports
+
+After the benchmark data is recorded, regenerate reports with `--per-group` to replace the previous methodologically wrong per-group (cross-kernel) plots:
+
+```bash
+python benchmarks/reporting/plot_pareto_configs.py \
+  --study-name uc_optim_iter2_20260521 \
+  --per-group \
+  --output-dir benchmarks/reports/260521-17-32-optimize-pipeline/per-kernel/
+```
+
+Expected output: one PNG + CSV per `(group, kernel)` — e.g., `uc7_dfa_email_match`, `uc7_dfa_url_match`, `uc7_dfa_multi_pattern_match` — instead of the single `uc7_dfa` plot.
+
 ---
 
 ## Key Constraints (summary)
