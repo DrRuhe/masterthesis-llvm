@@ -7,6 +7,9 @@ add_library(ClangRuntimeSpecializer SHARED
         StaticMutabilityAnalysis.cpp
         InvariantLoadToConstant.cpp
         ConstantArgFunctionSpecializationPass.cpp
+        JitSCCP/JitSCCPSolver.cpp
+        JitSCCP/JitFunctionSpecialization.cpp
+        JitSCCP/JitIPSCCPPass.cpp
 )
 
 target_include_directories(ClangRuntimeSpecializer

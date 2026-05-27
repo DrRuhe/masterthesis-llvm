@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/IPO/FunctionSpecialization.h"
+#include "JitFunctionSpecialization.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/ConstantFolding.h"
@@ -20,9 +20,10 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Utils/SCCPSolver.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
 #include <cmath>
+
+namespace clangRuntimeSpecializer {
 
 using namespace llvm;
 
@@ -30,72 +31,72 @@ using namespace llvm;
 
 STATISTIC(NumSpecsCreated, "Number of specializations created");
 
-static cl::opt<bool> ForceSpecialization(
-    "force-specialization", cl::init(false), cl::Hidden, cl::desc(
-    "Force function specialization for every call site with a constant "
+static cl::opt<bool> JitForceSpecialization(
+    "jit-force-specialization", cl::init(false), cl::Hidden, cl::desc(
+    "Force JIT function specialization for every call site with a constant "
     "argument"));
 
-static cl::opt<unsigned> MaxClones(
-    "funcspec-max-clones", cl::init(3), cl::Hidden, cl::desc(
-    "The maximum number of clones allowed for a single function "
+static cl::opt<unsigned> JitMaxClones(
+    "jit-funcspec-max-clones", cl::init(3), cl::Hidden, cl::desc(
+    "The maximum number of clones allowed for a single JIT function "
     "specialization"));
 
 static cl::opt<unsigned>
-    MaxDiscoveryIterations("funcspec-max-discovery-iterations", cl::init(100),
-                           cl::Hidden,
-                           cl::desc("The maximum number of iterations allowed "
-                                    "when searching for transitive "
-                                    "phis"));
+    JitMaxDiscoveryIterations("jit-funcspec-max-discovery-iterations",
+                              cl::init(100), cl::Hidden,
+                              cl::desc("The maximum number of iterations "
+                                       "allowed when searching for transitive "
+                                       "phis (JIT)"));
 
-static cl::opt<unsigned> MaxIncomingPhiValues(
-    "funcspec-max-incoming-phi-values", cl::init(8), cl::Hidden,
+static cl::opt<unsigned> JitMaxIncomingPhiValues(
+    "jit-funcspec-max-incoming-phi-values", cl::init(8), cl::Hidden,
     cl::desc("The maximum number of incoming values a PHI node can have to be "
-             "considered during the specialization bonus estimation"));
+             "considered during the JIT specialization bonus estimation"));
 
-static cl::opt<unsigned> MaxBlockPredecessors(
-    "funcspec-max-block-predecessors", cl::init(2), cl::Hidden, cl::desc(
+static cl::opt<unsigned> JitMaxBlockPredecessors(
+    "jit-funcspec-max-block-predecessors", cl::init(2), cl::Hidden, cl::desc(
     "The maximum number of predecessors a basic block can have to be "
-    "considered during the estimation of dead code"));
+    "considered during the JIT estimation of dead code"));
 
-static cl::opt<unsigned> MinFunctionSize(
-    "funcspec-min-function-size", cl::init(500), cl::Hidden,
-    cl::desc("Don't specialize functions that have less than this number of "
-             "instructions"));
+static cl::opt<unsigned> JitMinFunctionSize(
+    "jit-funcspec-min-function-size", cl::init(500), cl::Hidden,
+    cl::desc("Don't JIT-specialize functions that have less than this number "
+             "of instructions"));
 
-static cl::opt<unsigned> MaxCodeSizeGrowth(
-    "funcspec-max-codesize-growth", cl::init(3), cl::Hidden, cl::desc(
-    "Maximum codesize growth allowed per function"));
+static cl::opt<unsigned> JitMaxCodeSizeGrowth(
+    "jit-funcspec-max-codesize-growth", cl::init(3), cl::Hidden, cl::desc(
+    "Maximum codesize growth allowed per JIT-specialized function"));
 
-static cl::opt<unsigned> MinCodeSizeSavings(
-    "funcspec-min-codesize-savings", cl::init(20), cl::Hidden,
-    cl::desc("Reject specializations whose codesize savings are less than this "
-             "much percent of the original function size"));
+static cl::opt<unsigned> JitMinCodeSizeSavings(
+    "jit-funcspec-min-codesize-savings", cl::init(20), cl::Hidden,
+    cl::desc("Reject JIT specializations whose codesize savings are less than "
+             "this much percent of the original function size"));
 
-static cl::opt<unsigned> MinLatencySavings(
-    "funcspec-min-latency-savings", cl::init(20), cl::Hidden,
-    cl::desc("Reject specializations whose latency savings are less than this "
-             "much percent of the original function size"));
+static cl::opt<unsigned> JitMinLatencySavings(
+    "jit-funcspec-min-latency-savings", cl::init(20), cl::Hidden,
+    cl::desc("Reject JIT specializations whose latency savings are less than "
+             "this much percent of the original function size"));
 
-static cl::opt<unsigned> MinInliningBonus(
-    "funcspec-min-inlining-bonus", cl::init(300), cl::Hidden,
-    cl::desc("Reject specializations whose inlining bonus is less than this "
-             "much percent of the original function size"));
+static cl::opt<unsigned> JitMinInliningBonus(
+    "jit-funcspec-min-inlining-bonus", cl::init(300), cl::Hidden,
+    cl::desc("Reject JIT specializations whose inlining bonus is less than "
+             "this much percent of the original function size"));
 
-static cl::opt<bool> SpecializeOnAddress(
-    "funcspec-on-address", cl::init(false), cl::Hidden, cl::desc(
-    "Enable function specialization on the address of global values"));
+static cl::opt<bool> JitSpecializeOnAddress(
+    "jit-funcspec-on-address", cl::init(false), cl::Hidden, cl::desc(
+    "Enable JIT function specialization on the address of global values"));
 
-static cl::opt<bool> SpecializeLiteralConstant(
-    "funcspec-for-literal-constant", cl::init(true), cl::Hidden,
+static cl::opt<bool> JitSpecializeLiteralConstant(
+    "jit-funcspec-for-literal-constant", cl::init(true), cl::Hidden,
     cl::desc(
-        "Enable specialization of functions that take a literal constant as an "
-        "argument"));
+        "Enable JIT specialization of functions that take a literal constant "
+        "as an argument"));
 
 bool InstCostVisitor::canEliminateSuccessor(BasicBlock *BB,
                                             BasicBlock *Succ) const {
   unsigned I = 0;
   return all_of(predecessors(Succ), [&I, BB, Succ, this](BasicBlock *Pred) {
-    return I++ < MaxBlockPredecessors &&
+    return I++ < JitMaxBlockPredecessors &&
            (Pred == BB || Pred == Succ || !isBlockExecutable(Pred));
   });
 }
@@ -301,8 +302,8 @@ bool InstCostVisitor::discoverTransitivelyIncomingValues(
   while (!WorkList.empty()) {
     PHINode *PN = WorkList.pop_back_val();
 
-    if (++Iter > MaxDiscoveryIterations ||
-        PN->getNumIncomingValues() > MaxIncomingPhiValues)
+    if (++Iter > JitMaxDiscoveryIterations ||
+        PN->getNumIncomingValues() > JitMaxIncomingPhiValues)
       return false;
 
     if (!TransitivePHIs.insert(PN).second)
@@ -336,7 +337,7 @@ bool InstCostVisitor::discoverTransitivelyIncomingValues(
 }
 
 Constant *InstCostVisitor::visitPHINode(PHINode &I) {
-  if (I.getNumIncomingValues() > MaxIncomingPhiValues)
+  if (I.getNumIncomingValues() > JitMaxIncomingPhiValues)
     return nullptr;
 
   bool Inserted = VisitedPHIs.insert(&I).second;
@@ -517,7 +518,7 @@ Constant *InstCostVisitor::visitBinaryOperator(BinaryOperator &I) {
       simplifyBinOp(I.getOpcode(), ConstVal, OtherVal, SimplifyQuery(DL)));
 }
 
-Constant *FunctionSpecializer::getPromotableAlloca(AllocaInst *Alloca,
+Constant *JitFunctionSpecializer::getPromotableAlloca(AllocaInst *Alloca,
                                                    CallInst *Call) {
   Value *StoreValue = nullptr;
   for (auto *User : Alloca->users()) {
@@ -546,7 +547,7 @@ Constant *FunctionSpecializer::getPromotableAlloca(AllocaInst *Alloca,
 // A constant stack value is an AllocaInst that has a single constant
 // value stored to it. Return this constant if such an alloca stack value
 // is a function argument.
-Constant *FunctionSpecializer::getConstantStackValue(CallInst *Call,
+Constant *JitFunctionSpecializer::getConstantStackValue(CallInst *Call,
                                                      Value *Val) {
   if (!Val)
     return nullptr;
@@ -582,7 +583,7 @@ Constant *FunctionSpecializer::getConstantStackValue(CallInst *Call,
 //
 // See if there are any new constant values for the callers of \p F via
 // stack variables and promote them to global variables.
-void FunctionSpecializer::promoteConstantStackValues(Function *F) {
+void JitFunctionSpecializer::promoteConstantStackValues(Function *F) {
   for (User *U : F->users()) {
 
     auto *Call = dyn_cast<CallInst>(U);
@@ -629,18 +630,24 @@ static void removeSSACopy(Function &F) {
 }
 
 /// Remove any ssa_copy intrinsics that may have been introduced.
-void FunctionSpecializer::cleanUpSSA() {
+void JitFunctionSpecializer::cleanUpSSA() {
   for (Function *F : Specializations)
     removeSSACopy(*F);
 }
 
 
-template <> struct llvm::DenseMapInfo<SpecSig> {
+} // namespace clangRuntimeSpecializer
+
+template <>
+struct llvm::DenseMapInfo<clangRuntimeSpecializer::SpecSig> {
+  using SpecSig = clangRuntimeSpecializer::SpecSig;
+
   static inline SpecSig getEmptyKey() { return {~0U, {}}; }
 
   static inline SpecSig getTombstoneKey() { return {~1U, {}}; }
 
   static unsigned getHashValue(const SpecSig &S) {
+    using clangRuntimeSpecializer::hash_value;
     return static_cast<unsigned>(hash_value(S));
   }
 
@@ -649,7 +656,9 @@ template <> struct llvm::DenseMapInfo<SpecSig> {
   }
 };
 
-FunctionSpecializer::~FunctionSpecializer() {
+namespace clangRuntimeSpecializer {
+
+JitFunctionSpecializer::~JitFunctionSpecializer() {
   LLVM_DEBUG(
     if (NumSpecsCreated > 0)
       dbgs() << "FnSpecialization: Created " << NumSpecsCreated
@@ -675,7 +684,7 @@ static unsigned getCostValue(const Cost &C) {
 /// propagation across function boundaries.
 ///
 /// \returns true if at least one function is specialized.
-bool FunctionSpecializer::run() {
+bool JitFunctionSpecializer::run() {
   // Find possible specializations for each function.
   SpecMap SM;
   SmallVector<Spec, 32> AllSpecs;
@@ -695,23 +704,23 @@ bool FunctionSpecializer::run() {
     }
 
     // When specializing literal constants is enabled, always require functions
-    // to be larger than MinFunctionSize, to prevent excessive specialization.
+    // to be larger than JitMinFunctionSize, to prevent excessive specialization.
     const bool RequireMinSize =
-        !ForceSpecialization &&
-        (SpecializeLiteralConstant || !F.hasFnAttribute(Attribute::NoInline));
+        !JitForceSpecialization &&
+        (JitSpecializeLiteralConstant || !F.hasFnAttribute(Attribute::NoInline));
 
     // If the code metrics reveal that we shouldn't duplicate the function,
     // or if the code size implies that this function is easy to get inlined,
     // then we shouldn't specialize it.
     if (Metrics.notDuplicatable || !Metrics.NumInsts.isValid() ||
-        (RequireMinSize && Metrics.NumInsts < MinFunctionSize))
+        (RequireMinSize && Metrics.NumInsts < JitMinFunctionSize))
       continue;
 
     // When specialization on literal constants is disabled, only consider
     // recursive functions when running multiple times to save wasted analysis,
     // as we will not be able to specialize on any newly found literal constant
     // return values.
-    if (!SpecializeLiteralConstant && !Inserted && !Metrics.isRecursive)
+    if (!JitSpecializeLiteralConstant && !Inserted && !Metrics.isRecursive)
       continue;
 
     int64_t Sz = Metrics.NumInsts.getValue();
@@ -751,7 +760,7 @@ bool FunctionSpecializer::run() {
     return I > J;
   };
   const unsigned NSpecs =
-      std::min(NumCandidates * MaxClones, unsigned(AllSpecs.size()));
+      std::min(NumCandidates * JitMaxClones, unsigned(AllSpecs.size()));
   SmallVector<unsigned> BestSpecs(NSpecs + 1);
   std::iota(BestSpecs.begin(), BestSpecs.begin() + NSpecs, 0);
   if (AllSpecs.size() > NSpecs) {
@@ -824,7 +833,7 @@ bool FunctionSpecializer::run() {
       auto It = Solver.getTrackedRetVals().find(F);
       assert(It != Solver.getTrackedRetVals().end() &&
              "Return value ought to be tracked");
-      if (SCCPSolver::isOverdefined(It->second))
+      if (JitSCCPSolver::isOverdefined(It->second))
         continue;
     }
     for (User *U : F->users()) {
@@ -847,7 +856,7 @@ bool FunctionSpecializer::run() {
   return true;
 }
 
-void FunctionSpecializer::removeDeadFunctions() {
+void JitFunctionSpecializer::removeDeadFunctions() {
   for (Function *F : FullySpecialized) {
     LLVM_DEBUG(dbgs() << "FnSpecialization: Removing dead function "
                       << F->getName() << "\n");
@@ -868,7 +877,7 @@ static Function *cloneCandidateFunction(Function *F, unsigned NSpecs) {
   return Clone;
 }
 
-bool FunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
+bool JitFunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
                                               SmallVectorImpl<Spec> &AllSpecs,
                                               SpecMap &SM) {
   // A mapping from a specialisation signature to the index of the respective
@@ -948,7 +957,7 @@ bool FunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
 
       auto IsProfitable = [&]() -> bool {
         // No check required.
-        if (ForceSpecialization)
+        if (JitForceSpecialization)
           return true;
 
         LLVM_DEBUG(
@@ -956,7 +965,7 @@ bool FunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
                    << Score << " (" << (Score * 100 / FuncSize) << "%)}\n");
 
         // Minimum inlining bonus.
-        if (Score > MinInliningBonus * FuncSize / 100)
+        if (Score > JitMinInliningBonus * FuncSize / 100)
           return true;
 
         LLVM_DEBUG(
@@ -965,7 +974,7 @@ bool FunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
                    << (CodeSizeSavings * 100 / FuncSize) << "%)}\n");
 
         // Minimum codesize savings.
-        if (CodeSizeSavings < MinCodeSizeSavings * FuncSize / 100)
+        if (CodeSizeSavings < JitMinCodeSizeSavings * FuncSize / 100)
           return false;
 
         // Lazily compute the Latency, to avoid unnecessarily computing BFI.
@@ -978,10 +987,10 @@ bool FunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
                    << (LatencySavings * 100 / FuncSize) << "%)}\n");
 
         // Minimum latency savings.
-        if (LatencySavings < MinLatencySavings * FuncSize / 100)
+        if (LatencySavings < JitMinLatencySavings * FuncSize / 100)
           return false;
         // Maximum codesize growth.
-        if ((FunctionGrowth[F] + SpecSize) / FuncSize > MaxCodeSizeGrowth)
+        if ((FunctionGrowth[F] + SpecSize) / FuncSize > JitMaxCodeSizeGrowth)
           return false;
 
         Score += std::max(CodeSizeSavings, LatencySavings);
@@ -1006,7 +1015,7 @@ bool FunctionSpecializer::findSpecializations(Function *F, unsigned FuncSize,
   return !UniqueSpecs.empty();
 }
 
-bool FunctionSpecializer::isCandidateFunction(Function *F) {
+bool JitFunctionSpecializer::isCandidateFunction(Function *F) {
   if (F->isDeclaration() || F->arg_empty())
     return false;
 
@@ -1035,7 +1044,7 @@ bool FunctionSpecializer::isCandidateFunction(Function *F) {
   return true;
 }
 
-Function *FunctionSpecializer::createSpecialization(Function *F,
+Function *JitFunctionSpecializer::createSpecialization(Function *F,
                                                     const SpecSig &S) {
   Function *Clone = cloneCandidateFunction(F, Specializations.size() + 1);
 
@@ -1062,7 +1071,7 @@ Function *FunctionSpecializer::createSpecialization(Function *F,
 /// The below heuristic is only concerned with exposing inlining
 /// opportunities via indirect call promotion. If the argument is not a
 /// (potentially casted) function pointer, give up.
-unsigned FunctionSpecializer::getInliningBonus(Argument *A, Constant *C) {
+unsigned JitFunctionSpecializer::getInliningBonus(Argument *A, Constant *C) {
   Function *CalledFunction = dyn_cast<Function>(C->stripPointerCasts());
   if (!CalledFunction)
     return 0;
@@ -1115,13 +1124,13 @@ unsigned FunctionSpecializer::getInliningBonus(Argument *A, Constant *C) {
 
 /// Determine if it is possible to specialise the function for constant values
 /// of the formal parameter \p A.
-bool FunctionSpecializer::isArgumentInteresting(Argument *A) {
+bool JitFunctionSpecializer::isArgumentInteresting(Argument *A) {
   // No point in specialization if the argument is unused.
   if (A->user_empty())
     return false;
 
   Type *Ty = A->getType();
-  if (!Ty->isPointerTy() && (!SpecializeLiteralConstant ||
+  if (!Ty->isPointerTy() && (!JitSpecializeLiteralConstant ||
       (!Ty->isIntegerTy() && !Ty->isFloatingPointTy() && !Ty->isStructTy())))
     return false;
 
@@ -1138,8 +1147,8 @@ bool FunctionSpecializer::isArgumentInteresting(Argument *A) {
   // based on this argument. No point in specialization, if the lattice value
   // is already a constant.
   bool IsOverdefined = Ty->isStructTy()
-    ? any_of(Solver.getStructLatticeValueFor(A), SCCPSolver::isOverdefined)
-    : SCCPSolver::isOverdefined(Solver.getLatticeValueFor(A));
+    ? any_of(Solver.getStructLatticeValueFor(A), JitSCCPSolver::isOverdefined)
+    : JitSCCPSolver::isOverdefined(Solver.getLatticeValueFor(A));
 
   LLVM_DEBUG(
     if (IsOverdefined)
@@ -1154,7 +1163,7 @@ bool FunctionSpecializer::isArgumentInteresting(Argument *A) {
 
 /// Check if the value \p V  (an actual argument) is a constant or can only
 /// have a constant value. Return that constant.
-Constant *FunctionSpecializer::getCandidateConstant(Value *V) {
+Constant *JitFunctionSpecializer::getCandidateConstant(Value *V) {
   if (isa<PoisonValue>(V))
     return nullptr;
 
@@ -1168,13 +1177,13 @@ Constant *FunctionSpecializer::getCandidateConstant(Value *V) {
   // global variable, unless explicitly enabled.
   if (C && C->getType()->isPointerTy() && !C->isNullValue())
     if (auto *GV = dyn_cast<GlobalVariable>(getUnderlyingObject(C));
-        GV && !(GV->isConstant() || SpecializeOnAddress))
+        GV && !(GV->isConstant() || JitSpecializeOnAddress))
       return nullptr;
 
   return C;
 }
 
-void FunctionSpecializer::updateCallSites(Function *F, const Spec *Begin,
+void JitFunctionSpecializer::updateCallSites(Function *F, const Spec *Begin,
                                           const Spec *End) {
   // Collect the call sites that need updating.
   SmallVector<CallBase *> ToUpdate;
@@ -1221,3 +1230,5 @@ void FunctionSpecializer::updateCallSites(Function *F, const Spec *Begin,
     FullySpecialized.insert(F);
   }
 }
+
+} // namespace clangRuntimeSpecializer

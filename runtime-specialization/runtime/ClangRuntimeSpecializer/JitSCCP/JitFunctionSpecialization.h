@@ -74,14 +74,15 @@
 //
 // References:
 // -----------
-// 2021 LLVM Dev Mtg “Introducing function specialisation, and can we enable
-// it by default?”, https://www.youtube.com/watch?v=zJiCjeXgV5Q
+// 2021 LLVM Dev Mtg "Introducing function specialisation, and can we enable
+// it by default?", https://www.youtube.com/watch?v=zJiCjeXgV5Q
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TRANSFORMS_IPO_FUNCTIONSPECIALIZATION_H
-#define LLVM_TRANSFORMS_IPO_FUNCTIONSPECIALIZATION_H
+#ifndef CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITFUNCTIONSPECIALIZATION_H
+#define CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITFUNCTIONSPECIALIZATION_H
 
+#include "JitSCCPSolver.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
 #include "llvm/Analysis/CodeMetrics.h"
 #include "llvm/Analysis/InlineCost.h"
@@ -90,21 +91,21 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Utils/SCCPSolver.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
 
-namespace llvm {
-// Map of potential specializations for each function. The FunctionSpecializer
+namespace clangRuntimeSpecializer {
+
+// Map of potential specializations for each function. The JitFunctionSpecializer
 // keeps the discovered specialisation opportunities for the module in a single
 // vector, where the specialisations of each function form a contiguous range.
 // This map's value is the beginning and the end of that range.
-using SpecMap = DenseMap<Function *, std::pair<unsigned, unsigned>>;
+using SpecMap = llvm::DenseMap<llvm::Function *, std::pair<unsigned, unsigned>>;
 
 // Just a shorter abbreviation to improve indentation.
-using Cost = InstructionCost;
+using Cost = llvm::InstructionCost;
 
 // Map of known constants found during the specialization bonus estimation.
-using ConstMap = DenseMap<Value *, Constant *>;
+using ConstMap = llvm::DenseMap<llvm::Value *, llvm::Constant *>;
 
 // Specialization signature, used to uniquely designate a specialization within
 // a function.
@@ -112,7 +113,7 @@ struct SpecSig {
   // Hashing support, used to distinguish between ordinary, empty, or tombstone
   // keys.
   unsigned Key = 0;
-  SmallVector<ArgInfo, 4> Args;
+  llvm::SmallVector<ArgInfo, 4> Args;
 
   bool operator==(const SpecSig &Other) const {
     if (Key != Other.Key)
@@ -120,18 +121,19 @@ struct SpecSig {
     return Args == Other.Args;
   }
 
-  friend hash_code hash_value(const SpecSig &S) {
-    return hash_combine(hash_value(S.Key), hash_combine_range(S.Args));
+  friend llvm::hash_code hash_value(const SpecSig &S) {
+    return llvm::hash_combine(llvm::hash_value(S.Key),
+                              llvm::hash_combine_range(S.Args));
   }
 };
 
 // Specialization instance.
 struct Spec {
   // Original function.
-  Function *F;
+  llvm::Function *F;
 
   // Cloned function, a specialized version of the original one.
-  Function *Clone = nullptr;
+  llvm::Function *Clone = nullptr;
 
   // Specialization signature.
   SpecSig Sig;
@@ -143,63 +145,67 @@ struct Spec {
   unsigned CodeSize;
 
   // List of call sites, matching this specialization.
-  SmallVector<CallBase *> CallSites;
+  llvm::SmallVector<llvm::CallBase *> CallSites;
 
-  Spec(Function *F, const SpecSig &S, unsigned Score, unsigned CodeSize)
+  Spec(llvm::Function *F, const SpecSig &S, unsigned Score, unsigned CodeSize)
       : F(F), Sig(S), Score(Score), CodeSize(CodeSize) {}
-  Spec(Function *F, const SpecSig &&S, unsigned Score, unsigned CodeSize)
+  Spec(llvm::Function *F, const SpecSig &&S, unsigned Score, unsigned CodeSize)
       : F(F), Sig(S), Score(Score), CodeSize(CodeSize) {}
 };
 
-class InstCostVisitor : public InstVisitor<InstCostVisitor, Constant *> {
-  std::function<BlockFrequencyInfo &(Function &)> GetBFI;
-  Function *F;
-  const DataLayout &DL;
-  TargetTransformInfo &TTI;
-  const SCCPSolver &Solver;
+class InstCostVisitor
+    : public llvm::InstVisitor<InstCostVisitor, llvm::Constant *> {
+  std::function<llvm::BlockFrequencyInfo &(llvm::Function &)> GetBFI;
+  llvm::Function *F;
+  const llvm::DataLayout &DL;
+  llvm::TargetTransformInfo &TTI;
+  const JitSCCPSolver &Solver;
 
   ConstMap KnownConstants;
   // Basic blocks known to be unreachable after constant propagation.
-  DenseSet<BasicBlock *> DeadBlocks;
+  llvm::DenseSet<llvm::BasicBlock *> DeadBlocks;
   // PHI nodes we have visited before.
-  DenseSet<Instruction *> VisitedPHIs;
+  llvm::DenseSet<llvm::Instruction *> VisitedPHIs;
   // PHI nodes we have visited once without successfully constant folding them.
   // Once the InstCostVisitor has processed all the specialization arguments,
   // it should be possible to determine whether those PHIs can be folded
   // (some of their incoming values may have become constant or dead).
-  SmallVector<Instruction *> PendingPHIs;
+  llvm::SmallVector<llvm::Instruction *> PendingPHIs;
 
   ConstMap::iterator LastVisited;
 
 public:
-  InstCostVisitor(std::function<BlockFrequencyInfo &(Function &)> GetBFI,
-                  Function *F, const DataLayout &DL, TargetTransformInfo &TTI,
-                  SCCPSolver &Solver)
+  InstCostVisitor(
+      std::function<llvm::BlockFrequencyInfo &(llvm::Function &)> GetBFI,
+      llvm::Function *F, const llvm::DataLayout &DL,
+      llvm::TargetTransformInfo &TTI, JitSCCPSolver &Solver)
       : GetBFI(GetBFI), F(F), DL(DL), TTI(TTI), Solver(Solver) {}
 
-  bool isBlockExecutable(BasicBlock *BB) const {
+  bool isBlockExecutable(llvm::BasicBlock *BB) const {
     return Solver.isBlockExecutable(BB) && !DeadBlocks.contains(BB);
   }
 
-  LLVM_ABI Cost getCodeSizeSavingsForArg(Argument *A, Constant *C);
+  Cost getCodeSizeSavingsForArg(llvm::Argument *A, llvm::Constant *C);
 
-  LLVM_ABI Cost getCodeSizeSavingsFromPendingPHIs();
+  Cost getCodeSizeSavingsFromPendingPHIs();
 
-  LLVM_ABI Cost getLatencySavingsForKnownConstants();
+  Cost getLatencySavingsForKnownConstants();
 
 private:
-  friend class InstVisitor<InstCostVisitor, Constant *>;
+  friend class llvm::InstVisitor<InstCostVisitor, llvm::Constant *>;
 
-  Constant *findConstantFor(Value *V) const;
+  llvm::Constant *findConstantFor(llvm::Value *V) const;
 
-  bool canEliminateSuccessor(BasicBlock *BB, BasicBlock *Succ) const;
+  bool canEliminateSuccessor(llvm::BasicBlock *BB,
+                             llvm::BasicBlock *Succ) const;
 
-  Cost getCodeSizeSavingsForUser(Instruction *User, Value *Use = nullptr,
-                                 Constant *C = nullptr);
+  Cost getCodeSizeSavingsForUser(llvm::Instruction *User,
+                                 llvm::Value *Use = nullptr,
+                                 llvm::Constant *C = nullptr);
 
-  Cost estimateBasicBlocks(SmallVectorImpl<BasicBlock *> &WorkList);
-  Cost estimateSwitchInst(SwitchInst &I);
-  Cost estimateBranchInst(BranchInst &I);
+  Cost estimateBasicBlocks(llvm::SmallVectorImpl<llvm::BasicBlock *> &WorkList);
+  Cost estimateSwitchInst(llvm::SwitchInst &I);
+  Cost estimateBranchInst(llvm::BranchInst &I);
 
   // Transitively Incoming Values (TIV) is a set of Values that can "feed" a
   // value to the initial PHI-node. It is defined like this:
@@ -214,74 +220,77 @@ private:
   // As soon as we detect these cases, we bail, without constructing the
   // full TIV.
   // Otherwise P can be folded to the one constant in TIV.
-  bool discoverTransitivelyIncomingValues(Constant *Const, PHINode *Root,
-                                          DenseSet<PHINode *> &TransitivePHIs);
+  bool discoverTransitivelyIncomingValues(
+      llvm::Constant *Const, llvm::PHINode *Root,
+      llvm::DenseSet<llvm::PHINode *> &TransitivePHIs);
 
-  Constant *visitInstruction(Instruction &I) { return nullptr; }
-  Constant *visitPHINode(PHINode &I);
-  Constant *visitFreezeInst(FreezeInst &I);
-  Constant *visitCallBase(CallBase &I);
-  Constant *visitLoadInst(LoadInst &I);
-  Constant *visitGetElementPtrInst(GetElementPtrInst &I);
-  Constant *visitSelectInst(SelectInst &I);
-  Constant *visitCastInst(CastInst &I);
-  Constant *visitCmpInst(CmpInst &I);
-  Constant *visitUnaryOperator(UnaryOperator &I);
-  Constant *visitBinaryOperator(BinaryOperator &I);
+  llvm::Constant *visitInstruction(llvm::Instruction &I) { return nullptr; }
+  llvm::Constant *visitPHINode(llvm::PHINode &I);
+  llvm::Constant *visitFreezeInst(llvm::FreezeInst &I);
+  llvm::Constant *visitCallBase(llvm::CallBase &I);
+  llvm::Constant *visitLoadInst(llvm::LoadInst &I);
+  llvm::Constant *visitGetElementPtrInst(llvm::GetElementPtrInst &I);
+  llvm::Constant *visitSelectInst(llvm::SelectInst &I);
+  llvm::Constant *visitCastInst(llvm::CastInst &I);
+  llvm::Constant *visitCmpInst(llvm::CmpInst &I);
+  llvm::Constant *visitUnaryOperator(llvm::UnaryOperator &I);
+  llvm::Constant *visitBinaryOperator(llvm::BinaryOperator &I);
 };
 
-class FunctionSpecializer {
+class JitFunctionSpecializer {
 
   /// The IPSCCP Solver.
-  SCCPSolver &Solver;
+  JitSCCPSolver &Solver;
 
-  Module &M;
+  llvm::Module &M;
 
   /// Analysis manager, needed to invalidate analyses.
-  FunctionAnalysisManager *FAM;
+  llvm::FunctionAnalysisManager *FAM;
 
   /// Analyses used to help determine if a function should be specialized.
-  std::function<BlockFrequencyInfo &(Function &)> GetBFI;
-  std::function<const TargetLibraryInfo &(Function &)> GetTLI;
-  std::function<TargetTransformInfo &(Function &)> GetTTI;
-  std::function<AssumptionCache &(Function &)> GetAC;
+  std::function<llvm::BlockFrequencyInfo &(llvm::Function &)> GetBFI;
+  std::function<const llvm::TargetLibraryInfo &(llvm::Function &)> GetTLI;
+  std::function<llvm::TargetTransformInfo &(llvm::Function &)> GetTTI;
+  std::function<llvm::AssumptionCache &(llvm::Function &)> GetAC;
 
-  SmallPtrSet<Function *, 32> Specializations;
-  SmallPtrSet<Function *, 32> FullySpecialized;
-  DenseMap<Function *, CodeMetrics> FunctionMetrics;
-  DenseMap<Function *, unsigned> FunctionGrowth;
+  llvm::SmallPtrSet<llvm::Function *, 32> Specializations;
+  llvm::SmallPtrSet<llvm::Function *, 32> FullySpecialized;
+  llvm::DenseMap<llvm::Function *, llvm::CodeMetrics> FunctionMetrics;
+  llvm::DenseMap<llvm::Function *, unsigned> FunctionGrowth;
   unsigned NGlobals = 0;
 
 public:
-  FunctionSpecializer(
-      SCCPSolver &Solver, Module &M, FunctionAnalysisManager *FAM,
-      std::function<BlockFrequencyInfo &(Function &)> GetBFI,
-      std::function<const TargetLibraryInfo &(Function &)> GetTLI,
-      std::function<TargetTransformInfo &(Function &)> GetTTI,
-      std::function<AssumptionCache &(Function &)> GetAC)
+  JitFunctionSpecializer(
+      JitSCCPSolver &Solver, llvm::Module &M,
+      llvm::FunctionAnalysisManager *FAM,
+      std::function<llvm::BlockFrequencyInfo &(llvm::Function &)> GetBFI,
+      std::function<const llvm::TargetLibraryInfo &(llvm::Function &)> GetTLI,
+      std::function<llvm::TargetTransformInfo &(llvm::Function &)> GetTTI,
+      std::function<llvm::AssumptionCache &(llvm::Function &)> GetAC)
       : Solver(Solver), M(M), FAM(FAM), GetBFI(GetBFI), GetTLI(GetTLI),
         GetTTI(GetTTI), GetAC(GetAC) {}
 
-  LLVM_ABI ~FunctionSpecializer();
+  ~JitFunctionSpecializer();
 
-  LLVM_ABI bool run();
+  bool run();
 
-  InstCostVisitor getInstCostVisitorFor(Function *F) {
+  InstCostVisitor getInstCostVisitorFor(llvm::Function *F) {
     auto &TTI = GetTTI(*F);
     return InstCostVisitor(GetBFI, F, M.getDataLayout(), TTI, Solver);
   }
 
 private:
-  Constant *getPromotableAlloca(AllocaInst *Alloca, CallInst *Call);
+  llvm::Constant *getPromotableAlloca(llvm::AllocaInst *Alloca,
+                                      llvm::CallInst *Call);
 
   /// A constant stack value is an AllocaInst that has a single constant
   /// value stored to it. Return this constant if such an alloca stack value
   /// is a function argument.
-  Constant *getConstantStackValue(CallInst *Call, Value *Val);
+  llvm::Constant *getConstantStackValue(llvm::CallInst *Call, llvm::Value *Val);
 
   /// See if there are any new constant values for the callers of \p F via
   /// stack variables and promote them to global variables.
-  void promoteConstantStackValues(Function *F);
+  void promoteConstantStackValues(llvm::Function *F);
 
   /// Clean up fully specialized functions.
   void removeDeadFunctions();
@@ -295,34 +304,35 @@ private:
   /// @param AllSpecs A vector to add potential specializations to.
   /// @param SM  A map for a function's specialisation range
   /// @return True, if any potential specializations were found
-  bool findSpecializations(Function *F, unsigned FuncSize,
-                           SmallVectorImpl<Spec> &AllSpecs, SpecMap &SM);
+  bool findSpecializations(llvm::Function *F, unsigned FuncSize,
+                           llvm::SmallVectorImpl<Spec> &AllSpecs, SpecMap &SM);
 
   /// Compute the inlining bonus for replacing argument \p A with constant \p C.
-  unsigned getInliningBonus(Argument *A, Constant *C);
+  unsigned getInliningBonus(llvm::Argument *A, llvm::Constant *C);
 
-  bool isCandidateFunction(Function *F);
+  bool isCandidateFunction(llvm::Function *F);
 
-  /// @brief Create a specialization of \p F and prime the SCCPSolver
+  /// @brief Create a specialization of \p F and prime the JitSCCPSolver
   /// @param F Function to specialize
   /// @param S Which specialization to create
   /// @return The new, cloned function
-  Function *createSpecialization(Function *F, const SpecSig &S);
+  llvm::Function *createSpecialization(llvm::Function *F, const SpecSig &S);
 
   /// Determine if it is possible to specialise the function for constant values
   /// of the formal parameter \p A.
-  bool isArgumentInteresting(Argument *A);
+  bool isArgumentInteresting(llvm::Argument *A);
 
   /// Check if the value \p V  (an actual argument) is a constant or can only
   /// have a constant value. Return that constant.
-  Constant *getCandidateConstant(Value *V);
+  llvm::Constant *getCandidateConstant(llvm::Value *V);
 
   /// @brief Find and update calls to \p F, which match a specialization
   /// @param F Orginal function
   /// @param Begin Start of a range of possibly matching specialisations
   /// @param End End of a range (exclusive) of possibly matching specialisations
-  void updateCallSites(Function *F, const Spec *Begin, const Spec *End);
+  void updateCallSites(llvm::Function *F, const Spec *Begin, const Spec *End);
 };
-} // namespace llvm
 
-#endif // LLVM_TRANSFORMS_IPO_FUNCTIONSPECIALIZATION_H
+} // namespace clangRuntimeSpecializer
+
+#endif // CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITFUNCTIONSPECIALIZATION_H

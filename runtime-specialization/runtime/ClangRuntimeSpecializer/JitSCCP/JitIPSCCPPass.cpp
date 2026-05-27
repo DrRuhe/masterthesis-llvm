@@ -11,7 +11,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/IPO/SCCP.h"
+#include "JitIPSCCPPass.h"
+#include "JitFunctionSpecialization.h"
+#include "JitSCCPSolver.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Analysis/AssumptionCache.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
@@ -28,10 +30,10 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ModRef.h"
 #include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/IPO/FunctionSpecialization.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Utils/Local.h"
-#include "llvm/Transforms/Utils/SCCPSolver.h"
+
+namespace clangRuntimeSpecializer {
 
 using namespace llvm;
 
@@ -44,13 +46,13 @@ STATISTIC(NumDeadBlocks , "Number of basic blocks unreachable");
 STATISTIC(NumInstReplaced,
           "Number of instructions replaced with (simpler) instruction");
 
-static cl::opt<unsigned> FuncSpecMaxIters(
-    "funcspec-max-iters", cl::init(10), cl::Hidden, cl::desc(
-    "The maximum number of iterations function specialization is run"));
+static cl::opt<unsigned> JitFuncSpecMaxIters(
+    "jit-funcspec-max-iters", cl::init(10), cl::Hidden, cl::desc(
+    "The maximum number of iterations JIT function specialization is run"));
 
 static void findReturnsToZap(Function &F,
                              SmallVector<ReturnInst *, 8> &ReturnsToZap,
-                             SCCPSolver &Solver) {
+                             JitSCCPSolver &Solver) {
   // We can only do this if we know that nothing else can call the function.
   if (!Solver.isArgumentTrackedFunction(&F))
     return;
@@ -78,7 +80,7 @@ static void findReturnsToZap(Function &F,
                  return true;
                if (U->getType()->isStructTy()) {
                  return none_of(Solver.getStructLatticeValueFor(U),
-                                SCCPSolver::isOverdefined);
+                                JitSCCPSolver::isOverdefined);
                }
 
                // We don't consider assume-like intrinsics to be actual address
@@ -88,7 +90,7 @@ static void findReturnsToZap(Function &F,
                    return true;
                }
 
-               return !SCCPSolver::isOverdefined(Solver.getLatticeValueFor(U));
+               return !JitSCCPSolver::isOverdefined(Solver.getLatticeValueFor(U));
              }) &&
       "We can only zap functions where all live users have a concrete value");
 
@@ -114,8 +116,8 @@ static bool runIPSCCP(
     std::function<DominatorTree &(Function &)> GetDT,
     std::function<BlockFrequencyInfo &(Function &)> GetBFI,
     bool IsFuncSpecEnabled) {
-  SCCPSolver Solver(DL, GetTLI, M.getContext());
-  FunctionSpecializer Specializer(Solver, M, FAM, GetBFI, GetTLI, GetTTI,
+  JitSCCPSolver Solver(DL, GetTLI, M.getContext());
+  JitFunctionSpecializer Specializer(Solver, M, FAM, GetBFI, GetTLI, GetTTI,
                                   GetAC);
 
   // Loop over all functions, marking arguments to those with their addresses
@@ -161,7 +163,7 @@ static bool runIPSCCP(
 
   if (IsFuncSpecEnabled) {
     unsigned Iters = 0;
-    while (Iters++ < FuncSpecMaxIters && Specializer.run());
+    while (Iters++ < JitFuncSpecMaxIters && Specializer.run());
   }
 
   // Iterate over all of the instructions in the module, replacing them with
@@ -271,7 +273,7 @@ static bool runIPSCCP(
   for (const auto &[F, ReturnValue] : Solver.getTrackedRetVals()) {
     assert(!F->getReturnType()->isVoidTy() &&
            "should not track void functions");
-    if (SCCPSolver::isConstant(ReturnValue) || ReturnValue.isUnknownOrUndef())
+    if (JitSCCPSolver::isConstant(ReturnValue) || ReturnValue.isUnknownOrUndef())
       findReturnsToZap(*F, ReturnsToZap, Solver);
   }
 
@@ -322,7 +324,7 @@ static bool runIPSCCP(
   // delete the global and any stores that remain to it.
   for (const auto &I : make_early_inc_range(Solver.getTrackedGlobals())) {
     GlobalVariable *GV = I.first;
-    if (SCCPSolver::isOverdefined(I.second))
+    if (JitSCCPSolver::isOverdefined(I.second))
       continue;
     LLVM_DEBUG(dbgs() << "Found that GV '" << GV->getName()
                       << "' is constant!\n");
@@ -354,7 +356,7 @@ static bool runIPSCCP(
   return MadeChanges;
 }
 
-PreservedAnalyses IPSCCPPass::run(Module &M, ModuleAnalysisManager &AM) {
+PreservedAnalyses JitIPSCCPPass::run(Module &M, ModuleAnalysisManager &AM) {
   const DataLayout &DL = M.getDataLayout();
   auto &FAM = AM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
   auto GetTLI = [&FAM](Function &F) -> const TargetLibraryInfo & {
@@ -384,3 +386,5 @@ PreservedAnalyses IPSCCPPass::run(Module &M, ModuleAnalysisManager &AM) {
   PA.preserve<FunctionAnalysisManagerModuleProxy>();
   return PA;
 }
+
+} // namespace clangRuntimeSpecializer

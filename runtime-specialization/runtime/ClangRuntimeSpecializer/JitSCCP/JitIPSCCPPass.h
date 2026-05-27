@@ -18,47 +18,47 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_TRANSFORMS_IPO_SCCP_H
-#define LLVM_TRANSFORMS_IPO_SCCP_H
+#ifndef CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITIPSCCPPASS_H
+#define CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITIPSCCPPASS_H
 
 #include "llvm/IR/PassManager.h"
 
-namespace llvm {
+namespace clangRuntimeSpecializer {
 
-class Module;
-
-/// A set of parameters to control various transforms performed by IPSCCP pass.
+/// A set of parameters to control various transforms performed by JitIPSCCPPass.
 /// Each of the boolean parameters can be set to:
 ///   true - enabling the transformation.
 ///   false - disabling the transformation.
 /// Intended use is to create a default object, modify parameters with
-/// additional setters and then pass it to IPSCCP.
-struct IPSCCPOptions {
+/// additional setters and then pass it to JitIPSCCPPass.
+struct JitIPSCCPOptions {
   bool AllowFuncSpec;
 
-  IPSCCPOptions(bool AllowFuncSpec = true) : AllowFuncSpec(AllowFuncSpec) {}
+  JitIPSCCPOptions(bool AllowFuncSpec = true) : AllowFuncSpec(AllowFuncSpec) {}
 
   /// Enables or disables Specialization of Functions.
-  IPSCCPOptions &setFuncSpec(bool FuncSpec) {
+  JitIPSCCPOptions &setFuncSpec(bool FuncSpec) {
     AllowFuncSpec = FuncSpec;
     return *this;
   }
 };
 
 /// Pass to perform interprocedural constant propagation.
-class IPSCCPPass : public PassInfoMixin<IPSCCPPass> {
-  IPSCCPOptions Options;
+class JitIPSCCPPass
+    : public llvm::PassInfoMixin<JitIPSCCPPass> {
+  JitIPSCCPOptions Options;
 
 public:
-  IPSCCPPass() = default;
+  JitIPSCCPPass() = default;
 
-  IPSCCPPass(IPSCCPOptions Options) : Options(Options) {}
+  JitIPSCCPPass(JitIPSCCPOptions Options) : Options(Options) {}
 
-  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
+  llvm::PreservedAnalyses run(llvm::Module &M,
+                              llvm::ModuleAnalysisManager &AM);
 
   bool isFuncSpecEnabled() const { return Options.AllowFuncSpec; }
 };
 
-} // end namespace llvm
+} // namespace clangRuntimeSpecializer
 
-#endif // LLVM_TRANSFORMS_IPO_SCCP_H
+#endif // CLANG_RUNTIME_SPECIALIZER_JITSCCP_JITIPSCCPPASS_H

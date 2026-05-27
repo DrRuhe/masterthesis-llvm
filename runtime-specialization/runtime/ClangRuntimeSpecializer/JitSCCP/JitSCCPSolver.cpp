@@ -13,7 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Utils/SCCPSolver.h"
+#include "JitSCCPSolver.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
@@ -31,6 +31,8 @@
 #include <utility>
 #include <vector>
 
+namespace clangRuntimeSpecializer {
+
 using namespace llvm;
 using namespace PatternMatch;
 
@@ -46,18 +48,16 @@ static ValueLatticeElement::MergeOptions getMaxWidenStepsOpts() {
       MaxNumRangeExtensions);
 }
 
-namespace llvm {
-
-bool SCCPSolver::isConstant(const ValueLatticeElement &LV) {
+bool JitSCCPSolver::isConstant(const ValueLatticeElement &LV) {
   return LV.isConstant() ||
          (LV.isConstantRange() && LV.getConstantRange().isSingleElement());
 }
 
-bool SCCPSolver::isOverdefined(const ValueLatticeElement &LV) {
-  return !LV.isUnknownOrUndef() && !SCCPSolver::isConstant(LV);
+bool JitSCCPSolver::isOverdefined(const ValueLatticeElement &LV) {
+  return !LV.isUnknownOrUndef() && !JitSCCPSolver::isConstant(LV);
 }
 
-bool SCCPSolver::tryToReplaceWithConstant(Value *V) {
+bool JitSCCPSolver::tryToReplaceWithConstant(Value *V) {
   Constant *Const = getConstantOrNull(V);
   if (!Const)
     return false;
@@ -89,7 +89,7 @@ bool SCCPSolver::tryToReplaceWithConstant(Value *V) {
 /// Helper for getting ranges from \p Solver. Instructions inserted during
 /// simplification are unavailable in the solver, so we return a full range for
 /// them.
-static ConstantRange getRange(Value *Op, SCCPSolver &Solver,
+static ConstantRange getRange(Value *Op, JitSCCPSolver &Solver,
                               const SmallPtrSetImpl<Value *> &InsertedValues) {
   if (auto *Const = dyn_cast<Constant>(Op))
     return Const->toConstantRange();
@@ -102,7 +102,7 @@ static ConstantRange getRange(Value *Op, SCCPSolver &Solver,
 }
 
 /// Try to use \p Inst's value range from \p Solver to infer the NUW flag.
-static bool refineInstruction(SCCPSolver &Solver,
+static bool refineInstruction(JitSCCPSolver &Solver,
                               const SmallPtrSetImpl<Value *> &InsertedValues,
                               Instruction &Inst) {
   bool Changed = false;
@@ -174,7 +174,7 @@ static bool refineInstruction(SCCPSolver &Solver,
 }
 
 /// Try to replace signed instructions with their unsigned equivalent.
-static bool replaceSignedInst(SCCPSolver &Solver,
+static bool replaceSignedInst(JitSCCPSolver &Solver,
                               SmallPtrSetImpl<Value *> &InsertedValues,
                               Instruction &Inst) {
   // Determine if a signed value is known to be >= 0.
@@ -235,7 +235,7 @@ static bool replaceSignedInst(SCCPSolver &Solver,
 }
 
 /// Try to use \p Inst's value range from \p Solver to simplify it.
-static Value *simplifyInstruction(SCCPSolver &Solver,
+static Value *simplifyInstruction(JitSCCPSolver &Solver,
                                   SmallPtrSetImpl<Value *> &InsertedValues,
                                   Instruction &Inst) {
   auto GetRange = [&Solver, &InsertedValues](Value *Op) {
@@ -254,7 +254,7 @@ static Value *simplifyInstruction(SCCPSolver &Solver,
   return nullptr;
 }
 
-bool SCCPSolver::simplifyInstsInBlock(BasicBlock &BB,
+bool JitSCCPSolver::simplifyInstsInBlock(BasicBlock &BB,
                                       SmallPtrSetImpl<Value *> &InsertedValues,
                                       Statistic &InstRemovedStat,
                                       Statistic &InstReplacedStat) {
@@ -283,7 +283,7 @@ bool SCCPSolver::simplifyInstsInBlock(BasicBlock &BB,
   return MadeChanges;
 }
 
-bool SCCPSolver::removeNonFeasibleEdges(BasicBlock *BB, DomTreeUpdater &DTU,
+bool JitSCCPSolver::removeNonFeasibleEdges(BasicBlock *BB, DomTreeUpdater &DTU,
                                         BasicBlock *&NewUnreachableBB) const {
   SmallPtrSet<BasicBlock *, 8> FeasibleSuccessors;
   bool HasNonFeasibleEdges = false;
@@ -406,12 +406,12 @@ static void inferAttribute(Function *F, unsigned AttrIndex,
   }
 }
 
-void SCCPSolver::inferReturnAttributes() const {
+void JitSCCPSolver::inferReturnAttributes() const {
   for (const auto &[F, ReturnValue] : getTrackedRetVals())
     inferAttribute(F, AttributeList::ReturnIndex, ReturnValue);
 }
 
-void SCCPSolver::inferArgAttributes() const {
+void JitSCCPSolver::inferArgAttributes() const {
   for (Function *F : getArgumentTrackedFunctions()) {
     if (!isBlockExecutable(&F->front()))
       continue;
@@ -422,9 +422,9 @@ void SCCPSolver::inferArgAttributes() const {
   }
 }
 
-/// Helper class for SCCPSolver. This implements the instruction visitor and
+/// Helper class for JitSCCPSolver. This implements the instruction visitor and
 /// holds all the state.
-class SCCPInstVisitor : public InstVisitor<SCCPInstVisitor> {
+class JitSCCPInstVisitor : public InstVisitor<JitSCCPInstVisitor> {
   const DataLayout &DL;
   std::function<const TargetLibraryInfo &(Function &)> GetTLI;
   /// Basic blocks that are executable (but may not have been visited yet).
@@ -677,7 +677,7 @@ private:
                                    const WithOverflowInst *WO, unsigned Idx);
 
 private:
-  friend class InstVisitor<SCCPInstVisitor>;
+  friend class InstVisitor<JitSCCPInstVisitor>;
 
   // visit implementations - Something changed in this instruction.  Either an
   // operand made a transition, or the instruction is newly executable.  Change
@@ -767,9 +767,9 @@ public:
     return It->second->getPredicateInfoFor(I);
   }
 
-  SCCPInstVisitor(const DataLayout &DL,
-                  std::function<const TargetLibraryInfo &(Function &)> GetTLI,
-                  LLVMContext &Ctx)
+  JitSCCPInstVisitor(const DataLayout &DL,
+                     std::function<const TargetLibraryInfo &(Function &)> GetTLI,
+                     LLVMContext &Ctx)
       : DL(DL), GetTLI(GetTLI), Ctx(Ctx) {}
 
   void trackValueOfGlobalVariable(GlobalVariable *GV) {
@@ -944,9 +944,7 @@ public:
   }
 };
 
-} // namespace llvm
-
-bool SCCPInstVisitor::markBlockExecutable(BasicBlock *BB) {
+bool JitSCCPInstVisitor::markBlockExecutable(BasicBlock *BB) {
   if (!BBExecutable.insert(BB).second)
     return false;
   LLVM_DEBUG(dbgs() << "Marking Block Executable: " << BB->getName() << '\n');
@@ -954,7 +952,7 @@ bool SCCPInstVisitor::markBlockExecutable(BasicBlock *BB) {
   return true;
 }
 
-void SCCPInstVisitor::pushToWorkList(Instruction *I) {
+void JitSCCPInstVisitor::pushToWorkList(Instruction *I) {
   // If we're currently visiting a block, do not push any instructions in the
   // same blocks that are after the current one, as they will be visited
   // anyway. We do have to push updates to earlier instructions (e.g. phi
@@ -967,7 +965,7 @@ void SCCPInstVisitor::pushToWorkList(Instruction *I) {
     InstWorkList.insert(I);
 }
 
-void SCCPInstVisitor::pushUsersToWorkList(Value *V) {
+void JitSCCPInstVisitor::pushUsersToWorkList(Value *V) {
   for (User *U : V->users())
     if (auto *UI = dyn_cast<Instruction>(U))
       pushToWorkList(UI);
@@ -985,13 +983,13 @@ void SCCPInstVisitor::pushUsersToWorkList(Value *V) {
   }
 }
 
-void SCCPInstVisitor::pushUsersToWorkListMsg(ValueLatticeElement &IV,
+void JitSCCPInstVisitor::pushUsersToWorkListMsg(ValueLatticeElement &IV,
                                              Value *V) {
   LLVM_DEBUG(dbgs() << "updated " << IV << ": " << *V << '\n');
   pushUsersToWorkList(V);
 }
 
-bool SCCPInstVisitor::markConstant(ValueLatticeElement &IV, Value *V,
+bool JitSCCPInstVisitor::markConstant(ValueLatticeElement &IV, Value *V,
                                    Constant *C, bool MayIncludeUndef) {
   if (!IV.markConstant(C, MayIncludeUndef))
     return false;
@@ -1000,7 +998,7 @@ bool SCCPInstVisitor::markConstant(ValueLatticeElement &IV, Value *V,
   return true;
 }
 
-bool SCCPInstVisitor::markNotConstant(ValueLatticeElement &IV, Value *V,
+bool JitSCCPInstVisitor::markNotConstant(ValueLatticeElement &IV, Value *V,
                                       Constant *C) {
   if (!IV.markNotConstant(C))
     return false;
@@ -1009,7 +1007,7 @@ bool SCCPInstVisitor::markNotConstant(ValueLatticeElement &IV, Value *V,
   return true;
 }
 
-bool SCCPInstVisitor::markConstantRange(ValueLatticeElement &IV, Value *V,
+bool JitSCCPInstVisitor::markConstantRange(ValueLatticeElement &IV, Value *V,
                                         const ConstantRange &CR) {
   if (!IV.markConstantRange(CR))
     return false;
@@ -1018,7 +1016,7 @@ bool SCCPInstVisitor::markConstantRange(ValueLatticeElement &IV, Value *V,
   return true;
 }
 
-bool SCCPInstVisitor::markOverdefined(ValueLatticeElement &IV, Value *V) {
+bool JitSCCPInstVisitor::markOverdefined(ValueLatticeElement &IV, Value *V) {
   if (!IV.markOverdefined())
     return false;
 
@@ -1031,18 +1029,18 @@ bool SCCPInstVisitor::markOverdefined(ValueLatticeElement &IV, Value *V) {
   return true;
 }
 
-bool SCCPInstVisitor::isStructLatticeConstant(Function *F, StructType *STy) {
+bool JitSCCPInstVisitor::isStructLatticeConstant(Function *F, StructType *STy) {
   for (unsigned i = 0, e = STy->getNumElements(); i != e; ++i) {
     const auto &It = TrackedMultipleRetVals.find(std::make_pair(F, i));
     assert(It != TrackedMultipleRetVals.end());
     ValueLatticeElement LV = It->second;
-    if (!SCCPSolver::isConstant(LV))
+    if (!JitSCCPSolver::isConstant(LV))
       return false;
   }
   return true;
 }
 
-Constant *SCCPInstVisitor::getConstant(const ValueLatticeElement &LV,
+Constant *JitSCCPInstVisitor::getConstant(const ValueLatticeElement &LV,
                                        Type *Ty) const {
   if (LV.isConstant()) {
     Constant *C = LV.getConstant();
@@ -1058,33 +1056,33 @@ Constant *SCCPInstVisitor::getConstant(const ValueLatticeElement &LV,
   return nullptr;
 }
 
-Constant *SCCPInstVisitor::getConstantOrNull(Value *V) const {
+Constant *JitSCCPInstVisitor::getConstantOrNull(Value *V) const {
   Constant *Const = nullptr;
   if (V->getType()->isStructTy()) {
     std::vector<ValueLatticeElement> LVs = getStructLatticeValueFor(V);
-    if (any_of(LVs, SCCPSolver::isOverdefined))
+    if (any_of(LVs, JitSCCPSolver::isOverdefined))
       return nullptr;
     std::vector<Constant *> ConstVals;
     auto *ST = cast<StructType>(V->getType());
     for (unsigned I = 0, E = ST->getNumElements(); I != E; ++I) {
       ValueLatticeElement LV = LVs[I];
-      ConstVals.push_back(SCCPSolver::isConstant(LV)
+      ConstVals.push_back(JitSCCPSolver::isConstant(LV)
                               ? getConstant(LV, ST->getElementType(I))
                               : UndefValue::get(ST->getElementType(I)));
     }
     Const = ConstantStruct::get(ST, ConstVals);
   } else {
     const ValueLatticeElement &LV = getLatticeValueFor(V);
-    if (SCCPSolver::isOverdefined(LV))
+    if (JitSCCPSolver::isOverdefined(LV))
       return nullptr;
-    Const = SCCPSolver::isConstant(LV) ? getConstant(LV, V->getType())
+    Const = JitSCCPSolver::isConstant(LV) ? getConstant(LV, V->getType())
                                        : UndefValue::get(V->getType());
   }
   assert(Const && "Constant is nullptr here!");
   return Const;
 }
 
-void SCCPInstVisitor::setLatticeValueForSpecializationArguments(Function *F,
+void JitSCCPInstVisitor::setLatticeValueForSpecializationArguments(Function *F,
                                         const SmallVectorImpl<ArgInfo> &Args) {
   assert(!Args.empty() && "Specialization without arguments");
   assert(F->arg_size() == Args[0].Formal->getParent()->arg_size() &&
@@ -1124,14 +1122,14 @@ void SCCPInstVisitor::setLatticeValueForSpecializationArguments(Function *F,
   }
 }
 
-void SCCPInstVisitor::visitInstruction(Instruction &I) {
+void JitSCCPInstVisitor::visitInstruction(Instruction &I) {
   // All the instructions we don't do any special handling for just
   // go to overdefined.
   LLVM_DEBUG(dbgs() << "SCCP: Don't know how to handle: " << I << '\n');
   markOverdefined(&I);
 }
 
-bool SCCPInstVisitor::mergeInValue(ValueLatticeElement &IV, Value *V,
+bool JitSCCPInstVisitor::mergeInValue(ValueLatticeElement &IV, Value *V,
                                    ValueLatticeElement MergeWithV,
                                    ValueLatticeElement::MergeOptions Opts) {
   if (IV.mergeIn(MergeWithV, Opts)) {
@@ -1143,7 +1141,7 @@ bool SCCPInstVisitor::mergeInValue(ValueLatticeElement &IV, Value *V,
   return false;
 }
 
-bool SCCPInstVisitor::markEdgeExecutable(BasicBlock *Source, BasicBlock *Dest) {
+bool JitSCCPInstVisitor::markEdgeExecutable(BasicBlock *Source, BasicBlock *Dest) {
   if (!KnownFeasibleEdges.insert(Edge(Source, Dest)).second)
     return false; // This edge is already known to be executable!
 
@@ -1162,7 +1160,7 @@ bool SCCPInstVisitor::markEdgeExecutable(BasicBlock *Source, BasicBlock *Dest) {
 
 // getFeasibleSuccessors - Return a vector of booleans to indicate which
 // successors are reachable from a given terminator instruction.
-void SCCPInstVisitor::getFeasibleSuccessors(Instruction &TI,
+void JitSCCPInstVisitor::getFeasibleSuccessors(Instruction &TI,
                                             SmallVectorImpl<bool> &Succs) {
   Succs.resize(TI.getNumSuccessors());
   if (auto *BI = dyn_cast<BranchInst>(&TI)) {
@@ -1265,7 +1263,7 @@ void SCCPInstVisitor::getFeasibleSuccessors(Instruction &TI,
 
 // isEdgeFeasible - Return true if the control flow edge from the 'From' basic
 // block to the 'To' basic block is currently feasible.
-bool SCCPInstVisitor::isEdgeFeasible(BasicBlock *From, BasicBlock *To) const {
+bool JitSCCPInstVisitor::isEdgeFeasible(BasicBlock *From, BasicBlock *To) const {
   // Check if we've called markEdgeExecutable on the edge yet. (We could
   // be more aggressive and try to consider edges which haven't been marked
   // yet, but there isn't any need.)
@@ -1289,7 +1287,7 @@ bool SCCPInstVisitor::isEdgeFeasible(BasicBlock *From, BasicBlock *To) const {
 //    destination executable
 // 7. If a conditional branch has a value that is overdefined, make all
 //    successors executable.
-void SCCPInstVisitor::visitPHINode(PHINode &PN) {
+void JitSCCPInstVisitor::visitPHINode(PHINode &PN) {
   // If this PN returns a struct, just mark the result overdefined.
   // TODO: We could do a lot better than this if code actually uses this.
   if (PN.getType()->isStructTy())
@@ -1335,7 +1333,7 @@ void SCCPInstVisitor::visitPHINode(PHINode &PN) {
       std::max(NumActiveIncoming, PhiStateRef.getNumRangeExtensions()));
 }
 
-void SCCPInstVisitor::visitReturnInst(ReturnInst &I) {
+void JitSCCPInstVisitor::visitReturnInst(ReturnInst &I) {
   if (I.getNumOperands() == 0)
     return; // ret void
 
@@ -1361,7 +1359,7 @@ void SCCPInstVisitor::visitReturnInst(ReturnInst &I) {
   }
 }
 
-void SCCPInstVisitor::visitTerminator(Instruction &TI) {
+void JitSCCPInstVisitor::visitTerminator(Instruction &TI) {
   SmallVector<bool, 16> SuccFeasible;
   getFeasibleSuccessors(TI, SuccFeasible);
 
@@ -1373,7 +1371,7 @@ void SCCPInstVisitor::visitTerminator(Instruction &TI) {
       markEdgeExecutable(BB, TI.getSuccessor(i));
 }
 
-void SCCPInstVisitor::visitCastInst(CastInst &I) {
+void JitSCCPInstVisitor::visitCastInst(CastInst &I) {
   // ResolvedUndefsIn might mark I as overdefined. Bail out, even if we would
   // discover a concrete value later.
   if (ValueState[&I].isOverdefined())
@@ -1406,7 +1404,7 @@ void SCCPInstVisitor::visitCastInst(CastInst &I) {
     markOverdefined(&I);
 }
 
-void SCCPInstVisitor::handleExtractOfWithOverflow(ExtractValueInst &EVI,
+void JitSCCPInstVisitor::handleExtractOfWithOverflow(ExtractValueInst &EVI,
                                                   const WithOverflowInst *WO,
                                                   unsigned Idx) {
   Value *LHS = WO->getLHS(), *RHS = WO->getRHS();
@@ -1433,7 +1431,7 @@ void SCCPInstVisitor::handleExtractOfWithOverflow(ExtractValueInst &EVI,
   }
 }
 
-void SCCPInstVisitor::visitExtractValueInst(ExtractValueInst &EVI) {
+void JitSCCPInstVisitor::visitExtractValueInst(ExtractValueInst &EVI) {
   // If this returns a struct, mark all elements over defined, we don't track
   // structs in structs.
   if (EVI.getType()->isStructTy())
@@ -1461,7 +1459,7 @@ void SCCPInstVisitor::visitExtractValueInst(ExtractValueInst &EVI) {
   }
 }
 
-void SCCPInstVisitor::visitInsertValueInst(InsertValueInst &IVI) {
+void JitSCCPInstVisitor::visitInsertValueInst(InsertValueInst &IVI) {
   auto *STy = dyn_cast<StructType>(IVI.getType());
   if (!STy)
     return (void)markOverdefined(&IVI);
@@ -1499,7 +1497,7 @@ void SCCPInstVisitor::visitInsertValueInst(InsertValueInst &IVI) {
   }
 }
 
-void SCCPInstVisitor::visitSelectInst(SelectInst &I) {
+void JitSCCPInstVisitor::visitSelectInst(SelectInst &I) {
   // If this select returns a struct, just mark the result overdefined.
   // TODO: We could do a lot better than this if code actually uses this.
   if (I.getType()->isStructTy())
@@ -1535,7 +1533,7 @@ void SCCPInstVisitor::visitSelectInst(SelectInst &I) {
 }
 
 // Handle Unary Operators.
-void SCCPInstVisitor::visitUnaryOperator(Instruction &I) {
+void JitSCCPInstVisitor::visitUnaryOperator(Instruction &I) {
   ValueLatticeElement V0State = getValueState(I.getOperand(0));
 
   ValueLatticeElement &IV = ValueState[&I];
@@ -1548,7 +1546,7 @@ void SCCPInstVisitor::visitUnaryOperator(Instruction &I) {
   if (V0State.isUnknownOrUndef())
     return;
 
-  if (SCCPSolver::isConstant(V0State))
+  if (JitSCCPSolver::isConstant(V0State))
     if (Constant *C = ConstantFoldUnaryOpOperand(
             I.getOpcode(), getConstant(V0State, I.getType()), DL))
       return (void)markConstant(IV, &I, C);
@@ -1556,7 +1554,7 @@ void SCCPInstVisitor::visitUnaryOperator(Instruction &I) {
   markOverdefined(&I);
 }
 
-void SCCPInstVisitor::visitFreezeInst(FreezeInst &I) {
+void JitSCCPInstVisitor::visitFreezeInst(FreezeInst &I) {
   // If this freeze returns a struct, just mark the result overdefined.
   // TODO: We could do a lot better than this.
   if (I.getType()->isStructTy())
@@ -1573,7 +1571,7 @@ void SCCPInstVisitor::visitFreezeInst(FreezeInst &I) {
   if (V0State.isUnknownOrUndef())
     return;
 
-  if (SCCPSolver::isConstant(V0State) &&
+  if (JitSCCPSolver::isConstant(V0State) &&
       isGuaranteedNotToBeUndefOrPoison(getConstant(V0State, I.getType())))
     return (void)markConstant(IV, &I, getConstant(V0State, I.getType()));
 
@@ -1581,7 +1579,7 @@ void SCCPInstVisitor::visitFreezeInst(FreezeInst &I) {
 }
 
 // Handle Binary Operators.
-void SCCPInstVisitor::visitBinaryOperator(Instruction &I) {
+void JitSCCPInstVisitor::visitBinaryOperator(Instruction &I) {
   ValueLatticeElement V1State = getValueState(I.getOperand(0));
   ValueLatticeElement V2State = getValueState(I.getOperand(1));
 
@@ -1599,10 +1597,10 @@ void SCCPInstVisitor::visitBinaryOperator(Instruction &I) {
   // If either of the operands is a constant, try to fold it to a constant.
   // TODO: Use information from notconstant better.
   if ((V1State.isConstant() || V2State.isConstant())) {
-    Value *V1 = SCCPSolver::isConstant(V1State)
+    Value *V1 = JitSCCPSolver::isConstant(V1State)
                     ? getConstant(V1State, I.getOperand(0)->getType())
                     : I.getOperand(0);
-    Value *V2 = SCCPSolver::isConstant(V2State)
+    Value *V2 = JitSCCPSolver::isConstant(V2State)
                     ? getConstant(V2State, I.getOperand(1)->getType())
                     : I.getOperand(1);
     Value *R = simplifyBinOp(I.getOpcode(), V1, V2, SimplifyQuery(DL, &I));
@@ -1643,7 +1641,7 @@ void SCCPInstVisitor::visitBinaryOperator(Instruction &I) {
 }
 
 // Handle ICmpInst instruction.
-void SCCPInstVisitor::visitCmpInst(CmpInst &I) {
+void JitSCCPInstVisitor::visitCmpInst(CmpInst &I) {
   // Do not cache this lookup, getValueState calls later in the function might
   // invalidate the reference.
   if (ValueState[&I].isOverdefined())
@@ -1667,7 +1665,7 @@ void SCCPInstVisitor::visitCmpInst(CmpInst &I) {
 
   // If operands are still unknown, wait for it to resolve.
   if ((V1State.isUnknownOrUndef() || V2State.isUnknownOrUndef()) &&
-      !SCCPSolver::isConstant(ValueState[&I]))
+      !JitSCCPSolver::isConstant(ValueState[&I]))
     return;
 
   markOverdefined(&I);
@@ -1675,7 +1673,7 @@ void SCCPInstVisitor::visitCmpInst(CmpInst &I) {
 
 // Handle getelementptr instructions.  If all operands are constants then we
 // can turn this into a getelementptr ConstantExpr.
-void SCCPInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
+void JitSCCPInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
   if (ValueState[&I].isOverdefined())
     return (void)markOverdefined(&I);
 
@@ -1714,14 +1712,14 @@ void SCCPInstVisitor::visitGetElementPtrInst(GetElementPtrInst &I) {
     markOverdefined(&I);
 }
 
-void SCCPInstVisitor::visitAllocaInst(AllocaInst &I) {
+void JitSCCPInstVisitor::visitAllocaInst(AllocaInst &I) {
   if (!NullPointerIsDefined(I.getFunction(), I.getAddressSpace()))
     return (void)markNotNull(ValueState[&I], &I);
 
   markOverdefined(&I);
 }
 
-void SCCPInstVisitor::visitStoreInst(StoreInst &SI) {
+void JitSCCPInstVisitor::visitStoreInst(StoreInst &SI) {
   // If this store is of a struct, ignore it.
   if (SI.getOperand(0)->getType()->isStructTy())
     return;
@@ -1764,7 +1762,7 @@ static ValueLatticeElement getValueFromMetadata(const Instruction *I) {
 
 // Handle load instructions.  If the operand is a constant pointer to a constant
 // global, we can replace the load with the loaded constant value!
-void SCCPInstVisitor::visitLoadInst(LoadInst &I) {
+void JitSCCPInstVisitor::visitLoadInst(LoadInst &I) {
   // If this load is of a struct or the load is volatile, just mark the result
   // as overdefined.
   if (I.getType()->isStructTy() || I.isVolatile())
@@ -1781,7 +1779,7 @@ void SCCPInstVisitor::visitLoadInst(LoadInst &I) {
 
   ValueLatticeElement &IV = ValueState[&I];
 
-  if (SCCPSolver::isConstant(PtrVal)) {
+  if (JitSCCPSolver::isConstant(PtrVal)) {
     Constant *Ptr = getConstant(PtrVal, I.getOperand(0)->getType());
 
     // load null is undefined.
@@ -1813,12 +1811,12 @@ void SCCPInstVisitor::visitLoadInst(LoadInst &I) {
   mergeInValue(&I, getValueFromMetadata(&I));
 }
 
-void SCCPInstVisitor::visitCallBase(CallBase &CB) {
+void JitSCCPInstVisitor::visitCallBase(CallBase &CB) {
   handleCallResult(CB);
   handleCallArguments(CB);
 }
 
-void SCCPInstVisitor::handleCallOverdefined(CallBase &CB) {
+void JitSCCPInstVisitor::handleCallOverdefined(CallBase &CB) {
   Function *F = CB.getCalledFunction();
 
   // Void return and not tracking callee, just bail.
@@ -1842,13 +1840,13 @@ void SCCPInstVisitor::handleCallOverdefined(CallBase &CB) {
 
       if (State.isUnknownOrUndef())
         return; // Operands are not resolved yet.
-      if (SCCPSolver::isOverdefined(State))
+      if (JitSCCPSolver::isOverdefined(State))
         return (void)markOverdefined(&CB);
-      assert(SCCPSolver::isConstant(State) && "Unknown state!");
+      assert(JitSCCPSolver::isConstant(State) && "Unknown state!");
       Operands.push_back(getConstant(State, A->getType()));
     }
 
-    if (SCCPSolver::isOverdefined(getValueState(&CB)))
+    if (JitSCCPSolver::isOverdefined(getValueState(&CB)))
       return (void)markOverdefined(&CB);
 
     // If we can constant fold this, mark the result of the call as a
@@ -1861,7 +1859,7 @@ void SCCPInstVisitor::handleCallOverdefined(CallBase &CB) {
   mergeInValue(&CB, getValueFromMetadata(&CB));
 }
 
-void SCCPInstVisitor::handleCallArguments(CallBase &CB) {
+void JitSCCPInstVisitor::handleCallArguments(CallBase &CB) {
   Function *F = CB.getCalledFunction();
   // If this is a local function that doesn't have its address taken, mark its
   // entry block executable and merge in the actual arguments to the call into
@@ -1894,7 +1892,7 @@ void SCCPInstVisitor::handleCallArguments(CallBase &CB) {
   }
 }
 
-void SCCPInstVisitor::handleCallResult(CallBase &CB) {
+void JitSCCPInstVisitor::handleCallResult(CallBase &CB) {
   Function *F = CB.getCalledFunction();
 
   if (auto *II = dyn_cast<IntrinsicInst>(&CB)) {
@@ -2028,7 +2026,7 @@ void SCCPInstVisitor::handleCallResult(CallBase &CB) {
   }
 }
 
-void SCCPInstVisitor::solve() {
+void JitSCCPInstVisitor::solve() {
   // Process the work lists until they are empty!
   while (!BBWorkList.empty() || !InstWorkList.empty()) {
     // Process the instruction work list.
@@ -2056,7 +2054,7 @@ void SCCPInstVisitor::solve() {
   }
 }
 
-bool SCCPInstVisitor::resolvedUndef(Instruction &I) {
+bool JitSCCPInstVisitor::resolvedUndef(Instruction &I) {
   // Look for instructions which produce undef values.
   if (I.getType()->isVoidTy())
     return false;
@@ -2124,7 +2122,7 @@ bool SCCPInstVisitor::resolvedUndef(Instruction &I) {
 /// to assign some result to the instruction (otherwise we would treat it as
 /// unreachable). For simplicity, we mark any instructions that are still
 /// unknown as overdefined.
-bool SCCPInstVisitor::resolvedUndefsIn(Function &F) {
+bool JitSCCPInstVisitor::resolvedUndefsIn(Function &F) {
   bool MadeChange = false;
   for (BasicBlock &BB : F) {
     if (!BBExecutable.count(&BB))
@@ -2144,146 +2142,148 @@ bool SCCPInstVisitor::resolvedUndefsIn(Function &F) {
 //
 // SCCPSolver implementations
 //
-SCCPSolver::SCCPSolver(
+JitSCCPSolver::JitSCCPSolver(
     const DataLayout &DL,
     std::function<const TargetLibraryInfo &(Function &)> GetTLI,
     LLVMContext &Ctx)
-    : Visitor(new SCCPInstVisitor(DL, std::move(GetTLI), Ctx)) {}
+    : Visitor(new JitSCCPInstVisitor(DL, std::move(GetTLI), Ctx)) {}
 
-SCCPSolver::~SCCPSolver() = default;
+JitSCCPSolver::~JitSCCPSolver() = default;
 
-void SCCPSolver::addPredicateInfo(Function &F, DominatorTree &DT,
+void JitSCCPSolver::addPredicateInfo(Function &F, DominatorTree &DT,
                                   AssumptionCache &AC) {
   Visitor->addPredicateInfo(F, DT, AC);
 }
 
-void SCCPSolver::removeSSACopies(Function &F) {
+void JitSCCPSolver::removeSSACopies(Function &F) {
   Visitor->removeSSACopies(F);
 }
 
-bool SCCPSolver::markBlockExecutable(BasicBlock *BB) {
+bool JitSCCPSolver::markBlockExecutable(BasicBlock *BB) {
   return Visitor->markBlockExecutable(BB);
 }
 
-const PredicateBase *SCCPSolver::getPredicateInfoFor(Instruction *I) {
+const PredicateBase *JitSCCPSolver::getPredicateInfoFor(Instruction *I) {
   return Visitor->getPredicateInfoFor(I);
 }
 
-void SCCPSolver::trackValueOfGlobalVariable(GlobalVariable *GV) {
+void JitSCCPSolver::trackValueOfGlobalVariable(GlobalVariable *GV) {
   Visitor->trackValueOfGlobalVariable(GV);
 }
 
-void SCCPSolver::addTrackedFunction(Function *F) {
+void JitSCCPSolver::addTrackedFunction(Function *F) {
   Visitor->addTrackedFunction(F);
 }
 
-void SCCPSolver::addToMustPreserveReturnsInFunctions(Function *F) {
+void JitSCCPSolver::addToMustPreserveReturnsInFunctions(Function *F) {
   Visitor->addToMustPreserveReturnsInFunctions(F);
 }
 
-bool SCCPSolver::mustPreserveReturn(Function *F) {
+bool JitSCCPSolver::mustPreserveReturn(Function *F) {
   return Visitor->mustPreserveReturn(F);
 }
 
-void SCCPSolver::addArgumentTrackedFunction(Function *F) {
+void JitSCCPSolver::addArgumentTrackedFunction(Function *F) {
   Visitor->addArgumentTrackedFunction(F);
 }
 
-bool SCCPSolver::isArgumentTrackedFunction(Function *F) {
+bool JitSCCPSolver::isArgumentTrackedFunction(Function *F) {
   return Visitor->isArgumentTrackedFunction(F);
 }
 
 const SmallPtrSetImpl<Function *> &
-SCCPSolver::getArgumentTrackedFunctions() const {
+JitSCCPSolver::getArgumentTrackedFunctions() const {
   return Visitor->getArgumentTrackedFunctions();
 }
 
-void SCCPSolver::solve() { Visitor->solve(); }
+void JitSCCPSolver::solve() { Visitor->solve(); }
 
-bool SCCPSolver::resolvedUndefsIn(Function &F) {
+bool JitSCCPSolver::resolvedUndefsIn(Function &F) {
   return Visitor->resolvedUndefsIn(F);
 }
 
-void SCCPSolver::solveWhileResolvedUndefsIn(Module &M) {
+void JitSCCPSolver::solveWhileResolvedUndefsIn(Module &M) {
   Visitor->solveWhileResolvedUndefsIn(M);
 }
 
 void
-SCCPSolver::solveWhileResolvedUndefsIn(SmallVectorImpl<Function *> &WorkList) {
+JitSCCPSolver::solveWhileResolvedUndefsIn(SmallVectorImpl<Function *> &WorkList) {
   Visitor->solveWhileResolvedUndefsIn(WorkList);
 }
 
-void SCCPSolver::solveWhileResolvedUndefs() {
+void JitSCCPSolver::solveWhileResolvedUndefs() {
   Visitor->solveWhileResolvedUndefs();
 }
 
-bool SCCPSolver::isBlockExecutable(BasicBlock *BB) const {
+bool JitSCCPSolver::isBlockExecutable(BasicBlock *BB) const {
   return Visitor->isBlockExecutable(BB);
 }
 
-bool SCCPSolver::isEdgeFeasible(BasicBlock *From, BasicBlock *To) const {
+bool JitSCCPSolver::isEdgeFeasible(BasicBlock *From, BasicBlock *To) const {
   return Visitor->isEdgeFeasible(From, To);
 }
 
 std::vector<ValueLatticeElement>
-SCCPSolver::getStructLatticeValueFor(Value *V) const {
+JitSCCPSolver::getStructLatticeValueFor(Value *V) const {
   return Visitor->getStructLatticeValueFor(V);
 }
 
-void SCCPSolver::removeLatticeValueFor(Value *V) {
+void JitSCCPSolver::removeLatticeValueFor(Value *V) {
   return Visitor->removeLatticeValueFor(V);
 }
 
-void SCCPSolver::resetLatticeValueFor(CallBase *Call) {
+void JitSCCPSolver::resetLatticeValueFor(CallBase *Call) {
   Visitor->resetLatticeValueFor(Call);
 }
 
-const ValueLatticeElement &SCCPSolver::getLatticeValueFor(Value *V) const {
+const ValueLatticeElement &JitSCCPSolver::getLatticeValueFor(Value *V) const {
   return Visitor->getLatticeValueFor(V);
 }
 
 const MapVector<Function *, ValueLatticeElement> &
-SCCPSolver::getTrackedRetVals() const {
+JitSCCPSolver::getTrackedRetVals() const {
   return Visitor->getTrackedRetVals();
 }
 
 const DenseMap<GlobalVariable *, ValueLatticeElement> &
-SCCPSolver::getTrackedGlobals() const {
+JitSCCPSolver::getTrackedGlobals() const {
   return Visitor->getTrackedGlobals();
 }
 
-const SmallPtrSet<Function *, 16> &SCCPSolver::getMRVFunctionsTracked() const {
+const SmallPtrSet<Function *, 16> &JitSCCPSolver::getMRVFunctionsTracked() const {
   return Visitor->getMRVFunctionsTracked();
 }
 
-void SCCPSolver::markOverdefined(Value *V) { Visitor->markOverdefined(V); }
+void JitSCCPSolver::markOverdefined(Value *V) { Visitor->markOverdefined(V); }
 
-void SCCPSolver::trackValueOfArgument(Argument *V) {
+void JitSCCPSolver::trackValueOfArgument(Argument *V) {
   Visitor->trackValueOfArgument(V);
 }
 
-bool SCCPSolver::isStructLatticeConstant(Function *F, StructType *STy) {
+bool JitSCCPSolver::isStructLatticeConstant(Function *F, StructType *STy) {
   return Visitor->isStructLatticeConstant(F, STy);
 }
 
-Constant *SCCPSolver::getConstant(const ValueLatticeElement &LV,
+Constant *JitSCCPSolver::getConstant(const ValueLatticeElement &LV,
                                   Type *Ty) const {
   return Visitor->getConstant(LV, Ty);
 }
 
-Constant *SCCPSolver::getConstantOrNull(Value *V) const {
+Constant *JitSCCPSolver::getConstantOrNull(Value *V) const {
   return Visitor->getConstantOrNull(V);
 }
 
-void SCCPSolver::setLatticeValueForSpecializationArguments(Function *F,
+void JitSCCPSolver::setLatticeValueForSpecializationArguments(Function *F,
                                    const SmallVectorImpl<ArgInfo> &Args) {
   Visitor->setLatticeValueForSpecializationArguments(F, Args);
 }
 
-void SCCPSolver::markFunctionUnreachable(Function *F) {
+void JitSCCPSolver::markFunctionUnreachable(Function *F) {
   Visitor->markFunctionUnreachable(F);
 }
 
-void SCCPSolver::visit(Instruction *I) { Visitor->visit(I); }
+void JitSCCPSolver::visit(Instruction *I) { Visitor->visit(I); }
 
-void SCCPSolver::visitCall(CallInst &I) { Visitor->visitCall(I); }
+void JitSCCPSolver::visitCall(CallInst &I) { Visitor->visitCall(I); }
+
+} // namespace clangRuntimeSpecializer
