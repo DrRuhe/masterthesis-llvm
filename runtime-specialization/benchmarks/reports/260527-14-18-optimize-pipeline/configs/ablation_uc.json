@@ -1,0 +1,107 @@
+[
+  {
+    "name": "default",
+    "env": {}
+  },
+  {
+    "name": "o3_only",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "1",
+      "CRS_DEFAULT_EARLY_PRUNE": "0",
+      "CRS_DEFAULT_O3_FINAL": "1"
+    }
+  },
+  {
+    "name": "no_prune",
+    "env": {
+      "CRS_DEFAULT_EARLY_PRUNE": "0"
+    }
+  },
+  {
+    "name": "no_o3_final",
+    "env": {
+      "CRS_DEFAULT_O3_FINAL": "0"
+    }
+  },
+  {
+    "name": "no_unroll",
+    "env": {
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "1"
+    }
+  },
+  {
+    "name": "fixpoint_2",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "2"
+    }
+  },
+  {
+    "name": "aggressive",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "20",
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "256"
+    }
+  },
+  {
+    "name": "uc_workload_optimal",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "23",
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "1",
+      "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": "3",
+      "CRS_DEFAULT_EARLY_PRUNE": "1",
+      "CRS_DEFAULT_O3_FINAL": "1",
+      "CRS_DEFAULT_PIPELINE": "0",
+      "CRS_DEFAULT_P1_INLINE_THRESHOLD": "None",
+      "CRS_DEFAULT_P1_MAX_MODULE_GROWTH": "None",
+      "CRS_P2_MIN_FUNC_SIZE": "None",
+      "CRS_P2_MAX_CLONES": "None",
+      "CRS_P2_FUNC_SPEC_ITERS": "None",
+      "CRS_P2_FORCE_SPEC": "None"
+    }
+  },
+  {
+    "name": "pipeline_1_default",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "1"
+    }
+  },
+  {
+    "name": "pipeline_1_aggressive_budget",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "1",
+      "CRS_DEFAULT_P1_INLINE_THRESHOLD": "1000",
+      "CRS_DEFAULT_P1_MAX_MODULE_GROWTH": "4.0"
+    }
+  },
+  {
+    "name": "pipeline_1_tight_budget",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "1",
+      "CRS_DEFAULT_P1_INLINE_THRESHOLD": "100",
+      "CRS_DEFAULT_P1_MAX_MODULE_GROWTH": "1.5"
+    }
+  },
+  {
+    "name": "pipeline_2_default",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "2"
+    }
+  },
+  {
+    "name": "pipeline_2_force_spec",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "2",
+      "CRS_P2_FORCE_SPEC": "1"
+    }
+  },
+  {
+    "name": "pipeline_2_aggressive",
+    "env": {
+      "CRS_DEFAULT_PIPELINE": "2",
+      "CRS_P2_MIN_FUNC_SIZE": "1",
+      "CRS_P2_MAX_CLONES": "10",
+      "CRS_P2_FUNC_SPEC_ITERS": "5",
+      "CRS_P2_FORCE_SPEC": "1"
+    }
+  }
+]
