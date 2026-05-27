@@ -86,7 +86,7 @@ outcome gets an `SC-###`. Call out informed defaults.
 
 ### 2. Clarify (before planning)
 Scan `spec.md` for ambiguity: vague terms, missing edge cases, untestable
-requirements, undefined data shapes, unstated assumptions. Ask the user up to **5**
+requirements, undefined data shapes, unstated assumptions. Ask the user
 focused clarifying questions, one at a time. Record each answer in a
 `## Clarifications` section of `spec.md` under a `### Session YYYY-MM-DD`
 subheading, and update affected FR/SC/edge-case sections inline.
