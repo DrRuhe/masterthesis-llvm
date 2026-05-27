@@ -90,39 +90,39 @@ All unknowns resolved through prior design exploration (see `benchmarks/reports/
 
 ### Phase 0 — Pre-flight
 
-- [ ] Confirm `ninja check-smoke-runtime-specializer` is green on debug build before any change (`/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug`)
-- [ ] Note the exact LLVM commit hash at `HEAD` in `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/` (record in a comment at the top of each copied file for future rebase reference)
+- [x] Confirm `ninja check-smoke-runtime-specializer` is green on debug build before any change (`/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug`)
+- [x] Note the exact LLVM commit hash at `HEAD` in `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/` (record in a comment at the top of each copied file for future rebase reference)
 
 ### Phase 1 — Refactor PointerChainResolver
 
-- [ ] [complex] Extract the pointer-chain resolution logic from `InvariantLoadToConstantPass.cpp` (address resolution, GEP/inttoptr chain traversal, `mincore` page check, host-memory read for int/float/double/pointer types) into a new free function `resolveInvariantLoadToConstant(LoadInst&) -> std::optional<llvm::Constant*>` in a new file `runtime/ClangRuntimeSpecializer/PointerChainResolver.h` (header-only or with a .cpp); update `InvariantLoadToConstantPass.cpp` to call the new function — no behaviour change
-- [ ] Build debug tree and confirm `ninja check-smoke-runtime-specializer` still passes after the refactor
+- [x] [complex] Extract the pointer-chain resolution logic from `InvariantLoadToConstantPass.cpp` (address resolution, GEP/inttoptr chain traversal, `mincore` page check, host-memory read for int/float/double/pointer types) into a new free function `resolveInvariantLoadToConstant(LoadInst&) -> std::optional<llvm::Constant*>` in a new file `runtime/ClangRuntimeSpecializer/PointerChainResolver.h` (header-only or with a .cpp); update `InvariantLoadToConstantPass.cpp` to call the new function — no behaviour change
+- [x] Build debug tree and confirm `ninja check-smoke-runtime-specializer` still passes after the refactor
 
 ### Phase 2 — JitSCCP Verbatim Copy (Commit 1)
 
-- [ ] Create directory `runtime/ClangRuntimeSpecializer/JitSCCP/`
-- [ ] Copy verbatim (byte-for-byte): `llvm/lib/Transforms/Utils/SCCPSolver.cpp` → `JitSCCP/JitSCCPSolver.cpp`
-- [ ] Copy verbatim: `llvm/include/llvm/Transforms/Utils/SCCPSolver.h` → `JitSCCP/JitSCCPSolver.h`
-- [ ] Copy verbatim: `llvm/lib/Transforms/IPO/FunctionSpecialization.cpp` → `JitSCCP/JitFunctionSpecialization.cpp`
-- [ ] Copy verbatim: `llvm/include/llvm/Transforms/IPO/FunctionSpecialization.h` → `JitSCCP/JitFunctionSpecialization.h`
-- [ ] Copy verbatim: `llvm/lib/Transforms/IPO/SCCP.cpp` → `JitSCCP/JitIPSCCPPass.cpp`
-- [ ] Copy verbatim: `llvm/include/llvm/Transforms/IPO/SCCP.h` → `JitSCCP/JitIPSCCPPass.h`
-- [ ] Add LLVM commit hash comment at the top of each copied file: `// JIT-SCCP fork — copied verbatim from LLVM <hash> on 2026-05-27`
-- [ ] Commit as "feat(jit-sccp): verbatim copy of LLVM SCCP/FunctionSpecialization at <hash>" — **this commit must not change any logic**
+- [x] Create directory `runtime/ClangRuntimeSpecializer/JitSCCP/`
+- [x] Copy verbatim (byte-for-byte): `llvm/lib/Transforms/Utils/SCCPSolver.cpp` → `JitSCCP/JitSCCPSolver.cpp`
+- [x] Copy verbatim: `llvm/include/llvm/Transforms/Utils/SCCPSolver.h` → `JitSCCP/JitSCCPSolver.h`
+- [x] Copy verbatim: `llvm/lib/Transforms/IPO/FunctionSpecialization.cpp` → `JitSCCP/JitFunctionSpecialization.cpp`
+- [x] Copy verbatim: `llvm/include/llvm/Transforms/IPO/FunctionSpecialization.h` → `JitSCCP/JitFunctionSpecialization.h`
+- [x] Copy verbatim: `llvm/lib/Transforms/IPO/SCCP.cpp` → `JitSCCP/JitIPSCCPPass.cpp`
+- [x] Copy verbatim: `llvm/include/llvm/Transforms/IPO/SCCP.h` → `JitSCCP/JitIPSCCPPass.h`
+- [x] Add LLVM commit hash comment at the top of each copied file: `// JIT-SCCP fork — copied verbatim from LLVM <hash> on 2026-05-27`
+- [x] Commit as "feat(jit-sccp): verbatim copy of LLVM SCCP/FunctionSpecialization at <hash>" — **this commit must not change any logic**
 
 ### Phase 3 — Compile-Only Adjustments (Commit 2)
 
-- [ ] In all 6 copied files: update `#include` paths — change `"llvm/Transforms/Utils/SCCPSolver.h"` → `"JitSCCPSolver.h"`, `"llvm/Transforms/IPO/FunctionSpecialization.h"` → `"JitFunctionSpecialization.h"`, `"llvm/Transforms/IPO/SCCP.h"` → `"JitIPSCCPPass.h"`; all other `llvm/*` includes remain unchanged (public LLVM headers)
-- [ ] In `JitSCCPSolver.h` and `JitSCCPSolver.cpp`: rename `class SCCPSolver` → `class JitSCCPSolver`; rename `class SCCPInstVisitor` → `class JitSCCPInstVisitor`; wrap all declarations in `namespace clangRuntimeSpecializer {}`
-- [ ] In `JitFunctionSpecialization.h` and `JitFunctionSpecialization.cpp`: rename `class FunctionSpecializer` → `class JitFunctionSpecializer`; wrap in namespace; update all references to `SCCPSolver` → `JitSCCPSolver`
-- [ ] In `JitIPSCCPPass.h` and `JitIPSCCPPass.cpp`: rename `class IPSCCPPass` → `class JitIPSCCPPass`; wrap in namespace; update references
-- [ ] Add `JitSCCP/JitSCCPSolver.cpp`, `JitSCCP/JitFunctionSpecialization.cpp`, `JitSCCP/JitIPSCCPPass.cpp` to `CMakeLists.txt` target `ClangRuntimeSpecializer`
-- [ ] Build debug tree: `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug ClangRuntimeSpecializer` — fix any compilation errors (include path issues, namespace conflicts, LLVM_ABI macro usage) without changing logic
-- [ ] Commit as "build(jit-sccp): compile-only adjustments — rename, namespace, include paths" — **no logic changes, only compilation adjustments**
+- [x] In all 6 copied files: update `#include` paths — change `"llvm/Transforms/Utils/SCCPSolver.h"` → `"JitSCCPSolver.h"`, `"llvm/Transforms/IPO/FunctionSpecialization.h"` → `"JitFunctionSpecialization.h"`, `"llvm/Transforms/IPO/SCCP.h"` → `"JitIPSCCPPass.h"`; all other `llvm/*` includes remain unchanged (public LLVM headers)
+- [x] In `JitSCCPSolver.h` and `JitSCCPSolver.cpp`: rename `class SCCPSolver` → `class JitSCCPSolver`; rename `class SCCPInstVisitor` → `class JitSCCPInstVisitor`; wrap all declarations in `namespace clangRuntimeSpecializer {}`
+- [x] In `JitFunctionSpecialization.h` and `JitFunctionSpecialization.cpp`: rename `class FunctionSpecializer` → `class JitFunctionSpecializer`; wrap in namespace; update all references to `SCCPSolver` → `JitSCCPSolver`
+- [x] In `JitIPSCCPPass.h` and `JitIPSCCPPass.cpp`: rename `class IPSCCPPass` → `class JitIPSCCPPass`; wrap in namespace; update references
+- [x] Add `JitSCCP/JitSCCPSolver.cpp`, `JitSCCP/JitFunctionSpecialization.cpp`, `JitSCCP/JitIPSCCPPass.cpp` to `CMakeLists.txt` target `ClangRuntimeSpecializer`
+- [x] Build debug tree: `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug ClangRuntimeSpecializer` — fix any compilation errors (include path issues, namespace conflicts, LLVM_ABI macro usage) without changing logic
+- [x] Commit as "build(jit-sccp): compile-only adjustments — rename, namespace, include paths" — **no logic changes, only compilation adjustments**
 
 ### Phase 4 — JitFunctionSpecializationOptions (Commit 3)
 
-- [ ] Add `JitFunctionSpecializationOptions` struct to `ClangRuntimeSpecializer.h` (alongside existing `Options`):
+- [x] Add `JitFunctionSpecializationOptions` struct to `ClangRuntimeSpecializer.h` (alongside existing `Options`):
   ```cpp
   struct JitFunctionSpecializationOptions {
     unsigned MinFunctionSize = 1;
@@ -133,24 +133,24 @@ All unknowns resolved through prior design exploration (see `benchmarks/reports/
     bool     SpecializeLiteralConstant = true;
   };
   ```
-- [ ] Add `JitFunctionSpecializationOptions P2FuncSpec` field to the main `Options` struct
-- [ ] Add `_envOr` reads in `Options::Default()` for `CRS_P2_MIN_FUNC_SIZE` (default 1), `CRS_P2_MAX_CLONES` (default 0), `CRS_P2_FUNC_SPEC_ITERS` (default 10), `CRS_P2_FORCE_SPEC` (default 0)
-- [ ] Add fluent builder methods `withP2MinFuncSize(unsigned)`, `withP2MaxClones(unsigned)`, `withP2FuncSpecIters(unsigned)`, `withP2ForceSpec(bool)` to `Options`
-- [ ] In `JitFunctionSpecialization.h`: replace all `cl::opt` references (`MinFunctionSize`, `MaxClones`, `FuncSpecMaxIters`, `ForceSpecialization`, `SpecializeOnAddress`, `SpecializeLiteralConstant`) with fields read from a `JitFunctionSpecializationOptions` parameter passed to the constructor
-- [ ] In `JitFunctionSpecialization.cpp`: remove the `cl::opt` global declarations for those parameters; update all usages to read from the constructor-injected struct
-- [ ] In `JitIPSCCPPass.h/cpp`: update `JitIPSCCPPass` constructor to accept `JitFunctionSpecializationOptions`; pass it through to `JitFunctionSpecializer`
-- [ ] Build and confirm compilation clean
+- [x] Add `JitFunctionSpecializationOptions P2FuncSpec` field to the main `Options` struct
+- [x] Add `_envOr` reads in `Options::Default()` for `CRS_P2_MIN_FUNC_SIZE` (default 1), `CRS_P2_MAX_CLONES` (default 0), `CRS_P2_FUNC_SPEC_ITERS` (default 10), `CRS_P2_FORCE_SPEC` (default 0)
+- [x] Add fluent builder methods `withP2MinFuncSize(unsigned)`, `withP2MaxClones(unsigned)`, `withP2FuncSpecIters(unsigned)`, `withP2ForceSpec(bool)` to `Options`
+- [x] In `JitFunctionSpecialization.h`: replace all `cl::opt` references (`MinFunctionSize`, `MaxClones`, `FuncSpecMaxIters`, `ForceSpecialization`, `SpecializeOnAddress`, `SpecializeLiteralConstant`) with fields read from a `JitFunctionSpecializationOptions` parameter passed to the constructor
+- [x] In `JitFunctionSpecialization.cpp`: remove the `cl::opt` global declarations for those parameters; update all usages to read from the constructor-injected struct
+- [x] In `JitIPSCCPPass.h/cpp`: update `JitIPSCCPPass` constructor to accept `JitFunctionSpecializationOptions`; pass it through to `JitFunctionSpecializer`
+- [x] Build and confirm compilation clean
 
 ### Phase 5 — Solver Extensions (Commit 4)
 
-- [ ] [complex] In `JitSCCP/JitSCCPSolver.cpp`, add a `#include` for `PointerChainResolver.h`; in `JitSCCPInstVisitor::visitLoadInst`, after the existing constant-pointer load path and before the final `mergeInValue(&I, getValueFromMetadata(&I))` fallback, add: if `I.hasMetadata(LLVMContext::MD_invariant_load)` and `isBlockExecutable(I.getParent())`, call `resolveInvariantLoadToConstant(I)`; if it returns a non-null `Constant*`, call `markConstant(IV, &I, C)` and return. Mark the addition with `// JIT-SCCP extension: !invariant.load host-memory resolution` comment.
-- [ ] [complex] In `JitSCCPInstVisitor::visitCallBase` (or `handleCallArguments`): after existing argument handling, check if the called value's lattice state is a constant (`SCCPSolver::isConstant(CalleeLattice)`); if so, cast to `Function*` via `dyn_cast<Function>(getConstant(...))`; if the function is present in the module and not already in `ArgumentTrackedFunctions`, add it via `addArgumentTrackedFunction` and `addTrackedFunction`, mark its entry block executable, and call `handleCallArguments` to propagate constants into its parameters. Mark with `// JIT-SCCP extension: vtable indirect-call devirtualization` comment.
-- [ ] Build debug tree; confirm compilation is clean
-- [ ] Commit as "feat(jit-sccp): extend solver with !invariant.load resolution and vtable devirt"
+- [x] [complex] In `JitSCCP/JitSCCPSolver.cpp`, add a `#include` for `PointerChainResolver.h`; in `JitSCCPInstVisitor::visitLoadInst`, after the existing constant-pointer load path and before the final `mergeInValue(&I, getValueFromMetadata(&I))` fallback, add: if `I.hasMetadata(LLVMContext::MD_invariant_load)` and `isBlockExecutable(I.getParent())`, call `resolveInvariantLoadToConstant(I)`; if it returns a non-null `Constant*`, call `markConstant(IV, &I, C)` and return. Mark the addition with `// JIT-SCCP extension: !invariant.load host-memory resolution` comment.
+- [x] [complex] In `JitSCCPInstVisitor::visitCallBase` (or `handleCallArguments`): after existing argument handling, check if the called value's lattice state is a constant (`SCCPSolver::isConstant(CalleeLattice)`); if so, cast to `Function*` via `dyn_cast<Function>(getConstant(...))`; if the function is present in the module and not already in `ArgumentTrackedFunctions`, add it via `addArgumentTrackedFunction` and `addTrackedFunction`, mark its entry block executable, and call `handleCallArguments` to propagate constants into its parameters. Mark with `// JIT-SCCP extension: vtable indirect-call devirtualization` comment.
+- [x] Build debug tree; confirm compilation is clean
+- [x] Commit as "feat(jit-sccp): extend solver with !invariant.load resolution and vtable devirt"
 
 ### Phase 6 — P2 Pipeline (Commit 5)
 
-- [ ] Create `runtime/ClangRuntimeSpecializer/JITPipelineP2.cpp` implementing `runP2Pipeline(PipelineRunArgs& Args)`:
+- [x] Create `runtime/ClangRuntimeSpecializer/JITPipelineP2.cpp` implementing `runP2Pipeline(PipelineRunArgs& Args)`:
   1. Linkage scrub: BFS from `specialized_wrapper_*` callees → convert `AvailableExternalLinkage` → `InternalLinkage`; strip `AlwaysInline` from all functions and call sites (same logic as P1's linkage scrub in `JITPipelineFuncSpec.cpp`)
   2. Early `GlobalDCEPass`
   3. `JitIPSCCPPass` constructed with `Args.Opts.P2FuncSpec`; run via `MPM.addPass(JitIPSCCPPass(Args.Opts.P2FuncSpec))`
@@ -158,45 +158,45 @@ All unknowns resolved through prior design exploration (see `benchmarks/reports/
   5. `AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true)`
   6. Cleanup: `GlobalDCEPass` + FPM (`InstCombinePass` + `SimplifyCFGPass`)
   7. Optional: `InvariantLoadToConstantPass` (FPM) as a final cleanup to replace any remaining invariant loads in inlined bodies — gated on `!LargeModule`
-- [ ] Add `#include "JITPipelineP2.h"` declaration header (or forward-declare `runP2Pipeline` in `JITPipeline.h`)
-- [ ] Add `JITPipelineP2.cpp` to `CMakeLists.txt`
-- [ ] In `JITPipelineRegistry.cpp`: add `{"jit-ipsccp", runP2Pipeline}` as the third entry (index 2)
-- [ ] Build debug tree clean
+- [x] Add `#include "JITPipelineP2.h"` declaration header (or forward-declare `runP2Pipeline` in `JITPipeline.h`)
+- [x] Add `JITPipelineP2.cpp` to `CMakeLists.txt`
+- [x] In `JITPipelineRegistry.cpp`: add `{"jit-ipsccp", runP2Pipeline}` as the third entry (index 2)
+- [x] Build debug tree clean
 
 ### Phase 7 — WIP Tests
 
-- [ ] [complex] Write `test/WIP/pipeline2-vtable-devirt.cpp`: a `Scan`/`Filter` virtual-method pattern (same as `virtual-methods.cpp`) with a `RUN:` line using `CRS_DEFAULT_PIPELINE=2`; FileCheck `EXE-NOT: load ptr, ptr %vtable` to confirm devirt. Include a P2-specific `EXE:` line confirming functional correctness.
-- [ ] [complex] Write `test/WIP/pipeline2-invariant-load.cpp`: a lambda-capture pattern (same as `invariant-load-to-constant.cpp`) with a `RUN:` line using `CRS_DEFAULT_PIPELINE=2`; FileCheck that the specialized output does not contain the invariant load — it has been resolved to a constant.
-- [ ] Run `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug check-wip-runtime-specializer`; debug until both WIP tests pass
-- [ ] [complex] Debug strategy if vtable devirt fails: enable `CRS_LOG` at Debug level; inspect whether `JitSCCPInstVisitor::visitCallBase` extension fires (add a debug log); check if the function is in the module's tracked function set; verify `markConstant` was called for the vtable load; check if `FunctionSpecializer` picked up the resolved function pointer as a constant arg
-- [ ] [complex] Debug strategy if invariant-load fails: check if `resolveInvariantLoadToConstant` returns a value (add debug log); verify `mincore` succeeds for the pointer; confirm the load instruction has `!invariant.load` metadata in the JIT module
+- [x] [complex] Write `test/WIP/pipeline2-vtable-devirt.cpp`: a `Scan`/`Filter` virtual-method pattern (same as `virtual-methods.cpp`) with a `RUN:` line using `CRS_DEFAULT_PIPELINE=2`; FileCheck `EXE-NOT: load ptr, ptr %vtable` to confirm devirt. Include a P2-specific `EXE:` line confirming functional correctness.
+- [x] [complex] Write `test/WIP/pipeline2-invariant-load.cpp`: a lambda-capture pattern (same as `invariant-load-to-constant.cpp`) with a `RUN:` line using `CRS_DEFAULT_PIPELINE=2`; FileCheck that the specialized output does not contain the invariant load — it has been resolved to a constant.
+- [x] Run `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug check-wip-runtime-specializer`; debug until both WIP tests pass
+- [x] [complex] Debug strategy if vtable devirt fails: enable `CRS_LOG` at Debug level; inspect whether `JitSCCPInstVisitor::visitCallBase` extension fires (add a debug log); check if the function is in the module's tracked function set; verify `markConstant` was called for the vtable load; check if `FunctionSpecializer` picked up the resolved function pointer as a constant arg
+- [x] [complex] Debug strategy if invariant-load fails: check if `resolveInvariantLoadToConstant` returns a value (add debug log); verify `mincore` succeeds for the pointer; confirm the load instruction has `!invariant.load` metadata in the JIT module
 
 ### Phase 8 — Smoke Test Integration
 
-- [ ] Add P2 `RUN:` lines to `test/smoke/virtual-methods.cpp`: `// RUN: %clangxx ... CRS_DEFAULT_PIPELINE=2 ... | FileCheck %s --check-prefix=P2-EXE` with `// P2-EXE-NOT: load ptr, ptr %vtable`
-- [ ] Add P2 `RUN:` lines to `test/smoke/virtual-methods-simple.cpp` (same pattern)
-- [ ] Add P2 `RUN:` lines to `test/smoke/invariant-load-to-constant.cpp` using existing `EXE` prefix or a `P2-EXE` prefix if FileCheck patterns differ
-- [ ] Add P2 `RUN:` lines to `test/smoke/call-specialized.cpp` (functional correctness only, no IR FileCheck)
-- [ ] Add P2 `RUN:` lines to `test/smoke/specialized-lambda-basic.cpp`
-- [ ] Add P2 `RUN:` lines to `test/smoke/specialized-lambda-equivalence.cpp`
-- [ ] Promote `test/WIP/pipeline2-vtable-devirt.cpp` → `test/smoke/pipeline2-vtable-devirt.cpp`
-- [ ] Promote `test/WIP/pipeline2-invariant-load.cpp` → `test/smoke/pipeline2-invariant-load.cpp`
-- [ ] Run `ninja check-smoke-runtime-specializer`; debug any failures
+- [x] Add P2 `RUN:` lines to `test/smoke/virtual-methods.cpp`: `// RUN: %clangxx ... CRS_DEFAULT_PIPELINE=2 ... | FileCheck %s --check-prefix=P2-EXE` with `// P2-EXE-NOT: load ptr, ptr %vtable`
+- [x] Add P2 `RUN:` lines to `test/smoke/virtual-methods-simple.cpp` (same pattern)
+- [x] Add P2 `RUN:` lines to `test/smoke/invariant-load-to-constant.cpp` using existing `EXE` prefix or a `P2-EXE` prefix if FileCheck patterns differ
+- [x] Add P2 `RUN:` lines to `test/smoke/call-specialized.cpp` (functional correctness only, no IR FileCheck)
+- [x] Add P2 `RUN:` lines to `test/smoke/specialized-lambda-basic.cpp`
+- [x] Add P2 `RUN:` lines to `test/smoke/specialized-lambda-equivalence.cpp`
+- [x] Promote `test/WIP/pipeline2-vtable-devirt.cpp` → `test/smoke/pipeline2-vtable-devirt.cpp`
+- [x] Promote `test/WIP/pipeline2-invariant-load.cpp` → `test/smoke/pipeline2-invariant-load.cpp`
+- [x] Run `ninja check-smoke-runtime-specializer`; debug any failures
 
 ### Phase 9 — optimize.py Pipeline-Specific Domains
 
-- [ ] In `benchmarks/optimize_benchmarks.py`: change `pipeline` parameter from `bool` to `trial.suggest_categorical("pipeline", [0, 1, 2])` (or `suggest_int("pipeline", 0, 2)`)
-- [ ] [complex] Replace the flat `DEFAULT_SEARCH_SPACE` dict with a `sample_params(trial)` function:
+- [x] In `benchmarks/optimize_benchmarks.py`: change `pipeline` parameter from `bool` to `trial.suggest_categorical("pipeline", [0, 1, 2])` (or `suggest_int("pipeline", 0, 2)`)
+- [x] [complex] Replace the flat `DEFAULT_SEARCH_SPACE` dict with a `sample_params(trial)` function:
   - Always-active params: `fixpoint_max`, `unroll_max`, `large_module_max`, `early_prune`, `o3_final`
   - `if pipeline == 1`: sample `p1_inline_threshold` (log_int, 50–2000), `p1_max_module_growth` (float, 1.0–5.0)
   - `if pipeline == 2`: sample `p2_min_func_size` (int, 1–100), `p2_max_clones` (int, 0–20), `p2_func_spec_iters` (int, 1–10), `p2_force_spec` (categorical, [0, 1])
   - Inactive pipeline params are not sampled (not added to trial env)
-- [ ] Update `_build_env(trial)` (or equivalent) to read from the new `sample_params` output and set the corresponding `CRS_*` env vars; ensure absent params produce no env var (not an empty string)
-- [ ] Verify a test Optuna dry-run: `python -c "import optimize_benchmarks; ..."` samples correct env vars for each pipeline choice
+- [x] Update `_build_env(trial)` (or equivalent) to read from the new `sample_params` output and set the corresponding `CRS_*` env vars; ensure absent params produce no env var (not an empty string)
+- [x] Verify a test Optuna dry-run: `python -c "import optimize_benchmarks; ..."` samples correct env vars for each pipeline choice
 
 ### Phase 10 — Verification
 
-- [ ] Run full smoke suite: `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug check-smoke-runtime-specializer`
-- [ ] Run a quick benchmark comparison: `CRS_DEFAULT_PIPELINE=0` vs `CRS_DEFAULT_PIPELINE=2` on the `virtual_methods` use-case benchmark; record both results in DuckDB; confirm P2 JIT overhead is within 2× of P0 (SC-005)
-- [ ] Verify SC-003 (verbatim copy): `diff <(cat JitSCCP/JitSCCPSolver.cpp | grep -v '^// JIT-SCCP') <upstream-SCCPSolver.cpp>` produces no output (modulo the added comment header)
-- [ ] Run `optimize.py` dry-run with `--pipeline=2`; confirm `CRS_P2_*` vars appear and `CRS_DEFAULT_P1_*` vars are absent (SC-004)
+- [x] Run full smoke suite: `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug check-smoke-runtime-specializer`
+- [x] Run a quick benchmark comparison: `CRS_DEFAULT_PIPELINE=0` vs `CRS_DEFAULT_PIPELINE=2` on the `virtual_methods` use-case benchmark; record both results in DuckDB; confirm P2 JIT overhead is within 2× of P0 (SC-005)
+- [x] Verify SC-003 (verbatim copy): `diff <(cat JitSCCP/JitSCCPSolver.cpp | grep -v '^// JIT-SCCP') <upstream-SCCPSolver.cpp>` produces no output (modulo the added comment header)
+- [x] Run `optimize.py` dry-run with `--pipeline=2`; confirm `CRS_P2_*` vars appear and `CRS_DEFAULT_P1_*` vars are absent (SC-004)
