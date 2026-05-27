@@ -1,0 +1,21 @@
+[
+  {"name":"GlobalDCEPass","group":"prune","fixpoint_iter":-1,"fns_before":33,"fns_after":7,"instrs_before":2150,"instrs_after":45,"bbs_before":445,"bbs_after":9,"wall_time_ms":0.425353,"ir_changed":true},
+  {"name":"clangRuntimeSpecializer::ConstantArgFunctionSpecializationPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.002854,"ir_changed":true},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.03463,"ir_changed":false},
+  {"name":"GlobalOptPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.03959,"ir_changed":true},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.008833,"ir_changed":false},
+  {"name":"DeadArgumentEliminationPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.01604,"ir_changed":true},
+  {"name":"ModuleInlinerPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.014428,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.008373,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.006631,"ir_changed":false},
+  {"name":"clangRuntimeSpecializer::ConstantArgFunctionSpecializationPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.000774,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.00038,"ir_changed":false},
+  {"name":"GlobalOptPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.00376,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.004517,"ir_changed":false},
+  {"name":"DeadArgumentEliminationPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.002747,"ir_changed":false},
+  {"name":"ModuleInlinerPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.002757,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.000369,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.00459,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.000303,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":45,"instrs_after":45,"bbs_before":9,"bbs_after":9,"wall_time_ms":0.003726,"ir_changed":false}
+]

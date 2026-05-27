@@ -1,0 +1,21 @@
+[
+  {"name":"GlobalDCEPass","group":"prune","fixpoint_iter":-1,"fns_before":33,"fns_after":7,"instrs_before":2154,"instrs_after":57,"bbs_before":445,"bbs_after":12,"wall_time_ms":0.429168,"ir_changed":true},
+  {"name":"clangRuntimeSpecializer::ConstantArgFunctionSpecializationPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.002842,"ir_changed":true},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.036955,"ir_changed":false},
+  {"name":"GlobalOptPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.041008,"ir_changed":true},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.009065,"ir_changed":false},
+  {"name":"DeadArgumentEliminationPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.018764,"ir_changed":true},
+  {"name":"ModuleInlinerPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.0158,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.008869,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":0,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.00649,"ir_changed":false},
+  {"name":"clangRuntimeSpecializer::ConstantArgFunctionSpecializationPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.000836,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.000454,"ir_changed":false},
+  {"name":"GlobalOptPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.003665,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.004654,"ir_changed":false},
+  {"name":"DeadArgumentEliminationPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.00354,"ir_changed":false},
+  {"name":"ModuleInlinerPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.00366,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.000355,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"fixpoint","fixpoint_iter":1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.004261,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.000285,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":57,"instrs_after":57,"bbs_before":12,"bbs_after":12,"wall_time_ms":0.003697,"ir_changed":false}
+]
