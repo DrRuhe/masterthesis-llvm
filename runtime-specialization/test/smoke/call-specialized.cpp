@@ -1,6 +1,7 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
 // RUN: %t.exe 2
 // RUN: CRS_DEFAULT_PIPELINE=1 %t.exe 2
+// RUN: CRS_DEFAULT_PIPELINE=2 %t.exe 2
 
 
 

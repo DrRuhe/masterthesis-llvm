@@ -2,6 +2,7 @@
 // RUN: %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
 // RUN: %clangxx -g -O3 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.o3.exe
 // RUN: %t.o3.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: CRS_DEFAULT_PIPELINE=2 %t.exe '>=95' '<100' | FileCheck %s --check-prefix=EXE --dump-input=always
 
 #include <iostream>
 #include <string>
