@@ -45,6 +45,10 @@ PARAM_ENV_MAP = {
     "pipeline":              "CRS_DEFAULT_PIPELINE",
     "p1_inline_threshold":   "CRS_DEFAULT_P1_INLINE_THRESHOLD",
     "p1_max_module_growth":  "CRS_DEFAULT_P1_MAX_MODULE_GROWTH",
+    "p2_min_func_size":      "CRS_P2_MIN_FUNC_SIZE",
+    "p2_max_clones":         "CRS_P2_MAX_CLONES",
+    "p2_func_spec_iters":    "CRS_P2_FUNC_SPEC_ITERS",
+    "p2_force_spec":         "CRS_P2_FORCE_SPEC",
 }
 
 

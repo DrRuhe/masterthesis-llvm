@@ -7,16 +7,20 @@
 #   configs/ablation_uc.json, configs/transfer_configs.json,
 #   and (in Phase R) all PNG/CSV plot outputs.
 #
-# Iter-2 (spec 007 T041):
-#   * Phase A: 50 trials (was 150). Phase B/C: 5 reps (was 3).
-#   * Study names suffixed with iter2 (uc_optim_iter2_<DATE>, ...).
-#   * --phase-only=A|B|C|E|R runs a single phase using the most recent prior
-#     iter-2 study artifacts for downstream phase inputs.
-#   * Phase E sweeps: fixpoint_max, early_prune, o3_final, pipeline,
-#     p1_inline_threshold, p1_max_module_growth (skip unroll_max,
-#     large_module_max per iter-1 reflection §3) at reps=5.
-#   * Filter regex updated for post-spec-011 group names (uc1_sql, uc2_conv,
-#     ...): adds `_[a-z]+` between group ID and `;` and an `a:low` constraint.
+# Iter-3 (spec 007, spec 015):
+#   * Phase A: 50 trials, pipeline search space now includes P2 (choices 0,1,2).
+#     P2-specific knobs (p2_min_func_size, p2_max_clones, p2_func_spec_iters,
+#     p2_force_spec) sampled conditionally when pipeline=2.
+#   * Phase B: ablation adds three P2 configs (default, force_spec, aggressive).
+#   * Phase E: pipeline sweep extended to 0,1,2. P2-specific param sweeps added
+#     (p2_min_func_size, p2_max_clones, p2_func_spec_iters, p2_force_spec) run
+#     from a fixed P2 baseline so they are informative regardless of the Phase A
+#     winner.
+#   * Study names suffixed with iter3.
+#   * Phase B/C: 5 reps (unchanged from iter-2).
+#   * Filter regex unchanged (post-spec-011 group names).
+#
+# Iter-2 reference: benchmarks/reports/260521-17-32-optimize-pipeline/reflection.md
 
 set -euo pipefail
 
@@ -31,7 +35,7 @@ DB="benchmarks.duckdb"
 DATE="$(date +%Y%m%d)"
 TS="$(date +%y%m%d-%H-%M)"
 
-# Shared filter regex constants (iter-2; spec 007 T041).
+# Shared filter regex constants (iter-3; spec 007 T041).
 # Post-spec-011 group names look like "uc1_sql", "uc2_conv", ... so we anchor
 # with `_[a-z]+` between the numeric group ID and `;`. The `a:low` constraint
 # selects the lowest abstraction variant per group (mirrors iter-1 coverage).
@@ -49,7 +53,7 @@ Options:
   --smoke-only             Run Phase 0 (smoke) only and exit.
   --phase-only=PHASE       Run a single phase (A, B, C, E, or R) plus Phase 0
                            smoke (Phase R skips smoke). Phases B/C/E/R discover
-                           the most recent prior iter-2 study artifacts; exits
+                           the most recent prior iter-3 study artifacts; exits
                            non-zero if those prerequisites cannot be located.
   --db PATH                DuckDB file (default: benchmarks.duckdb).
 USAGE
@@ -98,10 +102,10 @@ echo "Report dir: $REPORT_DIR"
 
 log() { echo "$@" | tee -a "$LOG"; }
 
-# Helpers: discover prior iter-2 study artifacts when running a single phase.
+# Helpers: discover prior iter-3 study artifacts when running a single phase.
 
 # discover_latest_study_a: queries $DB for the most recent (by completed_at,
-# then started_at) study whose name matches `uc_optim_iter2_%`. Echoes the
+# then started_at) study whose name matches `uc_optim_iter3_%`. Echoes the
 # study name to stdout; returns non-zero if none found.
 discover_latest_study_a() {
     python3 - "$DB" <<'PY' || return 1
@@ -117,26 +121,26 @@ row = con.execute(
     """
     SELECT study_name
     FROM optimization_sessions
-    WHERE study_name LIKE 'uc_optim_iter2_%'
+    WHERE study_name LIKE 'uc_optim_iter3_%'
       AND status = 'complete'
     ORDER BY COALESCE(completed_at, started_at) DESC NULLS LAST
     LIMIT 1
     """
 ).fetchone()
 if not row:
-    print("ERROR: no completed iter-2 Phase A study (uc_optim_iter2_%) found in DB",
+    print("ERROR: no completed iter-3 Phase A study (uc_optim_iter3_%) found in DB",
           file=sys.stderr)
     sys.exit(3)
 print(row[0])
 PY
 }
 
-# discover_latest_best_json: locates the most recent best_uc_optim_iter2_<DATE>.json
+# discover_latest_best_json: locates the most recent best_uc_optim_iter3_<DATE>.json
 # under benchmarks/reports/*-optimize-pipeline/. Echoes the file path on success.
 discover_latest_best_json() {
     # shellcheck disable=SC2012
     local found
-    found=$(ls -1t reports/*-optimize-pipeline/best_uc_optim_iter2_*.json 2>/dev/null | head -n 1 || true)
+    found=$(ls -1t reports/*-optimize-pipeline/best_uc_optim_iter3_*.json 2>/dev/null | head -n 1 || true)
     if [[ -z "$found" ]]; then
         return 1
     fi
@@ -173,6 +177,10 @@ param_env_map = {
     "pipeline":             "CRS_DEFAULT_PIPELINE",
     "p1_inline_threshold":  "CRS_DEFAULT_P1_INLINE_THRESHOLD",
     "p1_max_module_growth": "CRS_DEFAULT_P1_MAX_MODULE_GROWTH",
+    "p2_min_func_size":     "CRS_P2_MIN_FUNC_SIZE",
+    "p2_max_clones":        "CRS_P2_MAX_CLONES",
+    "p2_func_spec_iters":   "CRS_P2_FUNC_SPEC_ITERS",
+    "p2_force_spec":        "CRS_P2_FORCE_SPEC",
 }
 for k, v in params.items():
     if k in param_env_map:
@@ -231,11 +239,11 @@ fi
 [[ $SMOKE_ONLY -eq 1 ]] && { log "Smoke-only mode -- done."; exit 0; }
 
 # ---------------------------------------------------------------------------
-# Phase A: UC optimization (iter-2: 50 trials)
+# Phase A: UC optimization (iter-3: 50 trials; pipeline search space 0,1,2)
 # ---------------------------------------------------------------------------
-STUDY_A="uc_optim_iter2_${DATE}"
+STUDY_A="uc_optim_iter3_${DATE}"
 if should_run_phase A; then
-    log "--- Phase A: UC optimization (iter-2: 50 trials) ---"
+    log "--- Phase A: UC optimization (iter-3: 50 trials, P0+P1+P2) ---"
     python3 optimize_benchmarks.py "$UC_BINARY" \
         --db "$DB" \
         --study-name "$STUDY_A" \
@@ -253,16 +261,16 @@ fi
 # ---------------------------------------------------------------------------
 # Phase B: Ablation
 # ---------------------------------------------------------------------------
-STUDY_B="ablation_uc_iter2_${DATE}"
+STUDY_B="ablation_uc_iter3_${DATE}"
 if should_run_phase B; then
-    log "--- Phase B: UC ablation (iter-2: 5 reps) ---"
+    log "--- Phase B: UC ablation (iter-3: 5 reps, P0+P1+P2) ---"
 
-    # If running B in isolation, discover the most recent iter-2 Phase A study
+    # If running B in isolation, discover the most recent iter-3 Phase A study
     # and rebuild uc_workload_optimal.json into the current REPORT_DIR.
     if [[ "$PHASE_ONLY" == "B" ]]; then
-        log "--phase-only=B: discovering most recent uc_optim_iter2_% study..."
+        log "--phase-only=B: discovering most recent uc_optim_iter3_% study..."
         if ! prior_a=$(discover_latest_study_a); then
-            log "FATAL: --phase-only=B needs a prior completed iter-2 Phase A study (uc_optim_iter2_%); none found in $DB"
+            log "FATAL: --phase-only=B needs a prior completed iter-3 Phase A study (uc_optim_iter3_%); none found in $DB"
             exit 2
         fi
         log "Using prior STUDY_A=$prior_a"
@@ -289,10 +297,20 @@ configs = [
     {'name': 'fixpoint_2', 'env': {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '2'}},
     {'name': 'aggressive', 'env': {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '20', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '256'}},
     opt,
-    # Pipeline 1 (budget-aware inlining, spec 014) — functional after RQ-11 resolution.
+    # Pipeline 1 (budget-aware inlining, spec 014).
     {'name': 'pipeline_1_default', 'env': {'CRS_DEFAULT_PIPELINE': '1'}},
     {'name': 'pipeline_1_aggressive_budget', 'env': {'CRS_DEFAULT_PIPELINE': '1', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '1000', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '4.0'}},
     {'name': 'pipeline_1_tight_budget', 'env': {'CRS_DEFAULT_PIPELINE': '1', 'CRS_DEFAULT_P1_INLINE_THRESHOLD': '100', 'CRS_DEFAULT_P1_MAX_MODULE_GROWTH': '1.5'}},
+    # Pipeline 2 (JIT-IPSCCP + FunctionSpecialization, spec 015).
+    {'name': 'pipeline_2_default', 'env': {'CRS_DEFAULT_PIPELINE': '2'}},
+    {'name': 'pipeline_2_force_spec', 'env': {'CRS_DEFAULT_PIPELINE': '2', 'CRS_P2_FORCE_SPEC': '1'}},
+    {'name': 'pipeline_2_aggressive', 'env': {
+        'CRS_DEFAULT_PIPELINE': '2',
+        'CRS_P2_MIN_FUNC_SIZE': '1',
+        'CRS_P2_MAX_CLONES': '10',
+        'CRS_P2_FUNC_SPEC_ITERS': '5',
+        'CRS_P2_FORCE_SPEC': '1',
+    }},
 ]
 out_path = report_dir / "configs" / "ablation_uc.json"
 out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -312,15 +330,15 @@ fi
 # ---------------------------------------------------------------------------
 # Phase C: Transfer
 # ---------------------------------------------------------------------------
-STUDY_C_UC="transfer_uc_iter2_${DATE}"
-STUDY_C_TPCH="transfer_tpch_iter2_${DATE}"
+STUDY_C_UC="transfer_uc_iter3_${DATE}"
+STUDY_C_TPCH="transfer_tpch_iter3_${DATE}"
 if should_run_phase C; then
-    log "--- Phase C: Transfer (iter-2: 5 reps) ---"
+    log "--- Phase C: Transfer (iter-3: 5 reps) ---"
 
     if [[ "$PHASE_ONLY" == "C" ]]; then
-        log "--phase-only=C: discovering most recent uc_optim_iter2_% study..."
+        log "--phase-only=C: discovering most recent uc_optim_iter3_% study..."
         if ! prior_a=$(discover_latest_study_a); then
-            log "FATAL: --phase-only=C needs a prior completed iter-2 Phase A study (uc_optim_iter2_%); none found in $DB"
+            log "FATAL: --phase-only=C needs a prior completed iter-3 Phase A study (uc_optim_iter3_%); none found in $DB"
             exit 2
         fi
         log "Using prior STUDY_A=$prior_a"
@@ -364,20 +382,20 @@ fi
 # ---------------------------------------------------------------------------
 # Phase E: Sensitivity
 #
-# Iter-2 (per iter-1 reflection §3): only sweep params that genuinely move the
-# needle. Skip unroll_max and large_module_max. Reps=5 (not 1) per sweep
-# point. fixpoint_max lower bound is 2 per RQ-15 (fixpoint_max=1 SIGSEGVs with
-# early_prune=1 + o3_final=1 defaults).
+# Iter-3: extend iter-2 sweeps with pipeline=2 and P2-specific knobs.
+# P2 knobs are swept from a fixed P2 baseline config (pipeline=2, all others
+# at default) so they are informative regardless of the Phase A winner.
+# fixpoint_max lower bound stays 2 per RQ-15.
 # ---------------------------------------------------------------------------
-STUDY_E="sens_uc_iter2_${DATE}"
+STUDY_E="sens_uc_iter3_${DATE}"
 if should_run_phase E; then
-    log "--- Phase E: Sensitivity (iter-2: 6 params, 5 reps) ---"
+    log "--- Phase E: Sensitivity (iter-3: P0+P1 params + P2 params, 5 reps) ---"
 
     BEST_JSON="$REPORT_DIR/best_${STUDY_A}.json"
     if [[ "$PHASE_ONLY" == "E" ]]; then
-        log "--phase-only=E: locating most recent best_uc_optim_iter2_*.json..."
+        log "--phase-only=E: locating most recent best_uc_optim_iter3_*.json..."
         if ! BEST_JSON=$(discover_latest_best_json); then
-            log "FATAL: --phase-only=E needs a prior best_uc_optim_iter2_*.json under benchmarks/reports/*-optimize-pipeline/; none found"
+            log "FATAL: --phase-only=E needs a prior best_uc_optim_iter3_*.json under benchmarks/reports/*-optimize-pipeline/; none found"
             exit 2
         fi
         log "Using BEST_JSON=$BEST_JSON"
@@ -388,18 +406,27 @@ if should_run_phase E; then
         exit 2
     fi
 
-    # Sweep list: (param_name, comma_separated_values).
-    # Order: scalars first, then booleans, then P1 budget params.
+    # Write a fixed P2 baseline JSON for P2-specific sweeps (pipeline=2, all
+    # other P2 knobs at their defaults: min_func_size=1, max_clones=0,
+    # func_spec_iters=10, force_spec=0).
+    # Format matches optimize_benchmarks.py --output-best: {"trial_id":..., "params":{...}}.
+    P2_BASELINE_JSON="$REPORT_DIR/p2_baseline.json"
+    cat > "$P2_BASELINE_JSON" <<'JSONEOF'
+{"trial_id": "p2_baseline", "params": {"fixpoint_max": 5, "unroll_max": 4, "large_module_max": 0, "early_prune": 1, "o3_final": 1, "pipeline": 2, "p2_min_func_size": 1, "p2_max_clones": 0, "p2_func_spec_iters": 10, "p2_force_spec": 0}}
+JSONEOF
+
+    # Sweep list: (param_name, comma_separated_values) from the Phase A best-config baseline.
+    # Order: scalars first, then booleans, then P1 budget params, then pipeline choice.
     for param_sweep in \
         "fixpoint_max:2,3,5,8,15,30" \
         "early_prune:0,1" \
         "o3_final:0,1" \
-        "pipeline:0,1" \
+        "pipeline:0,1,2" \
         "p1_inline_threshold:50,100,225,500,1000,2000" \
         "p1_max_module_growth:1.0,1.5,2.0,3.0,4.0,5.0"; do
         param="${param_sweep%%:*}"
         sweep="${param_sweep##*:}"
-        log "Phase E: sweeping $param over [$sweep]"
+        log "Phase E: sweeping $param over [$sweep] (from Phase A best-config baseline)"
         python3 sensitivity_analysis.py "$UC_BINARY" \
             --db "$DB" --study-name "$STUDY_E" \
             --optimal-config "$BEST_JSON" \
@@ -407,6 +434,24 @@ if should_run_phase E; then
             --benchmark-filter "$UC_FILTER_WITH_UNSPEC" \
             --reps 5
     done
+
+    # P2-specific sweeps from the fixed P2 baseline.
+    for param_sweep in \
+        "p2_min_func_size:1,5,10,20,50" \
+        "p2_max_clones:0,2,5,10,20" \
+        "p2_func_spec_iters:1,3,5,10" \
+        "p2_force_spec:0,1"; do
+        param="${param_sweep%%:*}"
+        sweep="${param_sweep##*:}"
+        log "Phase E: sweeping $param over [$sweep] (from P2 baseline)"
+        python3 sensitivity_analysis.py "$UC_BINARY" \
+            --db "$DB" --study-name "$STUDY_E" \
+            --optimal-config "$P2_BASELINE_JSON" \
+            --param "$param" --sweep-values "$sweep" \
+            --benchmark-filter "$UC_FILTER_WITH_UNSPEC" \
+            --reps 5
+    done
+
     log "STUDY_E=$STUDY_E" >> "$LOG"
 fi
 
@@ -416,22 +461,22 @@ fi
 if should_run_phase R; then
     log "--- Phase R: Reporting ---"
 
-    # In --phase-only=R mode, discover the most recent iter-2 study names so
+    # In --phase-only=R mode, discover the most recent iter-3 study names so
     # we can produce a coherent set of plots. STUDY_B/STUDY_C_* aren't strictly
-    # required by every reporting script, but use the same iter-2 suffix
+    # required by every reporting script, but use the same iter-3 suffix
     # pattern, derived from the same date as STUDY_A.
     if [[ "$PHASE_ONLY" == "R" ]]; then
-        log "--phase-only=R: discovering most recent uc_optim_iter2_% study..."
+        log "--phase-only=R: discovering most recent uc_optim_iter3_% study..."
         if ! STUDY_A=$(discover_latest_study_a); then
-            log "FATAL: --phase-only=R needs a prior completed iter-2 Phase A study; none found in $DB"
+            log "FATAL: --phase-only=R needs a prior completed iter-3 Phase A study; none found in $DB"
             exit 2
         fi
-        # STUDY_A looks like uc_optim_iter2_YYYYMMDD; extract date suffix.
-        iter2_date="${STUDY_A##*_}"
-        STUDY_B="ablation_uc_iter2_${iter2_date}"
-        STUDY_C_UC="transfer_uc_iter2_${iter2_date}"
-        STUDY_C_TPCH="transfer_tpch_iter2_${iter2_date}"
-        STUDY_E="sens_uc_iter2_${iter2_date}"
+        # STUDY_A looks like uc_optim_iter3_YYYYMMDD; extract date suffix.
+        iter3_date="${STUDY_A##*_}"
+        STUDY_B="ablation_uc_iter3_${iter3_date}"
+        STUDY_C_UC="transfer_uc_iter3_${iter3_date}"
+        STUDY_C_TPCH="transfer_tpch_iter3_${iter3_date}"
+        STUDY_E="sens_uc_iter3_${iter3_date}"
         log "Using STUDY_A=$STUDY_A STUDY_B=$STUDY_B STUDY_C_UC=$STUDY_C_UC STUDY_C_TPCH=$STUDY_C_TPCH STUDY_E=$STUDY_E"
     fi
 

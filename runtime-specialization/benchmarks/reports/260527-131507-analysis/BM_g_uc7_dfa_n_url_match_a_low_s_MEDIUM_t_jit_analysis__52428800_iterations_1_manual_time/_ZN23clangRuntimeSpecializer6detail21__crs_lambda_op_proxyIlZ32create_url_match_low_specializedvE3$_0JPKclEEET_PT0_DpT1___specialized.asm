@@ -1,0 +1,13 @@
+<_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ32create_url_match_low_specializedvE3$_0JPKclEEET_PT0_DpT1_>:
+	pushq	%rax
+	movq	%rsi, %rdx
+	movq	%rdi, %rsi
+	leaq	-7(%rip), %rax
+	movabsq	$-7855, %rcx
+	addq	%rax, %rcx
+	movabsq	$7720, %rax
+	addq	%rcx, %rax
+	movabsq	$140730799738872, %rdi
+	callq	*%rax
+	popq	%rcx
+	retq

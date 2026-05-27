@@ -1,0 +1,11 @@
+[
+  {"name":"GlobalDCEPass","group":"prune","fixpoint_iter":-1,"fns_before":31,"fns_after":7,"instrs_before":2176,"instrs_after":55,"bbs_before":477,"bbs_after":17,"wall_time_ms":0.456161,"ir_changed":true},
+  {"name":"GlobalDCEPass","group":"initial","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.026255,"ir_changed":false},
+  {"name":"clangRuntimeSpecializer::JitIPSCCPPass","group":"initial","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.113168,"ir_changed":true},
+  {"name":"GlobalDCEPass","group":"initial","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.009281,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"initial","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.018995,"ir_changed":false},
+  {"name":"AlwaysInlinerPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.00289,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.006054,"ir_changed":false},
+  {"name":"ReversePostOrderFunctionAttrsPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.00054,"ir_changed":false},
+  {"name":"GlobalDCEPass","group":"final","fixpoint_iter":-1,"fns_before":7,"fns_after":7,"instrs_before":55,"instrs_after":55,"bbs_before":17,"bbs_after":17,"wall_time_ms":0.004685,"ir_changed":false}
+]
