@@ -43,14 +43,21 @@ sys.path.insert(0, str(Path(__file__).parent))
 DEFAULT_SEARCH_SPACE = {
     "version": 2,
     "parameters": [
+        # Always-active pipeline-agnostic params
         {"name": "fixpoint_max",          "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 2,    "max": 30     },
         {"name": "unroll_max",            "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,    "max": 512    },
         {"name": "large_module_max",      "env_var": "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1,    "max": 100000 },
         {"name": "early_prune",           "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"                                   },
         {"name": "o3_final",              "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"                                   },
-        {"name": "pipeline",              "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "bool"                                   },
-        {"name": "p1_inline_threshold",   "env_var": "CRS_DEFAULT_P1_INLINE_THRESHOLD",         "type": "log_int",    "min": 50,   "max": 2000   },
-        {"name": "p1_max_module_growth",  "env_var": "CRS_DEFAULT_P1_MAX_MODULE_GROWTH",        "type": "float",      "min": 1.0,  "max": 5.0    },
+        {"name": "pipeline",              "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "categorical", "choices": [0, 1, 2]      },
+        # Pipeline 1 knobs (only sampled when pipeline=1)
+        {"name": "p1_inline_threshold",   "env_var": "CRS_DEFAULT_P1_INLINE_THRESHOLD",         "type": "log_int",    "min": 50,   "max": 2000,  "depends_on_pipeline": 1},
+        {"name": "p1_max_module_growth",  "env_var": "CRS_DEFAULT_P1_MAX_MODULE_GROWTH",        "type": "float",      "min": 1.0,  "max": 5.0,   "depends_on_pipeline": 1},
+        # Pipeline 2 knobs (only sampled when pipeline=2)
+        {"name": "p2_min_func_size",      "env_var": "CRS_P2_MIN_FUNC_SIZE",                    "type": "int",        "min": 1,    "max": 100,   "depends_on_pipeline": 2},
+        {"name": "p2_max_clones",         "env_var": "CRS_P2_MAX_CLONES",                       "type": "int",        "min": 0,    "max": 20,    "depends_on_pipeline": 2},
+        {"name": "p2_func_spec_iters",    "env_var": "CRS_P2_FUNC_SPEC_ITERS",                  "type": "int",        "min": 1,    "max": 10,    "depends_on_pipeline": 2},
+        {"name": "p2_force_spec",         "env_var": "CRS_P2_FORCE_SPEC",                       "type": "categorical", "choices": [0, 1],        "depends_on_pipeline": 2},
     ],
 }
 
@@ -91,33 +98,70 @@ def _load_descriptor(path: "Path | None") -> dict:
     return d
 
 
+def _sample_one(trial: "optuna.Trial", p: dict) -> "int | float | None":
+    """Sample a single parameter entry. Returns None for conditional params that are inactive."""
+    name, typ = p["name"], p["type"]
+    if typ == "int":
+        return trial.suggest_int(name, p["min"], p["max"])
+    elif typ == "log_int":
+        return trial.suggest_int(name, p["min"], p["max"], log=True)
+    elif typ == "float":
+        return trial.suggest_float(name, p["min"], p["max"])
+    elif typ == "log_float":
+        return trial.suggest_float(name, p["min"], p["max"], log=True)
+    elif typ == "bool":
+        return trial.suggest_categorical(name, [0, 1])
+    elif typ == "categorical":
+        return trial.suggest_categorical(name, p["choices"])
+    elif typ == "int_or_zero":
+        off = trial.suggest_categorical(f"{name}_off", [True, False])
+        return 0 if off else trial.suggest_int(f"{name}_val", p["min"], p["max"], log=True)
+    return None
+
+
 def _sample_params(trial: "optuna.Trial", descriptor: dict) -> dict:
-    """Sample one set of parameters from an Optuna trial using the descriptor."""
+    """Sample one set of parameters from an Optuna trial using the descriptor.
+
+    Parameters with a ``depends_on_pipeline`` field are only sampled when the
+    ``pipeline`` parameter equals the specified value; otherwise they are
+    recorded as ``None`` (absent from the env, but present in params_json for
+    auditability).
+    """
     params = {}
+    # First pass: sample params without pipeline dependency (including pipeline itself).
     for p in descriptor["parameters"]:
-        name, typ = p["name"], p["type"]
-        if typ == "int":
-            params[name] = trial.suggest_int(name, p["min"], p["max"])
-        elif typ == "log_int":
-            params[name] = trial.suggest_int(name, p["min"], p["max"], log=True)
-        elif typ == "float":
-            params[name] = trial.suggest_float(name, p["min"], p["max"])
-        elif typ == "log_float":
-            params[name] = trial.suggest_float(name, p["min"], p["max"], log=True)
-        elif typ == "bool":
-            params[name] = trial.suggest_categorical(name, [0, 1])
-        elif typ == "categorical":
-            params[name] = trial.suggest_categorical(name, p["choices"])
-        elif typ == "int_or_zero":
-            off = trial.suggest_categorical(f"{name}_off", [True, False])
-            params[name] = 0 if off else trial.suggest_int(f"{name}_val", p["min"], p["max"], log=True)
+        if "depends_on_pipeline" not in p:
+            params[p["name"]] = _sample_one(trial, p)
+
+    pipeline_val = params.get("pipeline")
+
+    # Second pass: conditionally sample pipeline-specific params.
+    for p in descriptor["parameters"]:
+        dep = p.get("depends_on_pipeline")
+        if dep is None:
+            continue
+        if pipeline_val == dep:
+            params[p["name"]] = _sample_one(trial, p)
+        else:
+            # Record as absent — Optuna still needs to know the param to avoid
+            # pruning the trial dimension; use suggest_categorical with a fixed value.
+            params[p["name"]] = None
+
     return params
 
 
 def _params_to_env(params: dict, descriptor: dict) -> dict:
-    """Build {env_var: str(value)} for subprocess injection from sampled params."""
+    """Build {env_var: str(value)} for subprocess injection from sampled params.
+
+    Parameters whose sampled value is None are omitted from the env dict
+    (inactive pipeline params do not override the binary's built-in defaults).
+    """
     env_map = {p["name"]: p["env_var"] for p in descriptor["parameters"]}
-    return {env_map[name]: str(value) for name, value in params.items() if name in env_map}
+    return {
+        env_map[name]: str(value)
+        for name, value in params.items()
+        if name in env_map and value is not None
+    }
 
 # ---------------------------------------------------------------------------
 # Schema
