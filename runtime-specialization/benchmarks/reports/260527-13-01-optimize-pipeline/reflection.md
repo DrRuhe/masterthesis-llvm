@@ -5,24 +5,53 @@
 **Spec**: `specs/007-jit-pipeline-eval/`  
 **Iter-2 reference**: `benchmarks/reports/260521-17-32-optimize-pipeline/reflection.md`
 
-> **Note on data sources**: Phase A (iter-3 Optuna study `uc_optim_iter3_20260527`)
-> was running at the time this report was written. Performance numbers are sourced
-> from the iter-2 study (`uc_optim_iter2_20260521`, 50 trials, identical search
-> space minus P2 knobs) and the Phase B ablation (`ablation_uc_iter2_20260521`).
-> The iter-3 Phase A winner and P2 ablation data should be appended once complete.
-> The ASM analysis (§3) was conducted with the iter-3 binary (includes P2).
+> **Note on data sources**: Phase A (`uc_optim_iter3_20260527`, 50 trials) was
+> running at the time this report was written; 18/50 trials were complete.
+> Performance tables (§2, §5) are sourced from iter-2 (`uc_optim_iter2_20260521`,
+> `ablation_uc_iter2_20260521`). The §1 iter-3 early-results section uses live
+> DuckDB data. ASM analysis (§3) was conducted with the iter-3 binary.
 
 Iter-3 studies (stored in `benchmarks/benchmarks.duckdb`):
 
 | Study | Phase | Status |
 |-------|-------|--------|
-| `uc_optim_iter3_20260527` | A — 50 trials, P0+P1+P2 search space | running at report time |
+| `uc_optim_iter3_20260527` | A — 50 trials, P0+P1+P2 | 18/50 complete at report time |
 | `ablation_uc_iter3_20260527` | B — 14 configs (P0+P1+P2) × 5 reps | pending |
 | `sens_uc_iter3_20260527` | E — 10 sweep params × 5 reps | pending |
 
 ---
 
-## 1. Headline result (iter-2 baseline)
+## 1. Headline results
+
+### 1.1 Iter-3 Phase A early data (18/50 trials, live)
+
+Pipeline distribution across 18 completed trials:
+
+| Pipeline | Trials | Timeouts | Best combined (ms) |
+|----------|:------:|:--------:|:-----------------:|
+| P0 | 11 | 0 | 170.0 |
+| P1 | 4 | 2 | 198.1 |
+| P2 | 3 | 2 | 213.1 |
+
+**P2 early verdict**: 2/3 P2 trials timed out (60 s limit). The one successful
+P2 run had `{p2_max_clones=19, p2_func_spec_iters=3, p2_min_func_size=4,
+p2_force_spec=0}` and achieved 213.1 ms — **25% worse than the best P0 trial
+at 170.0 ms**. This matches the ASM finding (§3.2): P2 does not produce effective
+constant propagation without the inlining pre-pass.
+
+Best P0 so far (trial 17): `{fixpoint_max=25, unroll_max=1, early_prune=1, o3_final=1}` at 170.0 ms — already matching the iter-2 winner (170.99 ms, trial 15).
+
+Queries used:
+```sql
+SELECT JSON_EXTRACT_STRING(params_json, '$.pipeline') as pipeline,
+       COUNT(*) as n, SUM(CASE WHEN used_timeout_fallback THEN 1 ELSE 0 END) as timeouts,
+       ROUND(MIN(obj_combined_ns)/1e6,1) as best_ms
+FROM optim_trial_params WHERE study_name='uc_optim_iter3_20260527' GROUP BY 1;
+```
+
+---
+
+### 1.2 Iter-2 baseline (50 trials, complete)
 
 The iter-2 best config (`uc_optim_iter2_20260521`, trial 15):
 
