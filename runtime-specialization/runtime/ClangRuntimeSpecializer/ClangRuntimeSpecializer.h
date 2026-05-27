@@ -338,7 +338,7 @@ namespace clangRuntimeSpecializer {
     struct Options {
       // --- Pipeline configuration ---
       int MaxFixpointIterations = 10;        // 0 = skip fixpoint loop entirely
-      size_t LargeModuleInstrThreshold = 0; // instrs after prune; > threshold → conservative unroll
+      size_t LargeModuleInstrThreshold = 10000; // instrs after prune; > threshold → conservative unroll
       int LoopUnrollCount = 128;             // full-unroll max count (small modules only)
       bool EnableEarlyPrune = true;          // run GlobalDCE before fixpoint
       bool EnableO3Final = true;             // run O3 as final pass
@@ -372,7 +372,7 @@ namespace clangRuntimeSpecializer {
         // ENV-var overrides (read once per process — each optimizer trial is a fresh subprocess).
         static const int      kFixpoint        = (int)_envOr("CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",      10.0);
         static const int      kUnroll          = (int)_envOr("CRS_DEFAULT_LOOP_UNROLL_COUNT",            128.0);
-        static const size_t   kLargeMod        = (size_t)_envOr("CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", 0.0);
+        static const size_t   kLargeMod        = (size_t)_envOr("CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", 10000.0);
         static const bool     kEarlyPrune      = _envOr("CRS_DEFAULT_EARLY_PRUNE", 1.0) != 0.0;
         static const bool     kO3Final         = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
         static const int      kPipeline        = (int)_envOr("CRS_DEFAULT_PIPELINE",                    0.0);
