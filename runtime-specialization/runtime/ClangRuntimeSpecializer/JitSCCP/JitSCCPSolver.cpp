@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "JitSCCPSolver.h"
+#include "../PointerChainResolver.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/Analysis/InstructionSimplify.h"
@@ -1807,6 +1808,16 @@ void JitSCCPInstVisitor::visitLoadInst(LoadInst &I) {
       return (void)markConstant(IV, &I, C);
   }
 
+  // JIT-SCCP extension: !invariant.load host-memory resolution
+  if (I.hasMetadata(LLVMContext::MD_invariant_load) && isBlockExecutable(I.getParent())) {
+    static thread_local llvm::DenseMap<uintptr_t, bool> PageCache;
+    auto MaybeConst = clangRuntimeSpecializer::resolveInvariantLoadToConstant(I, PageCache);
+    if (MaybeConst.has_value() && *MaybeConst) {
+      markConstant(IV, &I, *MaybeConst);
+      return;
+    }
+  }
+
   // Fall back to metadata.
   mergeInValue(&I, getValueFromMetadata(&I));
 }
@@ -1861,6 +1872,27 @@ void JitSCCPInstVisitor::handleCallOverdefined(CallBase &CB) {
 
 void JitSCCPInstVisitor::handleCallArguments(CallBase &CB) {
   Function *F = CB.getCalledFunction();
+
+  // JIT-SCCP extension: vtable indirect-call devirtualization.
+  // If this is an indirect call but the callee operand's lattice value is a
+  // constant function pointer resolving to a module-local function, treat it
+  // like a direct call for argument tracking purposes.
+  if (!F) {
+    Value *CalleeOp = CB.getCalledOperand();
+    ValueLatticeElement CalleeVal = getValueState(CalleeOp);
+    if (CalleeVal.isConstant()) {
+      if (auto *FPtr = dyn_cast_or_null<Function>(CalleeVal.getConstant())) {
+        if (FPtr->getParent() == CB.getModule() && !FPtr->isDeclaration()) {
+          F = FPtr;
+          if (!TrackingIncomingArguments.count(F)) {
+            addArgumentTrackedFunction(F);
+            addTrackedFunction(F);
+          }
+        }
+      }
+    }
+  }
+
   // If this is a local function that doesn't have its address taken, mark its
   // entry block executable and merge in the actual arguments to the call into
   // the formal arguments of the function.
