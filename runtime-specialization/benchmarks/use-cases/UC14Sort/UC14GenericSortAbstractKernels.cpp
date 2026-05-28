@@ -86,6 +86,11 @@ struct Sorter {
     }
 };
 
+void generic_sort_abstract_unspecialized(void* data, int64_t n_elements, int element_size) {
+    Sorter sorter{};
+    sorter.sort(data, n_elements, element_size);
+}
+
 GenericSortAbstractSpecialized create_generic_sort_abstract_specialized(int element_size) {
     // Reconstruct object inside the lambda so its this-pointer is a local variable
     // (not a stale factory-frame stack address).

@@ -82,6 +82,12 @@ struct FieldSorter {
     }
 };
 
+void struct_sort_tradeoff_unspecialized(void* data, int64_t n_elements,
+                                        int element_size, int field_offset) {
+    FieldSorter sorter{element_size, FieldComparator{field_offset}};
+    sorter.sort_fields(data, n_elements);
+}
+
 StructSortTradeoffSpecialized create_struct_sort_tradeoff_specialized(int element_size,
                                                                        int field_offset) {
     FieldSorter sorter{element_size, FieldComparator{field_offset}};

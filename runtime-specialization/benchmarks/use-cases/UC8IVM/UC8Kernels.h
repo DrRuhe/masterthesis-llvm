@@ -68,6 +68,40 @@ void multi_agg_delta_batch(const uint8_t* rows, int64_t n_rows,
                             int value_col_offset, int row_stride);
 
 // ---------------------------------------------------------------------------
+// Unspecialized baseline functions — tradeoff and abstract levels
+// ---------------------------------------------------------------------------
+
+void apply_row_delta_batch_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                   double* buckets, int n_buckets,
+                                                   int group_col_offset, int value_col_offset,
+                                                   int row_stride);
+
+void apply_row_delta_batch_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                   double* buckets, int n_buckets,
+                                                   int group_col_offset, int value_col_offset,
+                                                   int row_stride);
+
+void multi_agg_delta_batch_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                   double* sum_buckets, double* count_buckets,
+                                                   int n_buckets, int group_col_offset,
+                                                   int value_col_offset, int row_stride);
+
+void multi_agg_delta_batch_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                   double* sum_buckets, double* count_buckets,
+                                                   int n_buckets, int group_col_offset,
+                                                   int value_col_offset, int row_stride);
+
+void batch_delta_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                        double* buckets, int n_buckets,
+                                        int group_col_offset, int value_col_offset,
+                                        int row_stride);
+
+void batch_delta_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                        double* buckets, int n_buckets,
+                                        int group_col_offset, int value_col_offset,
+                                        int row_stride);
+
+// ---------------------------------------------------------------------------
 // Factory + validation — apply_row_delta
 // ---------------------------------------------------------------------------
 

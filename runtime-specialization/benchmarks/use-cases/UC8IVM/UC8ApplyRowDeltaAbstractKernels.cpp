@@ -69,6 +69,15 @@ void validate_apply_row_delta_batch_abstract_specialized(
     }
 }
 
+void apply_row_delta_batch_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                   double* buckets, int n_buckets,
+                                                   int group_col_offset, int value_col_offset,
+                                                   int row_stride) {
+    SumAggregator agg{group_col_offset, value_col_offset, n_buckets, row_stride};
+    for (int64_t i = 0; i < n_rows; ++i)
+        agg.apply(rows + static_cast<size_t>(i) * row_stride, buckets);
+}
+
 ApplyRowDeltaAbstractSpecialized create_apply_row_delta_abstract_specialized(
         int n_buckets, int group_col_offset, int value_col_offset, int row_stride) {
     // Capture scalars only; reconstruct object inside the lambda so its this-pointer

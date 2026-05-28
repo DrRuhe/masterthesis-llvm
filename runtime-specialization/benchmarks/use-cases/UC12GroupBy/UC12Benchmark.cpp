@@ -82,9 +82,9 @@ static void BM_UC12_grouped_sum_tradeoff_unspecialized(benchmark::State& state) 
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX12);
     for (auto _ : state) {
         std::fill(g_buckets12.begin(), g_buckets12.end(), 0.0);
-        grouped_sum(g_rows12.data(), n_rows,
+        grouped_sum_tradeoff_unspecialized(g_rows12.data(), n_rows,
                     ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12,
-                    g_buckets12.data(), N_BUCKETS12);
+                    N_BUCKETS12, g_buckets12.data());
         benchmark::DoNotOptimize(g_buckets12.data());
     }
 }
@@ -116,9 +116,9 @@ static void BM_UC12_grouped_sum_abstract_unspecialized(benchmark::State& state) 
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX12);
     for (auto _ : state) {
         std::fill(g_buckets12.begin(), g_buckets12.end(), 0.0);
-        grouped_sum(g_rows12.data(), n_rows,
+        grouped_sum_abstract_unspecialized(g_rows12.data(), n_rows,
                     ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12,
-                    g_buckets12.data(), N_BUCKETS12);
+                    N_BUCKETS12, g_buckets12.data());
         benchmark::DoNotOptimize(g_buckets12.data());
     }
 }
@@ -182,9 +182,9 @@ static void BM_UC12_grouped_count_tradeoff_unspecialized(benchmark::State& state
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX12);
     for (auto _ : state) {
         std::fill(g_count_buckets.begin(), g_count_buckets.end(), 0);
-        grouped_count(g_rows12.data(), n_rows,
-                      ROW_STRIDE12, KEY_OFFSET12, N_BUCKETS12,
-                      g_count_buckets.data());
+        grouped_count_tradeoff_unspecialized(g_rows12.data(), n_rows,
+                      ROW_STRIDE12, KEY_OFFSET12,
+                      N_BUCKETS12, g_count_buckets.data());
         benchmark::DoNotOptimize(g_count_buckets.data());
     }
 }
@@ -215,9 +215,9 @@ static void BM_UC12_grouped_count_abstract_unspecialized(benchmark::State& state
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX12);
     for (auto _ : state) {
         std::fill(g_count_buckets.begin(), g_count_buckets.end(), 0);
-        grouped_count(g_rows12.data(), n_rows,
-                      ROW_STRIDE12, KEY_OFFSET12, N_BUCKETS12,
-                      g_count_buckets.data());
+        grouped_count_abstract_unspecialized(g_rows12.data(), n_rows,
+                      ROW_STRIDE12, KEY_OFFSET12,
+                      N_BUCKETS12, g_count_buckets.data());
         benchmark::DoNotOptimize(g_count_buckets.data());
     }
 }
@@ -288,7 +288,7 @@ static void BM_UC12_grouped_minmax_tradeoff_unspecialized(benchmark::State& stat
     for (auto _ : state) {
         std::fill(g_min_buckets.begin(), g_min_buckets.end(), DBL_MAX);
         std::fill(g_max_buckets.begin(), g_max_buckets.end(), -DBL_MAX);
-        grouped_minmax(g_rows12.data(), n_rows,
+        grouped_minmax_tradeoff_unspecialized(g_rows12.data(), n_rows,
                        ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12,
                        g_min_buckets.data(), g_max_buckets.data());
         benchmark::DoNotOptimize(g_min_buckets.data());
@@ -327,7 +327,7 @@ static void BM_UC12_grouped_minmax_abstract_unspecialized(benchmark::State& stat
     for (auto _ : state) {
         std::fill(g_min_buckets.begin(), g_min_buckets.end(), DBL_MAX);
         std::fill(g_max_buckets.begin(), g_max_buckets.end(), -DBL_MAX);
-        grouped_minmax(g_rows12.data(), n_rows,
+        grouped_minmax_abstract_unspecialized(g_rows12.data(), n_rows,
                        ROW_STRIDE12, KEY_OFFSET12, VALUE_OFFSET12, N_BUCKETS12,
                        g_min_buckets.data(), g_max_buckets.data());
         benchmark::DoNotOptimize(g_min_buckets.data());

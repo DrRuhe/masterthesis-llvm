@@ -36,6 +36,13 @@ struct SumOperator : AggregationOperator {
     }
 };
 
+void grouped_sum_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                         int row_stride, int key_offset, int value_offset,
+                                         int n_buckets, double* out_buckets) {
+    SumOperator op{row_stride, key_offset, value_offset};
+    op.aggregate(rows, n_rows, out_buckets, n_buckets);
+}
+
 GroupedSumAbstractSpecialized create_grouped_sum_abstract_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets) {
     // Capture scalars only; reconstruct object inside the lambda so its this-pointer

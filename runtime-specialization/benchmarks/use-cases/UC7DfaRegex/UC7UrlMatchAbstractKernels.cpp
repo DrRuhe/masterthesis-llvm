@@ -41,6 +41,11 @@ struct AbstractDFAMatcher : Matcher {
     }
 };
 
+int64_t url_match_abstract_unspecialized(const char* s, int64_t len) {
+    AbstractDFAMatcher m(g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
+    return m.match(s, len);
+}
+
 UrlMatchAbstractSpecialized create_url_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     // Capture the DFA table pointer (a stable global address, not a stack address).

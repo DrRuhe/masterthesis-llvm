@@ -38,6 +38,14 @@ struct SumBatchProcessor : BatchProcessor {
     }
 };
 
+void batch_delta_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                        double* buckets, int n_buckets,
+                                        int group_col_offset, int value_col_offset,
+                                        int row_stride) {
+    SumBatchProcessor proc{n_buckets, group_col_offset, value_col_offset, row_stride};
+    proc.process_batch(rows, n_rows, buckets);
+}
+
 BatchDeltaAbstractSpecialized create_batch_delta_abstract_specialized(
         int64_t n_rows, int n_buckets, int group_col_offset,
         int value_col_offset, int row_stride) {

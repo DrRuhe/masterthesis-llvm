@@ -126,7 +126,7 @@ static void BM_UC2_sg_tradeoff_unspecialized(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(g_src.data());
         for (int64_t t = 0; t < n_tiles; ++t)
-            convolve2d(g_src.data(), g_dst.data(), TILE_W, TILE_H, g_kernel_coeffs, 5);
+            separable_gaussian_tradeoff_unspecialized(g_src.data(), g_dst.data(), TILE_W, TILE_H, g_kernel_coeffs, 5);
         benchmark::DoNotOptimize(g_dst.data());
     }
 }
@@ -158,7 +158,7 @@ static void BM_UC2_box_filter_tradeoff_unspecialized(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(g_src.data());
         for (int64_t t = 0; t < n_tiles; ++t)
-            box_filter(g_src.data(), g_dst.data(), TILE_W, TILE_H, 2);
+            box_filter_tradeoff_unspecialized(g_src.data(), g_dst.data(), TILE_W, TILE_H, 2);
         benchmark::DoNotOptimize(g_dst.data());
     }
 }
@@ -190,7 +190,7 @@ static void BM_UC2_edge_detection_tradeoff_unspecialized(benchmark::State& state
     for (auto _ : state) {
         benchmark::DoNotOptimize(g_src.data());
         for (int64_t t = 0; t < n_tiles; ++t)
-            sobel_edge_detect(g_src.data(), g_dst.data(), TILE_W, TILE_H);
+            edge_detection_tradeoff_unspecialized(g_src.data(), g_dst.data(), TILE_W, TILE_H);
         benchmark::DoNotOptimize(g_dst.data());
     }
 }
@@ -222,7 +222,7 @@ static void BM_UC2_sg_abstract_unspecialized(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(g_src.data());
         for (int64_t t = 0; t < n_tiles; ++t)
-            convolve2d(g_src.data(), g_dst.data(), TILE_W, TILE_H, g_kernel_coeffs, 5);
+            separable_gaussian_abstract_unspecialized(g_src.data(), g_dst.data(), TILE_W, TILE_H, g_kernel_coeffs, 5);
         benchmark::DoNotOptimize(g_dst.data());
     }
 }
@@ -255,7 +255,7 @@ static void BM_UC2_box_filter_abstract_unspecialized(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(g_src.data());
         for (int64_t t = 0; t < n_tiles; ++t)
-            box_filter(g_src.data(), g_dst.data(), TILE_W, TILE_H, 2);
+            box_filter_abstract_unspecialized(g_src.data(), g_dst.data(), TILE_W, TILE_H, 2);
         benchmark::DoNotOptimize(g_dst.data());
     }
 }
@@ -287,7 +287,7 @@ static void BM_UC2_edge_detection_abstract_unspecialized(benchmark::State& state
     for (auto _ : state) {
         benchmark::DoNotOptimize(g_src.data());
         for (int64_t t = 0; t < n_tiles; ++t)
-            sobel_edge_detect(g_src.data(), g_dst.data(), TILE_W, TILE_H);
+            edge_detection_abstract_unspecialized(g_src.data(), g_dst.data(), TILE_W, TILE_H);
         benchmark::DoNotOptimize(g_dst.data());
     }
 }

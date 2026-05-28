@@ -48,6 +48,12 @@ struct SobelDetector : GradientDetector {
     }
 };
 
+void edge_detection_abstract_unspecialized(const float* src, float* dst,
+                                           int width, int height) {
+    SobelDetector sd{};
+    sd.detect(src, dst, width, height);
+}
+
 EdgeDetectionAbstractSpecialized create_edge_detection_abstract_specialized(
         int width, int height) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();

@@ -65,6 +65,14 @@ struct Convolver {
     }
 };
 
+void separable_gaussian_abstract_unspecialized(const float* src, float* dst,
+                                               int width, int height,
+                                               const float* coeffs, int ksize) {
+    GaussianKernel gk(coeffs, ksize / 2);
+    Convolver conv{gk};
+    conv.convolve(src, dst, width, height);
+}
+
 SeparableGaussianAbstractSpecialized create_separable_gaussian_abstract_specialized(
         int width, int height, const float* coeffs, int ksize) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();

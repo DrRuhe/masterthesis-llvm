@@ -47,9 +47,25 @@ void generic_sort(void* data, int64_t n_elements, int element_size,
 // struct_sort: sorts fixed-size structs by a double field at field_offset.
 void struct_sort(void* data, int64_t n_elements, int element_size, int field_offset);
 
+// struct_sort unspecialized baselines (tradeoff: FieldSorter; abstract: FieldComparatorAdapter).
+void struct_sort_tradeoff_unspecialized(void* data, int64_t n_elements,
+                                        int element_size, int field_offset);
+void struct_sort_abstract_unspecialized(void* data, int64_t n_elements,
+                                        int element_size, int field_offset);
+
 // multi_key_sort: sorts by two double fields (key1 asc, key2 desc on tie).
 void multi_key_sort(void* data, int64_t n_elements, int element_size,
                     int key1_offset, int key2_offset);
+
+// multi_key_sort unspecialized baselines (tradeoff: MultiKeySorter; abstract: CompositeComparator).
+void multi_key_sort_tradeoff_unspecialized(void* data, int64_t n_elements,
+                                           int element_size, int key1_offset, int key2_offset);
+void multi_key_sort_abstract_unspecialized(void* data, int64_t n_elements,
+                                           int element_size, int key1_offset, int key2_offset);
+
+// generic_sort unspecialized baselines (tradeoff: GenericSorterT; abstract: Sorter+vtable).
+void generic_sort_tradeoff_unspecialized(void* data, int64_t n_elements, int element_size);
+void generic_sort_abstract_unspecialized(void* data, int64_t n_elements, int element_size);
 
 // ---------------------------------------------------------------------------
 // Factory + validation — generic_sort (low)

@@ -48,6 +48,14 @@ ColumnScanAbstractSpecialized create_column_scan_abstract_specialized(
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);
 }
 
+int64_t column_scan_abstract_unspecialized(const uint8_t* rows, int64_t n,
+                                           int row_stride, int col_offset,
+                                           double threshold, int32_t* out) {
+    BufferCollector collector{out};
+    scan_collecting(rows, n, row_stride, col_offset, threshold, collector);
+    return collector.count;
+}
+
 void validate_column_scan_abstract_specialized(int row_stride, int col_offset, double threshold) {
     constexpr int N_TEST = 100;
     std::vector<uint8_t> test_data(N_TEST * row_stride, 0);

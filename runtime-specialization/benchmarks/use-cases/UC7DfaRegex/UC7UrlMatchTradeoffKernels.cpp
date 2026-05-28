@@ -33,6 +33,11 @@ struct DFAMatcher {
     }
 };
 
+int64_t url_match_tradeoff_unspecialized(const char* s, int64_t len) {
+    DFAMatcher matcher{URL_N_STATES, DFA_N_CHARS, 0, 7, g_url_dfa_table};
+    return matcher.match(s, len);
+}
+
 UrlMatchTradeoffSpecialized create_url_match_tradeoff_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     // URL DFA accept state is 7 (IN_PATH).

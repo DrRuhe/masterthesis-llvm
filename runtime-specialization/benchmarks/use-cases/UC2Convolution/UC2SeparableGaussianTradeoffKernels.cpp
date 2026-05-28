@@ -40,6 +40,15 @@ struct SeparableFilter {
     }
 };
 
+void separable_gaussian_tradeoff_unspecialized(const float* src, float* dst,
+                                               int width, int height,
+                                               const float* coeffs, int ksize) {
+    SeparableFilter sf{};
+    sf.ksize = ksize;
+    for (int i = 0; i < ksize; ++i) sf.coeffs[i] = coeffs[i];
+    sf.apply(src, dst, width, height);
+}
+
 SeparableGaussianTradeoffSpecialized create_separable_gaussian_tradeoff_specialized(
         int width, int height, const float* coeffs, int ksize) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();

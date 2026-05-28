@@ -97,9 +97,7 @@ static void BM_UC7_email_tradeoff_unspecialized(benchmark::State& state) {
     int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            dfa_match(g_corpus.data(), corpus_bytes,
-                      g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
-                      DFA_START, DFA_ACCEPT));
+            email_match_tradeoff_unspecialized(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -122,9 +120,7 @@ static void BM_UC7_email_abstract_unspecialized(benchmark::State& state) {
     int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            dfa_match(g_corpus.data(), corpus_bytes,
-                      g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
-                      DFA_START, DFA_ACCEPT));
+            email_match_abstract_unspecialized(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -175,8 +171,7 @@ static void BM_UC7_url_tradeoff_unspecialized(benchmark::State& state) {
     int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            url_match(g_corpus.data(), corpus_bytes,
-                      g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7));
+            url_match_tradeoff_unspecialized(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -199,8 +194,7 @@ static void BM_UC7_url_abstract_unspecialized(benchmark::State& state) {
     int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            url_match(g_corpus.data(), corpus_bytes,
-                      g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7));
+            url_match_abstract_unspecialized(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -252,9 +246,7 @@ static void BM_UC7_multi_tradeoff_unspecialized(benchmark::State& state) {
     int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            multi_pattern_match_count(g_corpus.data(), corpus_bytes,
-                                      g_multi_dfa_table, 5, DFA_N_CHARS,
-                                      MULTI_ACCEPT, 2));
+            multi_pattern_match_tradeoff_unspecialized(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -277,9 +269,7 @@ static void BM_UC7_multi_abstract_unspecialized(benchmark::State& state) {
     int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            multi_pattern_match_count(g_corpus.data(), corpus_bytes,
-                                      g_multi_dfa_table, 5, DFA_N_CHARS,
-                                      MULTI_ACCEPT, 2));
+            multi_pattern_match_abstract_unspecialized(g_corpus.data(), corpus_bytes));
     }
 }
 

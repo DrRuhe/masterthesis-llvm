@@ -33,6 +33,11 @@ struct DFAMatcher {
     }
 };
 
+int64_t email_match_tradeoff_unspecialized(const char* s, int64_t len) {
+    DFAMatcher matcher{DFA_N_STATES, DFA_N_CHARS, DFA_START, DFA_ACCEPT, g_dfa_table};
+    return matcher.match(s, len);
+}
+
 EmailMatchTradeoffSpecialized create_email_match_tradeoff_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     // Capture stable global pointer only; reconstruct DFAMatcher inside so its

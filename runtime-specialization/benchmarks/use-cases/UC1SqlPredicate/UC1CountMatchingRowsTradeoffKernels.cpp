@@ -29,6 +29,13 @@ CountMatchingRowsTradeoffSpecialized create_count_matching_rows_tradeoff_special
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);
 }
 
+int64_t count_matching_rows_tradeoff_unspecialized(const uint8_t* rows, int64_t n,
+                                                    int col_offset, int row_stride,
+                                                    double threshold) {
+    RowScanner scanner{col_offset, row_stride};
+    return scanner.scan(rows, n, threshold);
+}
+
 void validate_count_matching_rows_tradeoff_specialized(int col_offset, int row_stride, double threshold) {
     constexpr int N_TEST = 100;
     std::vector<uint8_t> test_data(N_TEST * row_stride, 0);

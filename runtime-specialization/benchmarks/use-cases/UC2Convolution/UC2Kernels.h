@@ -63,6 +63,9 @@ void validate_edge_detection_low_specialized();
 // Separable Gaussian (tradeoff tier)
 // ---------------------------------------------------------------------------
 
+void separable_gaussian_tradeoff_unspecialized(const float* src, float* dst,
+                                               int width, int height,
+                                               const float* coeffs, int ksize);
 SeparableGaussianTradeoffSpecialized create_separable_gaussian_tradeoff_specialized(
         int width, int height, const float* coeffs, int ksize);
 void validate_separable_gaussian_tradeoff_specialized();
@@ -71,6 +74,8 @@ void validate_separable_gaussian_tradeoff_specialized();
 // Box filter (tradeoff tier)
 // ---------------------------------------------------------------------------
 
+void box_filter_tradeoff_unspecialized(const float* src, float* dst,
+                                       int width, int height, int radius);
 BoxFilterTradeoffSpecialized create_box_filter_tradeoff_specialized(
         int width, int height, int radius);
 void validate_box_filter_tradeoff_specialized();
@@ -79,6 +84,8 @@ void validate_box_filter_tradeoff_specialized();
 // Edge detection (tradeoff tier)
 // ---------------------------------------------------------------------------
 
+void edge_detection_tradeoff_unspecialized(const float* src, float* dst,
+                                           int width, int height);
 EdgeDetectionTradeoffSpecialized create_edge_detection_tradeoff_specialized(
         int width, int height);
 void validate_edge_detection_tradeoff_specialized();
@@ -87,6 +94,9 @@ void validate_edge_detection_tradeoff_specialized();
 // Separable Gaussian (abstract tier)
 // ---------------------------------------------------------------------------
 
+void separable_gaussian_abstract_unspecialized(const float* src, float* dst,
+                                               int width, int height,
+                                               const float* coeffs, int ksize);
 SeparableGaussianAbstractSpecialized create_separable_gaussian_abstract_specialized(
         int width, int height, const float* coeffs, int ksize);
 void validate_separable_gaussian_abstract_specialized();
@@ -95,6 +105,8 @@ void validate_separable_gaussian_abstract_specialized();
 // Box filter (abstract tier)
 // ---------------------------------------------------------------------------
 
+void box_filter_abstract_unspecialized(const float* src, float* dst,
+                                       int width, int height, int radius);
 BoxFilterAbstractSpecialized create_box_filter_abstract_specialized(
         int width, int height, int radius);
 void validate_box_filter_abstract_specialized();
@@ -103,6 +115,8 @@ void validate_box_filter_abstract_specialized();
 // Edge detection (abstract tier)
 // ---------------------------------------------------------------------------
 
+void edge_detection_abstract_unspecialized(const float* src, float* dst,
+                                           int width, int height);
 EdgeDetectionAbstractSpecialized create_edge_detection_abstract_specialized(
         int width, int height);
 void validate_edge_detection_abstract_specialized();

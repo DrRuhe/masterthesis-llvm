@@ -53,6 +53,7 @@ static void setup_uc14(const benchmark::State&) {
     std::iota(g_reference_data.begin(), g_reference_data.end(), int64_t{0});
     std::shuffle(g_reference_data.begin(), g_reference_data.end(), std::mt19937{42});
     g_sort_data.resize(N_SORT_MAX);
+    g_sort_data = g_reference_data;
     g_struct_reference.resize(N_STRUCT_MAX);
     {
         std::mt19937_64 rng{42};
@@ -61,6 +62,7 @@ static void setup_uc14(const benchmark::State&) {
     }
     std::shuffle(g_struct_reference.begin(), g_struct_reference.end(), std::mt19937{42});
     g_struct_data.resize(N_STRUCT_MAX);
+    g_struct_data = g_struct_reference;
 }
 static void teardown_uc14(const benchmark::State&) {
     // Buffer stays allocated for process lifetime; freed by OS on exit.
@@ -106,11 +108,10 @@ static void BM_UC14_specialized_exec(benchmark::State& state) {
 
 static void BM_struct_sort_low_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         struct_sort(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
     }
@@ -126,11 +127,10 @@ static void BM_struct_sort_low_jit_overhead(benchmark::State& state) {
 static void BM_struct_sort_low_specialized_exec(benchmark::State& state) {
     int64_t n_elements = state.range(0);
     auto spec = create_struct_sort_low_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_struct_data.data(), n_elements);
     }
@@ -142,13 +142,13 @@ static void BM_struct_sort_low_specialized_exec(benchmark::State& state) {
 
 static void BM_struct_sort_tradeoff_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
-        struct_sort(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+        struct_sort_tradeoff_unspecialized(g_struct_data.data(), n_elements,
+                                           STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
     }
 }
 
@@ -162,11 +162,10 @@ static void BM_struct_sort_tradeoff_jit_overhead(benchmark::State& state) {
 static void BM_struct_sort_tradeoff_specialized_exec(benchmark::State& state) {
     int64_t n_elements = state.range(0);
     auto spec = create_struct_sort_tradeoff_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_struct_data.data(), n_elements);
     }
@@ -178,13 +177,13 @@ static void BM_struct_sort_tradeoff_specialized_exec(benchmark::State& state) {
 
 static void BM_struct_sort_abstract_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
-        struct_sort(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+        struct_sort_abstract_unspecialized(g_struct_data.data(), n_elements,
+                                           STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
     }
 }
 
@@ -198,11 +197,10 @@ static void BM_struct_sort_abstract_jit_overhead(benchmark::State& state) {
 static void BM_struct_sort_abstract_specialized_exec(benchmark::State& state) {
     int64_t n_elements = state.range(0);
     auto spec = create_struct_sort_abstract_specialized(STRUCT_ELEM_SIZE, STRUCT_KEY1_OFF);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_struct_data.data(), n_elements);
     }
@@ -214,11 +212,10 @@ static void BM_struct_sort_abstract_specialized_exec(benchmark::State& state) {
 
 static void BM_multi_key_sort_low_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         multi_key_sort(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE,
                        STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
@@ -237,11 +234,10 @@ static void BM_multi_key_sort_low_specialized_exec(benchmark::State& state) {
     int64_t n_elements = state.range(0);
     auto spec = create_multi_key_sort_low_specialized(STRUCT_ELEM_SIZE,
                                                        STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_struct_data.data(), n_elements);
     }
@@ -253,14 +249,13 @@ static void BM_multi_key_sort_low_specialized_exec(benchmark::State& state) {
 
 static void BM_multi_key_sort_tradeoff_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
-        multi_key_sort(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE,
-                       STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+        multi_key_sort_tradeoff_unspecialized(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE,
+                                              STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
     }
 }
 
@@ -276,11 +271,10 @@ static void BM_multi_key_sort_tradeoff_specialized_exec(benchmark::State& state)
     int64_t n_elements = state.range(0);
     auto spec = create_multi_key_sort_tradeoff_specialized(STRUCT_ELEM_SIZE,
                                                             STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_struct_data.data(), n_elements);
     }
@@ -292,14 +286,13 @@ static void BM_multi_key_sort_tradeoff_specialized_exec(benchmark::State& state)
 
 static void BM_multi_key_sort_abstract_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
-        multi_key_sort(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE,
-                       STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+        multi_key_sort_abstract_unspecialized(g_struct_data.data(), n_elements, STRUCT_ELEM_SIZE,
+                                              STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
     }
 }
 
@@ -315,11 +308,10 @@ static void BM_multi_key_sort_abstract_specialized_exec(benchmark::State& state)
     int64_t n_elements = state.range(0);
     auto spec = create_multi_key_sort_abstract_specialized(STRUCT_ELEM_SIZE,
                                                             STRUCT_KEY1_OFF, STRUCT_KEY2_OFF);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_struct_reference.begin(),
-                  g_struct_reference.begin() + n_elements,
-                  g_struct_data.begin());
+        std::shuffle(g_struct_data.begin(), g_struct_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_struct_data.data(), n_elements);
     }
@@ -331,13 +323,12 @@ static void BM_multi_key_sort_abstract_specialized_exec(benchmark::State& state)
 
 static void BM_generic_sort_tradeoff_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_reference_data.begin(),
-                  g_reference_data.begin() + n_elements,
-                  g_sort_data.begin());
+        std::shuffle(g_sort_data.begin(), g_sort_data.begin() + n_elements, rng);
         state.ResumeTiming();
-        generic_sort(g_sort_data.data(), n_elements, sizeof(int64_t), &int64_asc_cmp);
+        generic_sort_tradeoff_unspecialized(g_sort_data.data(), n_elements, sizeof(int64_t));
     }
 }
 
@@ -351,11 +342,10 @@ static void BM_generic_sort_tradeoff_jit_overhead(benchmark::State& state) {
 static void BM_generic_sort_tradeoff_specialized_exec(benchmark::State& state) {
     int64_t n_elements = state.range(0);
     auto spec = create_generic_sort_tradeoff_specialized(sizeof(int64_t));
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_reference_data.begin(),
-                  g_reference_data.begin() + n_elements,
-                  g_sort_data.begin());
+        std::shuffle(g_sort_data.begin(), g_sort_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_sort_data.data(), n_elements);
     }
@@ -367,13 +357,12 @@ static void BM_generic_sort_tradeoff_specialized_exec(benchmark::State& state) {
 
 static void BM_generic_sort_abstract_unspecialized(benchmark::State& state) {
     int64_t n_elements = state.range(0);
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_reference_data.begin(),
-                  g_reference_data.begin() + n_elements,
-                  g_sort_data.begin());
+        std::shuffle(g_sort_data.begin(), g_sort_data.begin() + n_elements, rng);
         state.ResumeTiming();
-        generic_sort(g_sort_data.data(), n_elements, sizeof(int64_t), &int64_asc_cmp);
+        generic_sort_abstract_unspecialized(g_sort_data.data(), n_elements, sizeof(int64_t));
     }
 }
 
@@ -387,11 +376,10 @@ static void BM_generic_sort_abstract_jit_overhead(benchmark::State& state) {
 static void BM_generic_sort_abstract_specialized_exec(benchmark::State& state) {
     int64_t n_elements = state.range(0);
     auto spec = create_generic_sort_abstract_specialized(sizeof(int64_t));
+    std::mt19937 rng{42};
     for (auto _ : state) {
         state.PauseTiming();
-        std::copy(g_reference_data.begin(),
-                  g_reference_data.begin() + n_elements,
-                  g_sort_data.begin());
+        std::shuffle(g_sort_data.begin(), g_sort_data.begin() + n_elements, rng);
         state.ResumeTiming();
         spec(g_sort_data.data(), n_elements);
     }

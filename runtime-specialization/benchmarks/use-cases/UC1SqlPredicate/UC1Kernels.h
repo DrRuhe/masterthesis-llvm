@@ -51,10 +51,14 @@ CountMatchingRowsTradeoffSpecialized create_count_matching_rows_tradeoff_special
     int col_offset, int row_stride, double threshold);
 void validate_count_matching_rows_tradeoff_specialized(
     int col_offset, int row_stride, double threshold);
+int64_t count_matching_rows_tradeoff_unspecialized(const uint8_t* rows, int64_t n,
+    int col_offset, int row_stride, double threshold);
 
 CountMatchingRowsAbstractSpecialized create_count_matching_rows_abstract_specialized(
     int col_offset, int row_stride, double threshold);
 void validate_count_matching_rows_abstract_specialized(
+    int col_offset, int row_stride, double threshold);
+int64_t count_matching_rows_abstract_unspecialized(const uint8_t* rows, int64_t n,
     int col_offset, int row_stride, double threshold);
 
 // ---------------------------------------------------------------------------
@@ -74,11 +78,17 @@ MultiPredicateTradeoffSpecialized create_multi_predicate_tradeoff_specialized(
 void validate_multi_predicate_tradeoff_specialized(
     int row_stride, int col_offset_a, int col_offset_b,
     double threshold_a, double threshold_b);
+int64_t multi_predicate_tradeoff_unspecialized(const uint8_t* rows, int64_t n,
+    int row_stride, int col_offset_a, int col_offset_b,
+    double threshold_a, double threshold_b);
 
 MultiPredicateAbstractSpecialized create_multi_predicate_abstract_specialized(
     int row_stride, int col_offset_a, int col_offset_b,
     double threshold_a, double threshold_b);
 void validate_multi_predicate_abstract_specialized(
+    int row_stride, int col_offset_a, int col_offset_b,
+    double threshold_a, double threshold_b);
+int64_t multi_predicate_abstract_unspecialized(const uint8_t* rows, int64_t n,
     int row_stride, int col_offset_a, int col_offset_b,
     double threshold_a, double threshold_b);
 
@@ -95,8 +105,12 @@ ColumnScanTradeoffSpecialized create_column_scan_tradeoff_specialized(
     int row_stride, int col_offset, double threshold);
 void validate_column_scan_tradeoff_specialized(
     int row_stride, int col_offset, double threshold);
+int64_t column_scan_tradeoff_unspecialized(const uint8_t* rows, int64_t n,
+    int row_stride, int col_offset, double threshold, int32_t* out);
 
 ColumnScanAbstractSpecialized create_column_scan_abstract_specialized(
     int row_stride, int col_offset, double threshold);
 void validate_column_scan_abstract_specialized(
     int row_stride, int col_offset, double threshold);
+int64_t column_scan_abstract_unspecialized(const uint8_t* rows, int64_t n,
+    int row_stride, int col_offset, double threshold, int32_t* out);

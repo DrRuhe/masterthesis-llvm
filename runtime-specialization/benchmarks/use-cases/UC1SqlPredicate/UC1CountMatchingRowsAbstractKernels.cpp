@@ -46,6 +46,13 @@ CountMatchingRowsAbstractSpecialized create_count_matching_rows_abstract_special
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);
 }
 
+int64_t count_matching_rows_abstract_unspecialized(const uint8_t* rows, int64_t n,
+                                                    int col_offset, int row_stride,
+                                                    double threshold) {
+    ThresholdPredicate pred{col_offset, row_stride, threshold};
+    return scan_with_predicate(rows, n, row_stride, pred);
+}
+
 void validate_count_matching_rows_abstract_specialized(int col_offset, int row_stride, double threshold) {
     constexpr int N_TEST = 100;
     std::vector<uint8_t> test_data(N_TEST * row_stride, 0);

@@ -35,6 +35,14 @@ MultiPredicateTradeoffSpecialized create_multi_predicate_tradeoff_specialized(
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);
 }
 
+int64_t multi_predicate_tradeoff_unspecialized(const uint8_t* rows, int64_t n,
+                                               int row_stride,
+                                               int col_offset_a, int col_offset_b,
+                                               double threshold_a, double threshold_b) {
+    BinaryPredicateScanner scanner{col_offset_a, col_offset_b, threshold_a, threshold_b};
+    return scanner.scan(rows, n, row_stride);
+}
+
 void validate_multi_predicate_tradeoff_specialized(int row_stride, int col_offset_a, int col_offset_b,
                                                     double threshold_a, double threshold_b) {
     constexpr int N_TEST = 100;

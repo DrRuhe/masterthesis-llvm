@@ -81,6 +81,19 @@ extern int g_multi_dfa_table_tradeoff[];
 extern int g_multi_dfa_table_abstract[];
 
 // ---------------------------------------------------------------------------
+// Unspecialized baselines — tradeoff and abstract levels
+// ---------------------------------------------------------------------------
+
+int64_t email_match_tradeoff_unspecialized(const char* s, int64_t len);
+int64_t email_match_abstract_unspecialized(const char* s, int64_t len);
+
+int64_t url_match_tradeoff_unspecialized(const char* s, int64_t len);
+int64_t url_match_abstract_unspecialized(const char* s, int64_t len);
+
+int64_t multi_pattern_match_tradeoff_unspecialized(const char* buf, int64_t len);
+int64_t multi_pattern_match_abstract_unspecialized(const char* buf, int64_t len);
+
+// ---------------------------------------------------------------------------
 // Factory + validation — email_match
 // ---------------------------------------------------------------------------
 

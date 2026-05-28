@@ -77,6 +77,9 @@ void validate_grouped_minmax_low_specialized(
 // ---------------------------------------------------------------------------
 // grouped_sum (tradeoff tier)
 // ---------------------------------------------------------------------------
+void grouped_sum_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                         int row_stride, int key_offset, int value_offset,
+                                         int n_buckets, double* out_buckets);
 GroupedSumTradeoffSpecialized create_grouped_sum_tradeoff_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets);
 void validate_grouped_sum_tradeoff_specialized(
@@ -85,6 +88,9 @@ void validate_grouped_sum_tradeoff_specialized(
 // ---------------------------------------------------------------------------
 // grouped_count (tradeoff tier)
 // ---------------------------------------------------------------------------
+void grouped_count_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                           int row_stride, int key_offset,
+                                           int n_buckets, int64_t* out);
 GroupedCountTradeoffSpecialized create_grouped_count_tradeoff_specialized(
         int row_stride, int key_offset, int n_buckets);
 void validate_grouped_count_tradeoff_specialized(
@@ -93,6 +99,9 @@ void validate_grouped_count_tradeoff_specialized(
 // ---------------------------------------------------------------------------
 // grouped_minmax (tradeoff tier)
 // ---------------------------------------------------------------------------
+void grouped_minmax_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                            int row_stride, int key_offset, int value_offset,
+                                            int n_buckets, double* min_buckets, double* max_buckets);
 GroupedMinMaxTradeoffSpecialized create_grouped_minmax_tradeoff_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets);
 void validate_grouped_minmax_tradeoff_specialized(
@@ -101,6 +110,9 @@ void validate_grouped_minmax_tradeoff_specialized(
 // ---------------------------------------------------------------------------
 // grouped_sum (abstract tier)
 // ---------------------------------------------------------------------------
+void grouped_sum_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                         int row_stride, int key_offset, int value_offset,
+                                         int n_buckets, double* out_buckets);
 GroupedSumAbstractSpecialized create_grouped_sum_abstract_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets);
 void validate_grouped_sum_abstract_specialized(
@@ -109,6 +121,9 @@ void validate_grouped_sum_abstract_specialized(
 // ---------------------------------------------------------------------------
 // grouped_count (abstract tier)
 // ---------------------------------------------------------------------------
+void grouped_count_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                           int row_stride, int key_offset,
+                                           int n_buckets, int64_t* out);
 GroupedCountAbstractSpecialized create_grouped_count_abstract_specialized(
         int row_stride, int key_offset, int n_buckets);
 void validate_grouped_count_abstract_specialized(
@@ -117,6 +132,9 @@ void validate_grouped_count_abstract_specialized(
 // ---------------------------------------------------------------------------
 // grouped_minmax (abstract tier)
 // ---------------------------------------------------------------------------
+void grouped_minmax_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                            int row_stride, int key_offset, int value_offset,
+                                            int n_buckets, double* min_buckets, double* max_buckets);
 GroupedMinMaxAbstractSpecialized create_grouped_minmax_abstract_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets);
 void validate_grouped_minmax_abstract_specialized(

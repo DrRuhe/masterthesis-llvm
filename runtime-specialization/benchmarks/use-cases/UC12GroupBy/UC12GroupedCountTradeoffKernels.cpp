@@ -23,6 +23,13 @@ struct GroupCounter {
     }
 };
 
+void grouped_count_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                           int row_stride, int key_offset,
+                                           int n_buckets, int64_t* out) {
+    GroupCounter counter{row_stride, key_offset, n_buckets};
+    counter.count(rows, n_rows, out);
+}
+
 GroupedCountTradeoffSpecialized create_grouped_count_tradeoff_specialized(
         int row_stride, int key_offset, int n_buckets) {
     GroupCounter counter{row_stride, key_offset, n_buckets};

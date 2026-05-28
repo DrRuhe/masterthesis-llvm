@@ -98,6 +98,19 @@ struct CompositeComparator {
     }
 };
 
+void multi_key_sort_abstract_unspecialized(void* data, int64_t n_elements,
+                                           int element_size, int key1_offset, int key2_offset) {
+    // key1 ascending, key2 descending (matching multi_key_sort convention)
+    CompositeComparator cc{
+        ByteOffsetExtractor2{key1_offset},
+        ByteOffsetExtractor2{key2_offset},
+        /*ascending1=*/true,
+        /*ascending2=*/false,
+        element_size
+    };
+    cc.sort(data, n_elements);
+}
+
 MultiKeySortAbstractSpecialized create_multi_key_sort_abstract_specialized(int element_size,
                                                                             int key1_offset,
                                                                             int key2_offset) {

@@ -43,6 +43,11 @@ struct AbstractDFAMatcher : Matcher {
     }
 };
 
+int64_t email_match_abstract_unspecialized(const char* s, int64_t len) {
+    AbstractDFAMatcher m(g_dfa_table, DFA_N_STATES, DFA_N_CHARS, DFA_START, DFA_ACCEPT);
+    return m.match(s, len);
+}
+
 EmailMatchAbstractSpecialized create_email_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     // Capture the DFA table pointer (a stable global address, not a stack address).

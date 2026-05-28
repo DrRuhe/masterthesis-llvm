@@ -103,7 +103,7 @@ static void BM_UC1_count_matching_rows_tradeoff_unspecialized(benchmark::State& 
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            count_matching_rows(g_rows.data(), n_rows, ROW_STRIDE, COL_OFFSET, 0.5));
+            count_matching_rows_tradeoff_unspecialized(g_rows.data(), n_rows, COL_OFFSET, ROW_STRIDE, 0.5));
     }
 }
 
@@ -130,7 +130,7 @@ static void BM_UC1_count_matching_rows_abstract_unspecialized(benchmark::State& 
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            count_matching_rows(g_rows.data(), n_rows, ROW_STRIDE, COL_OFFSET, 0.5));
+            count_matching_rows_abstract_unspecialized(g_rows.data(), n_rows, COL_OFFSET, ROW_STRIDE, 0.5));
     }
 }
 
@@ -185,7 +185,7 @@ static void BM_UC1_multi_predicate_tradeoff_unspecialized(benchmark::State& stat
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            multi_predicate_count_unspecialized(g_rows.data(), n_rows,
+            multi_predicate_tradeoff_unspecialized(g_rows.data(), n_rows,
                 ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5));
     }
 }
@@ -213,7 +213,7 @@ static void BM_UC1_multi_predicate_abstract_unspecialized(benchmark::State& stat
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            multi_predicate_count_unspecialized(g_rows.data(), n_rows,
+            multi_predicate_abstract_unspecialized(g_rows.data(), n_rows,
                 ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5));
     }
 }
@@ -269,7 +269,7 @@ static void BM_UC1_column_scan_tradeoff_unspecialized(benchmark::State& state) {
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            column_scan_unspecialized(g_rows.data(), n_rows,
+            column_scan_tradeoff_unspecialized(g_rows.data(), n_rows,
                 ROW_STRIDE, COL_OFFSET, 0.5, g_out_indices.data()));
     }
 }
@@ -297,7 +297,7 @@ static void BM_UC1_column_scan_abstract_unspecialized(benchmark::State& state) {
     int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            column_scan_unspecialized(g_rows.data(), n_rows,
+            column_scan_abstract_unspecialized(g_rows.data(), n_rows,
                 ROW_STRIDE, COL_OFFSET, 0.5, g_out_indices.data()));
     }
 }

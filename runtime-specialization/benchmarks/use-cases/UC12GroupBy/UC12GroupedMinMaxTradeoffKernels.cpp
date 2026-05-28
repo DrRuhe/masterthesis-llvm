@@ -31,6 +31,13 @@ struct MinMaxAggregator {
     }
 };
 
+void grouped_minmax_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                            int row_stride, int key_offset, int value_offset,
+                                            int n_buckets, double* min_buckets, double* max_buckets) {
+    MinMaxAggregator agg{row_stride, key_offset, value_offset, n_buckets};
+    agg.aggregate_minmax(rows, n_rows, min_buckets, max_buckets);
+}
+
 GroupedMinMaxTradeoffSpecialized create_grouped_minmax_tradeoff_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets) {
     MinMaxAggregator agg{row_stride, key_offset, value_offset, n_buckets};

@@ -27,6 +27,14 @@ struct BatchIVMUpdater {
     }
 };
 
+void batch_delta_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                        double* buckets, int n_buckets,
+                                        int group_col_offset, int value_col_offset,
+                                        int row_stride) {
+    BatchIVMUpdater updater{n_rows, n_buckets, group_col_offset, value_col_offset, row_stride};
+    updater.process(rows, buckets);
+}
+
 BatchDeltaTradeoffSpecialized create_batch_delta_tradeoff_specialized(
         int64_t n_rows, int n_buckets, int group_col_offset,
         int value_col_offset, int row_stride) {

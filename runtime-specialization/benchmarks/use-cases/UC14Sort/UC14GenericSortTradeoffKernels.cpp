@@ -80,6 +80,11 @@ struct GenericSorterT {
     }
 };
 
+void generic_sort_tradeoff_unspecialized(void* data, int64_t n_elements, int element_size) {
+    GenericSorterT sorter{element_size};
+    sorter.sort(data, n_elements, &int64_asc_cmp_tradeoff);
+}
+
 GenericSortTradeoffSpecialized create_generic_sort_tradeoff_specialized(int element_size) {
     GenericSorterT sorter{element_size};
     int (*cmp)(const void*, const void*) = &int64_asc_cmp_tradeoff;

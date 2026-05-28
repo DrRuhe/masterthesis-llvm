@@ -41,6 +41,12 @@ struct SobelFilter {
     }
 };
 
+void edge_detection_tradeoff_unspecialized(const float* src, float* dst,
+                                           int width, int height) {
+    SobelFilter sf{};
+    sf.detect(src, dst, width, height);
+}
+
 EdgeDetectionTradeoffSpecialized create_edge_detection_tradeoff_specialized(
         int width, int height) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();

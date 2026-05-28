@@ -36,6 +36,12 @@ struct BoxSpatialFilter : SpatialFilter {
     }
 };
 
+void box_filter_abstract_unspecialized(const float* src, float* dst,
+                                       int width, int height, int radius) {
+    BoxSpatialFilter bsf(radius);
+    bsf.apply(src, dst, width, height);
+}
+
 BoxFilterAbstractSpecialized create_box_filter_abstract_specialized(
         int width, int height, int radius) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();

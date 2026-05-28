@@ -36,6 +36,13 @@ struct CountOperator : AggregationOperator {
     }
 };
 
+void grouped_count_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                           int row_stride, int key_offset,
+                                           int n_buckets, int64_t* out) {
+    CountOperator op{row_stride, key_offset};
+    op.aggregate(rows, n_rows, reinterpret_cast<double*>(out), n_buckets);
+}
+
 GroupedCountAbstractSpecialized create_grouped_count_abstract_specialized(
         int row_stride, int key_offset, int n_buckets) {
     // Capture scalars only; reconstruct object inside the lambda so its this-pointer

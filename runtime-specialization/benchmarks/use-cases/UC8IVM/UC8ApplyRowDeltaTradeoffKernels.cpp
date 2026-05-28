@@ -60,6 +60,15 @@ void validate_apply_row_delta_batch_tradeoff_specialized(
     }
 }
 
+void apply_row_delta_batch_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                   double* buckets, int n_buckets,
+                                                   int group_col_offset, int value_col_offset,
+                                                   int row_stride) {
+    IVMUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};
+    for (int64_t i = 0; i < n_rows; ++i)
+        updater.update(rows + static_cast<size_t>(i) * row_stride, buckets);
+}
+
 ApplyRowDeltaTradeoffSpecialized create_apply_row_delta_tradeoff_specialized(
         int n_buckets, int group_col_offset, int value_col_offset, int row_stride) {
     IVMUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};

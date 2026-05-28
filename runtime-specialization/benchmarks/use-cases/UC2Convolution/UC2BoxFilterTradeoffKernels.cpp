@@ -26,6 +26,12 @@ struct BoxFilter {
     }
 };
 
+void box_filter_tradeoff_unspecialized(const float* src, float* dst,
+                                       int width, int height, int radius) {
+    BoxFilter bf{radius};
+    bf.apply(src, dst, width, height);
+}
+
 BoxFilterTradeoffSpecialized create_box_filter_tradeoff_specialized(
         int width, int height, int radius) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();

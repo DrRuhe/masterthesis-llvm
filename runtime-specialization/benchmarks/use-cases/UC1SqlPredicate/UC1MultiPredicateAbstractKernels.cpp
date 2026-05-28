@@ -66,6 +66,17 @@ MultiPredicateAbstractSpecialized create_multi_predicate_abstract_specialized(
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);
 }
 
+int64_t multi_predicate_abstract_unspecialized(const uint8_t* rows, int64_t n,
+                                               int row_stride,
+                                               int col_offset_a, int col_offset_b,
+                                               double threshold_a, double threshold_b) {
+    AndPredicate pred{
+        ThresholdPredicate{col_offset_a, threshold_a},
+        ThresholdPredicate{col_offset_b, threshold_b}
+    };
+    return scan_with_predicate_and(rows, n, row_stride, pred);
+}
+
 void validate_multi_predicate_abstract_specialized(int row_stride, int col_offset_a, int col_offset_b,
                                                     double threshold_a, double threshold_b) {
     constexpr int N_TEST = 100;

@@ -62,6 +62,15 @@ void validate_multi_agg_delta_batch_tradeoff_specialized(
     }
 }
 
+void multi_agg_delta_batch_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                   double* sum_buckets, double* count_buckets,
+                                                   int n_buckets, int group_col_offset,
+                                                   int value_col_offset, int row_stride) {
+    IVMDualUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};
+    for (int64_t i = 0; i < n_rows; ++i)
+        updater.update(rows + static_cast<size_t>(i) * row_stride, sum_buckets, count_buckets);
+}
+
 MultiAggDeltaTradeoffSpecialized create_multi_agg_delta_tradeoff_specialized(
         int n_buckets, int group_col_offset, int value_col_offset, int row_stride) {
     IVMDualUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};

@@ -32,6 +32,13 @@ ColumnScanTradeoffSpecialized create_column_scan_tradeoff_specialized(
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);
 }
 
+int64_t column_scan_tradeoff_unspecialized(const uint8_t* rows, int64_t n,
+                                           int row_stride, int col_offset,
+                                           double threshold, int32_t* out) {
+    ProjectingScanner scanner{col_offset};
+    return scanner.scan_to(rows, n, row_stride, threshold, out);
+}
+
 void validate_column_scan_tradeoff_specialized(int row_stride, int col_offset, double threshold) {
     constexpr int N_TEST = 100;
     std::vector<uint8_t> test_data(N_TEST * row_stride, 0);

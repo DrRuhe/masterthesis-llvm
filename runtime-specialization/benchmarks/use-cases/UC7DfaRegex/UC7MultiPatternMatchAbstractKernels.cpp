@@ -87,6 +87,12 @@ struct DFAPatternSet : PatternSet {
     }
 };
 
+int64_t multi_pattern_match_abstract_unspecialized(const char* buf, int64_t len) {
+    const int acc[2] = {2, 4};  // ACCEPT_AB, ACCEPT_CD
+    DFAPatternSet ps(g_multi_dfa_table_abstract, MPA_N_STATES, MPA_N_CHARS, acc, 2);
+    return ps.match_all_count(buf, len);
+}
+
 MultiPatternMatchAbstractSpecialized create_multi_pattern_match_abstract_specialized() {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     // Capture the DFA table pointer (a stable global address, not a stack address).

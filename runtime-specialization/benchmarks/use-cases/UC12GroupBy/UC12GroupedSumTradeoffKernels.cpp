@@ -27,6 +27,13 @@ struct GroupedAggregator {
     }
 };
 
+void grouped_sum_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                         int row_stride, int key_offset, int value_offset,
+                                         int n_buckets, double* out_buckets) {
+    GroupedAggregator agg{row_stride, key_offset, value_offset, n_buckets};
+    agg.aggregate(rows, n_rows, out_buckets);
+}
+
 GroupedSumTradeoffSpecialized create_grouped_sum_tradeoff_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets) {
     GroupedAggregator agg{row_stride, key_offset, value_offset, n_buckets};

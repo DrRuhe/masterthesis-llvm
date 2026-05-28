@@ -48,6 +48,13 @@ struct MinMaxOperator : AggregationOperator {
     }
 };
 
+void grouped_minmax_abstract_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                            int row_stride, int key_offset, int value_offset,
+                                            int n_buckets, double* min_buckets, double* max_buckets) {
+    MinMaxOperator op{row_stride, key_offset, value_offset, min_buckets, max_buckets};
+    op.aggregate(rows, n_rows, nullptr, n_buckets);
+}
+
 GroupedMinMaxAbstractSpecialized create_grouped_minmax_abstract_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets) {
     // Lambda binds min/max output arrays per call; operator pointer fields updated
