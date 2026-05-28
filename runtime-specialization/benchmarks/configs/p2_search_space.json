@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "parameters": [
+    {"name": "fixpoint_max",       "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 2,   "max": 20},
+    {"name": "unroll_max",         "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,   "max": 256},
+    {"name": "early_prune",        "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"},
+    {"name": "o3_final",           "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"},
+    {"name": "pipeline",           "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "categorical", "choices": [2]},
+    {"name": "p2_min_func_size",   "env_var": "CRS_P2_MIN_FUNC_SIZE",                    "type": "int",        "min": 1,   "max": 50,   "depends_on_pipeline": 2},
+    {"name": "p2_max_clones",      "env_var": "CRS_P2_MAX_CLONES",                       "type": "int",        "min": 0,   "max": 20,   "depends_on_pipeline": 2},
+    {"name": "p2_func_spec_iters", "env_var": "CRS_P2_FUNC_SPEC_ITERS",                  "type": "int",        "min": 1,   "max": 10,   "depends_on_pipeline": 2},
+    {"name": "p2_force_spec",      "env_var": "CRS_P2_FORCE_SPEC",                       "type": "categorical", "choices": [0, 1],       "depends_on_pipeline": 2}
+  ]
+}

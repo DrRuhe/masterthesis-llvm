@@ -1,0 +1,27 @@
+Listing benchmarks...
+  36 benchmarks matched.
+Measuring unspecialized baseline...
+  Unspecialized filter: BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:unspecialized
+  18 kernels measured.
+
+Study:   uc_optim_p2_20260528
+DB:      benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Trials:  50  Parallel: 1  Timeout/benchmark: 60.0s  Total/trial: 2190s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec)
+Search space: configs/p2_search_space.json (9 parameters)
+
+  Trial   0: combined=181.0ms  jit=53.7ms  exec=72.9ms | fixpoint_max=9  unroll_max=189  early_prune=0  o3_final=0  pipeline=2  p2_min_func_size=3  p2_max_clones=18  p2_func_spec_iters=7  p2_force_spec=0
+  Trial   1: combined=181.5ms  jit=54.3ms  exec=73.0ms | fixpoint_max=20  unroll_max=90  early_prune=0  o3_final=1  pipeline=2  p2_min_func_size=27  p2_max_clones=9  p2_func_spec_iters=3  p2_force_spec=0
+  Trial   2: combined=181.5ms  jit=54.0ms  exec=73.1ms | fixpoint_max=7  unroll_max=5  early_prune=1  o3_final=1  pipeline=2  p2_min_func_size=30  p2_max_clones=0  p2_func_spec_iters=7  p2_force_spec=0
+  Trial   3: combined=180.8ms  jit=53.7ms  exec=72.7ms | fixpoint_max=20  unroll_max=207  early_prune=0  o3_final=1  pipeline=2  p2_min_func_size=23  p2_max_clones=2  p2_func_spec_iters=5  p2_force_spec=1
+  Trial   4: combined=182.0ms  jit=54.0ms  exec=73.4ms | fixpoint_max=6  unroll_max=31  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=49  p2_max_clones=16  p2_func_spec_iters=10  p2_force_spec=0
+  Trial   5: combined=182.0ms  jit=54.3ms  exec=73.1ms | fixpoint_max=19  unroll_max=1  early_prune=0  o3_final=1  pipeline=2  p2_min_func_size=14  p2_max_clones=17  p2_func_spec_iters=4  p2_force_spec=1
+  Trial   6: combined=180.8ms  jit=53.9ms  exec=72.7ms | fixpoint_max=4  unroll_max=75  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=1  p2_max_clones=17  p2_func_spec_iters=8  p2_force_spec=1
+  Trial   7: combined=181.5ms  jit=53.8ms  exec=73.0ms | fixpoint_max=3  unroll_max=5  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=4  p2_max_clones=6  p2_func_spec_iters=4  p2_force_spec=0
+  Trial   8: combined=179.2ms  jit=53.3ms  exec=72.2ms | fixpoint_max=18  unroll_max=10  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=39  p2_max_clones=10  p2_func_spec_iters=6  p2_force_spec=0
+  Trial   9: combined=180.7ms  jit=53.7ms  exec=73.0ms | fixpoint_max=4  unroll_max=1  early_prune=0  o3_final=1  pipeline=2  p2_min_func_size=13  p2_max_clones=8  p2_func_spec_iters=8  p2_force_spec=0
+  Trial  10: combined=178.2ms  jit=52.8ms  exec=71.9ms | fixpoint_max=14  unroll_max=16  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=45  p2_max_clones=13  p2_func_spec_iters=1  p2_force_spec=1
+  Trial  11: combined=177.1ms  jit=52.4ms  exec=71.5ms | fixpoint_max=14  unroll_max=14  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=46  p2_max_clones=13  p2_func_spec_iters=1  p2_force_spec=1
+  Trial  12: combined=177.6ms  jit=52.7ms  exec=71.5ms | fixpoint_max=14  unroll_max=20  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=49  p2_max_clones=13  p2_func_spec_iters=1  p2_force_spec=1
+  Trial  13: combined=179.6ms  jit=53.2ms  exec=72.1ms | fixpoint_max=14  unroll_max=32  early_prune=1  o3_final=0  pipeline=2  p2_min_func_size=39  p2_max_clones=13  p2_func_spec_iters=1  p2_force_spec=1

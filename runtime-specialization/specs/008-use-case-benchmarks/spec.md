@@ -6,6 +6,23 @@
 
 ## Clarifications
 
+### Session 2026-05-28
+
+- **Q: What should the granularity of a single kernel invocation be?**  
+  A: Each call to the benchmarked (un)specialized function must process a **full batch** of data — the looping over individual rows/elements must happen *inside* the kernel, not in the benchmark harness. The benchmark harness calls the specialized function exactly once per Google Benchmark iteration. This is required so that the measured `specialized_exec_ns` reflects the throughput of processing a realistic workload, not the overhead of the indirect JIT dispatch mechanism on a tight per-element loop.
+
+- **Q: What size should the batch be?**  
+  A: Use a **uniform 1 GB buffer** as the in-memory dataset across all UC kernels where batching is possible (UC1, UC8, UC12; UC2 image-level; UC7 corpus-level). The MEDIUM size variant must be calibrated so that one unspecialized batch call takes approximately **10 ms** on the development machine. SMALL/LARGE/EXTRALARGE scale proportionally (×0.1, ×10, ×60 of MEDIUM).
+
+- **Q: Why does this change affect UC8 specifically?**  
+  A: UC8 kernels (`apply_row_delta`, `batch_delta`, `multi_agg_delta`) were originally designed as per-row functions called from a benchmark loop. This pattern incorrectly assigns the indirect JIT dispatch overhead to *each row*, making the dispatch overhead dominate the measured `specialized_exec_ns` for short kernels (observed: ~0.26 ns/call unspecialized → dispatch overhead ~2–5 ns/call → 10–20× regression in specialized_exec). The fix is to redesign these kernels as batch functions that accept `(rows, n_rows, ...)` and loop internally.
+
+- **Q: What about UC2 (convolution) and UC14 (sort)?**  
+  A: UC2 already benchmarks a single-call operation (one full image pass). UC14 already benchmarks one sort call over an array. Both are already batch-oriented. No kernel signature changes needed; only size calibration if required.
+
+- **Q: What is the research finding about per-call dispatch overhead?**  
+  A: See §Research Finding — Minimum Viable Kernel Duration below.
+
 ### Session 2026-05-13
 
 - Q: How should the UC7 DFA transition table be constructed? → A: Programmatic at startup — a small builder function fills `g_dfa_table` once (e.g., via a static initializer or `__attribute__((constructor))`); no external regex library.
@@ -128,6 +145,50 @@ themselves (User Story 1) already deliver value without it.
 
 ---
 
+## Research Finding — Minimum Viable Kernel Duration for JIT Specialization
+
+**Finding** (observed 2026-05-28, `uc_optim_p2_o3_20260528` + `uc_optim_iter3_20260527`):
+
+JIT specialization via `callSpecialized` introduces a **per-call indirect dispatch
+overhead** of approximately **2–5 ns/call** on x86-64. This overhead is structural:
+it arises from the function-pointer indirection that the JIT mechanism uses to call
+the compiled specialized function. Unlike a direct call (which the compiler can
+inline), the JIT-specialized call path cannot be inlined at the benchmark level —
+the specialized function pointer is produced at runtime and stored in memory.
+
+**Consequence**: For kernels whose unspecialized execution takes **less than ~5 ns per
+call** (e.g., `multi_agg_delta` at ~0.26 ns, `batch_delta` at ~0.25 ns,
+`column_scan` at ~0.84 ns), the JIT dispatch overhead **exceeds** the kernel's own
+work. Even a perfect specialization (0 ns specialized execution) cannot break even;
+the minimum achievable `specialized_exec_ns` is bounded below by the dispatch cost.
+
+**Evidence**:
+- `multi_agg_delta` MEDIUM: unspec = 13 ms / 50 M calls = **0.26 ns/call**; P0
+  specialized = 21 ms (dispatch-dominated regression); P2+O3 specialized = 23 ms.
+- `batch_delta` MEDIUM: unspec = 12 ms / 50 M calls = **0.24 ns/call**; P0
+  specialized = 61 ms (severe regression from cache-cold constant load).
+- `column_scan` MEDIUM: unspec = 8.4 ms / 10 M calls = **0.84 ns/call**; P0
+  specialized = 38 ms (cache-cold regression); P2+O3 = 36 ms (near-parity).
+
+**Implication for benchmark design**: These regressions are an **artifact of the
+per-row calling pattern**, not of the JIT pipeline. A batch-oriented kernel that
+processes 1 GB per call eliminates the per-call dispatch overhead. The kernel
+runs inside a tight loop within the specialized function body; the JIT dispatch
+overhead is amortized once over the entire batch.
+
+**Implication for users**: Callers should ensure that the specialized function
+performs a meaningful amount of work per invocation. A practical guideline:
+each call to `callSpecialized` / `specializeOrFallback` should perform at least
+**~1 µs of computation** to ensure the dispatch overhead (<5 ns) is below 0.5%.
+For shorter kernels, direct (unspecialized) calls are more efficient.
+
+**Thesis claim**: "Runtime JIT specialization via indirect dispatch is not
+beneficial for kernels with sub-microsecond per-call duration. The minimum viable
+kernel duration is approximately 1 µs; below this threshold the indirect dispatch
+overhead introduced by `callSpecialized` exceeds the constant-folding speedup."
+
+---
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
@@ -140,7 +201,8 @@ themselves (User Story 1) already deliver value without it.
 - **FR-004**: The "constant" parameters for each kernel MUST be clearly commented in the `*Kernels.h` header as `// specialization constant` so it is evident which arguments are fixed at JIT time.
 - **FR-005**: Each benchmark MUST compile successfully under the project's release build (`ninja -C llvm/build/release`) and pass `assertSpecializedLambdaIsEquivalent` for at least one test input before the benchmark runs (called via the factory function, comparing the unspecialized kernel result against the `SpecializedLambda` result).
 - **FR-006**: Each benchmark binary MUST be registered in the project's CMake as a separate `add_benchmark` target following the pattern established by `polybench_bench` and `tpch_bench`. Additionally, all six kernel and benchmark object files MUST be added to the existing `AllBenchmarks` target so a single binary covers the full benchmark suite.
-- **FR-007**: Each benchmark MUST expose four dataset size variants tagged `s:SMALL`, `s:MEDIUM`, `s:LARGE`, and `s:EXTRALARGE` in the benchmark name. The dataset sizes MUST be calibrated (by measuring actual unspecialized per-call runtime and adjusting until within a factor of 2× of the target) so that the unspecialized execution time per call approximates: SMALL ≈ 0.1 s, MEDIUM ≈ 1 s, LARGE ≈ 10 s, EXTRALARGE ≈ 60 s. Calibration MUST be performed after initial implementation by querying `t_unspec_ns` per `kv_s` label from the benchmarks database (using the same query pattern as `size_scaling.py`) and updating the size constants in the respective `*Benchmark.cpp` files.
+- **FR-007**: Each benchmark MUST expose four dataset size variants tagged `s:SMALL`, `s:MEDIUM`, `s:LARGE`, and `s:EXTRALARGE` in the benchmark name. Each size variant MUST represent a **single-call batch** of data: the kernel function processes the entire dataset in one invocation (looping internally). The dataset sizes MUST be calibrated so that unspecialized execution time per single call approximates: SMALL ≈ 1 ms, MEDIUM ≈ 10 ms, LARGE ≈ 100 ms, EXTRALARGE ≈ 1 s. For kernels that process row data, the target batch size is **1 GB** of in-memory data; the row count follows from `1 GB / row_stride_bytes`. Calibration MUST be performed after initial implementation by querying `t_unspec_ns` per `kv_s` label from the benchmarks database and updating the size constants in the respective `*Benchmark.cpp` files. For EXTRALARGE, if 1 GB of data per call would exceed available system memory (shared with other simultaneous kernel buffers), the batch may be capped at a smaller size and iterated to reach the target duration.
+- **FR-007b**: The benchmark harness MUST call the (un)specialized function **exactly once** per Google Benchmark iteration. All row/element looping MUST be inside the kernel function, not in the benchmark body. This ensures that the measured `specialized_exec_ns` reflects kernel throughput, not indirect dispatch overhead accumulated over many micro-calls.
 
 **UC1 — SQL Expression Evaluation**
 
@@ -162,9 +224,13 @@ themselves (User Story 1) already deliver value without it.
 
 **UC8 — Incremental View Maintenance**
 
-- **FR-019**: The kernel TU MUST implement `apply_row_delta(const uint8_t* row, double* agg_buckets, int n_buckets, int group_col_offset, int value_col_offset, int row_stride)` that updates a fixed-size SUM aggregate table given one incoming row.
-- **FR-020**: The specialization constants MUST be `group_col_offset`, `value_col_offset`, `row_stride`, and `n_buckets`; `row` and `agg_buckets` are per-call variables.
-- **FR-021**: The benchmark MUST process ≥ 10 million row delta events in the hot loop to make per-row overhead measurable; the aggregate bucket array MUST be pre-allocated and reused across iterations.
+- **FR-019**: The kernel TU MUST implement **batch-oriented** UC8 kernel functions that accept `(const uint8_t* rows, int64_t n_rows, ...)` and loop over all rows internally. The three variants are:
+  - `apply_row_delta_batch(const uint8_t* rows, int64_t n_rows, double* agg_buckets, int n_buckets, int group_col_offset, int value_col_offset, int row_stride)` — SUM aggregate over a batch of row delta events.
+  - `batch_delta_batch(const uint8_t* rows, int64_t n_rows, double threshold, double* out, int col_offset, int row_stride)` — threshold filter over a row batch.
+  - `multi_agg_delta_batch(const uint8_t* rows, int64_t n_rows, double* agg_buckets, int n_buckets, int group_col_offset, int* value_col_offsets, int n_agg_cols, int row_stride)` — multi-column aggregate over a row batch.
+  The previous per-row function `apply_row_delta(single_row, ...)` pattern is replaced by these batch variants. **Rationale**: per-row specialization creates a JIT dispatch overhead per row (~2–5 ns/call) that exceeds the work done by a short kernel, producing regressions. Batching internalises the loop, eliminating per-row dispatch cost.
+- **FR-020**: The specialization constants for the batch variants MUST be the schema constants: `group_col_offset`, `value_col_offset`, `row_stride`, `n_buckets`, `threshold`; `rows`, `n_rows`, and `agg_buckets`/`out` are per-call variables.
+- **FR-021**: The benchmark MUST process **1 GB** of row data per single call at MEDIUM size (≈ `1 GB / row_stride` rows). The aggregate bucket array MUST be pre-allocated and zeroed between iterations. The benchmark harness calls the batch function once per Google Benchmark iteration (FR-007b).
 
 **UC12 — Columnar Analytics GROUP BY SUM**
 

@@ -1,0 +1,84 @@
+Listing benchmarks...
+  36 benchmarks matched.
+Measuring unspecialized baseline...
+  Unspecialized filter: BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:unspecialized
+  18 kernels measured.
+
+Study:   uc_optim_p2_o3_20260528
+DB:      benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Trials:  30  Parallel: 1  Timeout/benchmark: 60.0s  Total/trial: 2190s
+Filter:  BM_g:(uc1|uc2|uc7|uc8|uc12|uc14)_[a-z]+;.*a:low;.*s:MEDIUM;.*t:(jit_overhead|specialized_exec)
+Search space: configs/p2_o3_search_space.json (8 parameters)
+
+  Trial   0: combined=165.4ms  jit=57.3ms  exec=63.9ms | pipeline=2  o3_final=1  p2_min_func_size=74  p2_max_clones=12  p2_func_spec_iters=2  p2_force_spec=0  p2_spec_on_addr=0  p2_spec_literal=0
+  Trial   1: combined=181.2ms  jit=53.9ms  exec=72.7ms | pipeline=2  o3_final=0  p2_min_func_size=22  p2_max_clones=3  p2_func_spec_iters=2  p2_force_spec=1  p2_spec_on_addr=0  p2_spec_literal=0
+  Trial   2: combined=166.3ms  jit=57.6ms  exec=64.0ms | pipeline=2  o3_final=1  p2_min_func_size=46  p2_max_clones=16  p2_func_spec_iters=2  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial   3: combined=166.9ms  jit=58.0ms  exec=64.1ms | pipeline=2  o3_final=1  p2_min_func_size=81  p2_max_clones=6  p2_func_spec_iters=1  p2_force_spec=0  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial   4: combined=165.1ms  jit=57.3ms  exec=63.4ms | pipeline=2  o3_final=1  p2_min_func_size=32  p2_max_clones=10  p2_func_spec_iters=6  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial   5: combined=176.7ms  jit=52.3ms  exec=71.0ms | pipeline=2  o3_final=0  p2_min_func_size=20  p2_max_clones=0  p2_func_spec_iters=4  p2_force_spec=0  p2_spec_on_addr=0  p2_spec_literal=1
+  Trial   6: combined=166.6ms  jit=58.0ms  exec=64.0ms | pipeline=2  o3_final=1  p2_min_func_size=8  p2_max_clones=20  p2_func_spec_iters=8  p2_force_spec=0  p2_spec_on_addr=0  p2_spec_literal=1
+  Trial   7: combined=172.8ms  jit=59.6ms  exec=67.1ms | pipeline=2  o3_final=1  p2_min_func_size=12  p2_max_clones=18  p2_func_spec_iters=7  p2_force_spec=0  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial   8: combined=179.7ms  jit=53.4ms  exec=71.9ms | pipeline=2  o3_final=0  p2_min_func_size=12  p2_max_clones=14  p2_func_spec_iters=8  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial   9: combined=178.7ms  jit=53.2ms  exec=71.6ms | pipeline=2  o3_final=0  p2_min_func_size=64  p2_max_clones=6  p2_func_spec_iters=6  p2_force_spec=0  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial  10: combined=165.3ms  jit=57.2ms  exec=63.7ms | pipeline=2  o3_final=1  p2_min_func_size=38  p2_max_clones=9  p2_func_spec_iters=10  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  11: combined=165.8ms  jit=57.3ms  exec=64.0ms | pipeline=2  o3_final=1  p2_min_func_size=37  p2_max_clones=9  p2_func_spec_iters=10  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  12: combined=167.5ms  jit=58.1ms  exec=64.5ms | pipeline=2  o3_final=1  p2_min_func_size=39  p2_max_clones=9  p2_func_spec_iters=10  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  13: combined=164.6ms  jit=57.1ms  exec=63.5ms | pipeline=2  o3_final=1  p2_min_func_size=97  p2_max_clones=11  p2_func_spec_iters=4  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  14: combined=166.5ms  jit=58.0ms  exec=63.9ms | pipeline=2  o3_final=1  p2_min_func_size=95  p2_max_clones=13  p2_func_spec_iters=4  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial  15: combined=165.8ms  jit=57.6ms  exec=63.9ms | pipeline=2  o3_final=1  p2_min_func_size=59  p2_max_clones=6  p2_func_spec_iters=4  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  16: combined=169.0ms  jit=58.7ms  exec=65.3ms | pipeline=2  o3_final=1  p2_min_func_size=100  p2_max_clones=11  p2_func_spec_iters=5  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  17: combined=167.7ms  jit=58.0ms  exec=64.5ms | pipeline=2  o3_final=1  p2_min_func_size=27  p2_max_clones=15  p2_func_spec_iters=6  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial  18: combined=177.1ms  jit=52.3ms  exec=70.9ms | pipeline=2  o3_final=0  p2_min_func_size=84  p2_max_clones=7  p2_func_spec_iters=5  p2_force_spec=1  p2_spec_on_addr=0  p2_spec_literal=1
+  Trial  19: combined=168.1ms  jit=58.2ms  exec=64.5ms | pipeline=2  o3_final=1  p2_min_func_size=59  p2_max_clones=3  p2_func_spec_iters=3  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial  20: combined=169.7ms  jit=58.6ms  exec=65.0ms | pipeline=2  o3_final=1  p2_min_func_size=51  p2_max_clones=17  p2_func_spec_iters=7  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  21: combined=169.5ms  jit=58.4ms  exec=65.4ms | pipeline=2  o3_final=1  p2_min_func_size=31  p2_max_clones=10  p2_func_spec_iters=9  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  22: combined=170.1ms  jit=60.0ms  exec=65.0ms | pipeline=2  o3_final=1  p2_min_func_size=48  p2_max_clones=8  p2_func_spec_iters=9  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  23: combined=169.4ms  jit=59.2ms  exec=64.4ms | pipeline=2  o3_final=1  p2_min_func_size=37  p2_max_clones=11  p2_func_spec_iters=7  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  24: combined=168.9ms  jit=59.0ms  exec=64.7ms | pipeline=2  o3_final=1  p2_min_func_size=1  p2_max_clones=13  p2_func_spec_iters=3  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  25: combined=169.0ms  jit=58.7ms  exec=64.8ms | pipeline=2  o3_final=1  p2_min_func_size=67  p2_max_clones=3  p2_func_spec_iters=5  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  26: combined=179.0ms  jit=53.2ms  exec=71.9ms | pipeline=2  o3_final=0  p2_min_func_size=44  p2_max_clones=10  p2_func_spec_iters=8  p2_force_spec=1  p2_spec_on_addr=0  p2_spec_literal=0
+  Trial  27: combined=169.3ms  jit=59.0ms  exec=65.0ms | pipeline=2  o3_final=1  p2_min_func_size=28  p2_max_clones=8  p2_func_spec_iters=3  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=1
+  Trial  28: combined=171.0ms  jit=59.6ms  exec=65.7ms | pipeline=2  o3_final=1  p2_min_func_size=55  p2_max_clones=12  p2_func_spec_iters=9  p2_force_spec=1  p2_spec_on_addr=1  p2_spec_literal=0
+  Trial  29: combined=170.0ms  jit=59.0ms  exec=65.5ms | pipeline=2  o3_final=1  p2_min_func_size=72  p2_max_clones=12  p2_func_spec_iters=1  p2_force_spec=0  p2_spec_on_addr=0  p2_spec_literal=0
+Parameter importance written to: /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization/benchmarks/reports/260528-p2-o3-optimize/importance_uc_optim_p2_o3_20260528.json
+
+Study 'uc_optim_p2_o3_20260528' complete: 30 trials.
+Best config written to: /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization/benchmarks/reports/260528-p2-o3-optimize/best_uc_optim_p2_o3_20260528.json
+
+  trial: 13
+  pipeline: 2
+  o3_final: 1
+  p2_min_func_size: 97
+  p2_max_clones: 11
+  p2_func_spec_iters: 4
+  p2_force_spec: 1
+  p2_spec_on_addr: 1
+  p2_spec_literal: 1
+  jit:      57.09 ms  (geomean)
+  exec:     63.53 ms  (geomean)
+  combined: 164.60 ms  (geomean)
+
+Break-even per kernel (calls needed for specialization to pay off):
+  apply_row_delta                           8 calls  (1.22x speedup)
+  batch_delta                              53 calls  (1.06x speedup)
+  box_filter                                0 calls  (3.03x speedup)
+  column_scan                              20 calls  (1.06x speedup)
+  count_matching_rows            never (no exec speedup) calls  (0.98x speedup)
+  edge_detection                            1 calls  (1.52x speedup)
+  email_match                               2 calls  (1.26x speedup)
+  generic_sort                              0 calls  (2.79x speedup)
+  grouped_count                             3 calls  (2.40x speedup)
+  grouped_minmax                            3 calls  (2.39x speedup)
+  grouped_sum                               3 calls  (2.31x speedup)
+  multi_agg_delta                never (no exec speedup) calls  (0.56x speedup)
+  multi_key_sort                            0 calls  (1.40x speedup)
+  multi_pattern_match                       2 calls  (1.28x speedup)
+  multi_predicate                never (no exec speedup) calls  (0.98x speedup)
+  separable_gaussian                        0 calls  (2.05x speedup)
+  struct_sort                               0 calls  (1.50x speedup)
+  url_match                                 2 calls  (1.25x speedup)
+
+SQL to explore results:
+  SELECT * FROM v_optim_best_per_kernel WHERE study_name='uc_optim_p2_o3_20260528' ORDER BY kernel;
+  SELECT * FROM v_optim_breakeven      WHERE study_name='uc_optim_p2_o3_20260528' ORDER BY kernel;

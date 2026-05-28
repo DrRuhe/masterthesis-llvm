@@ -1,0 +1,16 @@
+{
+  "trial_id": 13,
+  "params": {
+    "pipeline": 2,
+    "o3_final": 1,
+    "p2_min_func_size": 97,
+    "p2_max_clones": 11,
+    "p2_func_spec_iters": 4,
+    "p2_force_spec": 1,
+    "p2_spec_on_addr": 1,
+    "p2_spec_literal": 1
+  },
+  "obj_jit_ns": 57085936.81506182,
+  "obj_exec_ns": 63533120.92334672,
+  "obj_combined_ns": 164598263.03697738
+}

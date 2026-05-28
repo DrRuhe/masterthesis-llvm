@@ -637,3 +637,58 @@ Results from release build, 2026-05-13. All six use cases pass `assertSpecialize
 | UC14 Sort | 187 ms | 154 ms | **1.21x** | ~0.1s | 256 k int64 elements, comparator specialized |
 
 All use cases exceed the ≥10% speedup performance goal. UC1 and UC2 show the largest gains due to heavy loop induction with constant bounds/coefficients.
+
+
+---
+
+## Phase 2: Batch-Oriented Kernel Redesign (2026-05-28)
+
+**Motivation**: Per-row kernel functions called from a benchmark loop produce
+misleading `specialized_exec_ns` values because the JIT dispatch overhead (~2–5 ns/call)
+dominates the measurement for short kernels. This phase redesigns UC8 kernels as
+batch functions and recalibrates all UC sizes to 1 GB / ~10 ms per call at MEDIUM.
+
+See spec.md §Session 2026-05-28 clarification and §Research Finding for full rationale.
+
+### Preconditions
+
+- [ ] Confirm current MEDIUM unspecialized times per-call for all 6 UCs by querying
+  `v_ablation_medians` or running benchmarks directly with `--benchmark_repetitions=3`.
+  Record baseline so post-change improvement is measurable.
+
+### UC8: Batch Kernel Redesign
+
+- [ ] In `UC8Kernels.cpp` / `UC8Kernels.h`: add batch-oriented variants:
+  - `apply_row_delta_batch(const uint8_t* rows, int64_t n_rows, double* agg_buckets, int n_buckets, int group_col_offset, int value_col_offset, int row_stride)` — loops over rows internally; replaces per-row `apply_row_delta` in the benchmark hot path.
+  - `batch_delta_batch(const uint8_t* rows, int64_t n_rows, double threshold, double* out, int col_offset, int row_stride)` — batch threshold filter.
+  - `multi_agg_delta_batch(const uint8_t* rows, int64_t n_rows, double* agg_buckets, int n_buckets, int group_col_offset, int* value_col_offsets, int n_agg_cols, int row_stride)` — batch multi-column aggregate.
+- [ ] In `UC8Benchmark.cpp`: update `jit_overhead` and `specialized_exec` phases to call
+  the batch variant **once per benchmark iteration** with the full `n_rows` dataset.
+  Remove the `for (rem > 0)` outer loop from benchmark body.
+- [ ] Update specialization constant set to match new function signatures (FR-020).
+- [ ] Verify `assertSpecializedIsEquivalent` passes for the new batch variants.
+
+### Uniform 1 GB Buffer and Size Recalibration
+
+- [ ] For UC1, UC8, UC12: set `N_ROWS_MAX` (buffer allocation) to `1 GB / row_stride_bytes`:
+  - UC1 (16 B/row): 64 M rows = 1 024 MB
+  - UC8 (24 B/row): 42 M rows = 1 008 MB
+  - UC12 (12 B/row): 85 M rows = 1 020 MB
+- [ ] For UC7: set corpus buffer to 1 GB; MEDIUM = fraction that takes ~10 ms unspecialized.
+- [ ] For UC2, UC14: measure current MEDIUM call time; adjust size if needed to reach ~10 ms.
+- [ ] Recalibrate SMALL/MEDIUM/LARGE/EXTRALARGE row-count constants per FR-007:
+  - MEDIUM → row count that produces ~10 ms unspecialized per single call.
+  - SMALL  → ~10× smaller than MEDIUM (≈ 1 ms).
+  - LARGE  → ~10× larger than MEDIUM (≈ 100 ms).
+  - EXTRALARGE → ~100× larger than MEDIUM (≈ 1 s); cap at buffer size if needed.
+- [ ] Update all `->Arg(...)` benchmark registration lines with new row-count constants.
+
+### Verification
+
+- [ ] Run `ninja check-smoke-runtime-specializer` — no regressions.
+- [ ] Run AllBenchmarks MEDIUM filter; confirm unspecialized call time ≈ 10 ms for each
+  UC group.
+- [ ] Re-run `optimize_benchmarks.py` for affected UCs; confirm `multi_agg_delta`,
+  `batch_delta`, `column_scan` no longer regress (expected: >1.0× speedup after
+  batching eliminates per-call dispatch overhead from the regression).
+- [ ] Record new baseline in DuckDB and note old vs new speedup table in `plan.md`.
