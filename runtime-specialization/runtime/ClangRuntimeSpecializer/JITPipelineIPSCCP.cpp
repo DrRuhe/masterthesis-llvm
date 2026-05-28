@@ -8,7 +8,6 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/PassManager.h"
 #include "llvm/Analysis/CGSCCPassManager.h"
-#include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/Transforms/IPO/GlobalDCE.h"
 #include "llvm/Transforms/IPO/GlobalOpt.h"
@@ -17,6 +16,7 @@
 #include "llvm/Support/ModRef.h"
 #include "llvm/Transforms/Scalar/DCE.h"
 #include "llvm/Transforms/Scalar/SROA.h"
+#include "llvm/Passes/PassBuilder.h"
 
 namespace clangRuntimeSpecializer {
 
@@ -119,19 +119,18 @@ llvm::Error runIPSCCPPipeline(PipelineRunArgs& Args) {
     MPM.run(M, MAM);
   }
 
-  // ---- Phase 3: inline specialization clones then cleanup --------------------
+  // ---- Phase 3: cleanup before optional O3 -----------------------------------
+  // No explicit AlwaysInliner here: O3's cost-model inliner handles all
+  // inlining, using the constant-argument bonus to inline SCCP-specialised
+  // targets even when they are large.
   CurrentGroup = "final";
   {
     llvm::ModulePassManager MPM;
-
-    // Inline the clones created by JitFunctionSpecializer into their call sites.
-    // AlwaysInliner honours alwaysinline attributes left by JitFunctionSpecializer
-    // on the cloned stubs.
-    MPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
     MPM.addPass(llvm::GlobalDCEPass());
 
-    // Cleanup pass: fold any remaining invariant loads in inlined bodies and
-    // simplify CFG. Gated on !LargeModule to match spec-005 safety rule.
+    // Fold any remaining !invariant.load values to IR immediates so O3 sees
+    // literal constants rather than pointer-chain loads when it inlines targets.
+    // Gated on !LargeModule to match spec-005 safety rule.
     if (!Args.IsLargeModule) {
       llvm::FunctionPassManager FPM;
       FPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
@@ -144,6 +143,17 @@ llvm::Error runIPSCCPPipeline(PipelineRunArgs& Args) {
     MPM.addPass(llvm::GlobalDCEPass());
 
     MPM.run(M, MAM);
+  }
+
+  // ---- Phase 4: O3 final (optional) -----------------------------------------
+  // O3 inlines targets based on cost model (constant-arg bonus means SCCP-
+  // specialised callees are aggressively inlined), then vectorises and unrolls
+  // the merged body. Gate matches P0's EnableO3Final convention.
+  if (Opts.EnableO3Final) {
+    CurrentGroup = "final_o3";
+    llvm::ModulePassManager FinalMPM =
+        Args.PB.buildPerModuleDefaultPipeline(llvm::OptimizationLevel::O3);
+    FinalMPM.run(M, MAM);
   }
 
   return llvm::Error::success();

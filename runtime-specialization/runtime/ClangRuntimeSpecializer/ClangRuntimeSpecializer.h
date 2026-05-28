@@ -383,6 +383,8 @@ namespace clangRuntimeSpecializer {
         static const unsigned kP2MaxClones     = (unsigned)_envOr("CRS_P2_MAX_CLONES",                  0.0);
         static const unsigned kP2FuncSpecIters = (unsigned)_envOr("CRS_P2_FUNC_SPEC_ITERS",            10.0);
         static const bool     kP2ForceSpec     = _envOr("CRS_P2_FORCE_SPEC",                            0.0) != 0.0;
+        static const bool     kP2SpecOnAddr    = _envOr("CRS_P2_SPEC_ON_ADDR",                          0.0) != 0.0;
+        static const bool     kP2SpecLiteral   = _envOr("CRS_P2_SPEC_LITERAL",                          1.0) != 0.0;
         Options O;
         O.MaxFixpointIterations     = kFixpoint;
         O.LoopUnrollCount           = kUnroll;
@@ -393,10 +395,12 @@ namespace clangRuntimeSpecializer {
         O.FuncSpecMaxGroups         = kFuncSpecMaxGroups;
         O.P1InlineThreshold         = kP1InlineThresh;
         O.P1MaxModuleGrowth         = kP1MaxGrowth;
-        O.P2FuncSpec.MinFunctionSize  = kP2MinFuncSize;
-        O.P2FuncSpec.MaxClones        = kP2MaxClones;
-        O.P2FuncSpec.FuncSpecMaxIters = kP2FuncSpecIters;
-        O.P2FuncSpec.ForceSpecialization = kP2ForceSpec;
+        O.P2FuncSpec.MinFunctionSize       = kP2MinFuncSize;
+        O.P2FuncSpec.MaxClones             = kP2MaxClones;
+        O.P2FuncSpec.FuncSpecMaxIters      = kP2FuncSpecIters;
+        O.P2FuncSpec.ForceSpecialization   = kP2ForceSpec;
+        O.P2FuncSpec.SpecializeOnAddress   = kP2SpecOnAddr;
+        O.P2FuncSpec.SpecializeLiteralConstant = kP2SpecLiteral;
         return O;
       }
       static Options O3Only() {
@@ -461,6 +465,8 @@ namespace clangRuntimeSpecializer {
       Options& withP2MaxClones(unsigned N)            { P2FuncSpec.MaxClones = N; return *this; }
       Options& withP2FuncSpecIters(unsigned N)        { P2FuncSpec.FuncSpecMaxIters = N; return *this; }
       Options& withP2ForceSpec(bool V)                { P2FuncSpec.ForceSpecialization = V; return *this; }
+      Options& withP2SpecOnAddr(bool V)               { P2FuncSpec.SpecializeOnAddress = V; return *this; }
+      Options& withP2SpecLiteral(bool V)              { P2FuncSpec.SpecializeLiteralConstant = V; return *this; }
       Options& withExpectedCallDurationNs(double V)   { ExpectedCallDurationNs = V; return *this; }
       Options& withBudgetScale(double V)              { BudgetScale = V; return *this; }
       Options& withJITTimeoutSeconds(unsigned V)      { JITTimeoutSeconds = V; return *this; }
