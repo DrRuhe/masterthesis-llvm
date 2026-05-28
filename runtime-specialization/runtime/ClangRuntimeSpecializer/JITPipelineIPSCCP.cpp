@@ -11,8 +11,12 @@
 #include "llvm/Transforms/IPO/AlwaysInliner.h"
 #include "llvm/Transforms/IPO/FunctionAttrs.h"
 #include "llvm/Transforms/IPO/GlobalDCE.h"
+#include "llvm/Transforms/IPO/GlobalOpt.h"
 #include "llvm/Transforms/InstCombine/InstCombine.h"
 #include "llvm/Transforms/Scalar/SimplifyCFG.h"
+#include "llvm/Support/ModRef.h"
+#include "llvm/Transforms/Scalar/DCE.h"
+#include "llvm/Transforms/Scalar/SROA.h"
 
 namespace clangRuntimeSpecializer {
 
@@ -66,9 +70,52 @@ llvm::Error runIPSCCPPipeline(PipelineRunArgs& Args) {
   {
     llvm::ModulePassManager MPM;
     MPM.addPass(llvm::GlobalDCEPass());
+    // SROA promotes stack-allocated vtable pointers to SSA values before the
+    // solver runs, so the solver sees vtable pointers as direct constants rather
+    // than loads from alloca addresses it cannot resolve at JIT compile time.
+    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
+        llvm::SROAPass(llvm::SROAOptions::ModifyCFG)));
     MPM.addPass(JitIPSCCPPass(Opts.P2FuncSpec));
     MPM.addPass(llvm::GlobalDCEPass());
-    MPM.addPass(llvm::ReversePostOrderFunctionAttrsPass());
+    // DCE removes dead instructions left after IPSCCP constant materialisation
+    // (e.g. loads whose results were replaced with constants in the lattice but
+    // the dead instruction itself was not erased by the solver).
+    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::DCEPass()));
+    // GlobalOpt optimises trivial internal functions (constant-return
+    // elimination, calling-convention narrowing, dead-arg removal).
+    MPM.addPass(llvm::GlobalOptPass());
+    MPM.run(M, MAM);
+
+    // After DCE + GlobalOpt, mark internal functions with no memory-accessing
+    // instructions as memory(none) so that InstCombine can eliminate dead calls
+    // to them in callers.  ReversePostOrderFunctionAttrsPass does not reliably
+    // infer this for leaf functions in the JIT CGSCC context, so we set it
+    // directly.
+    for (auto& F : M) {
+      if (F.isDeclaration() || !F.hasInternalLinkage())
+        continue;
+      bool HasMemAccess = false;
+      for (auto& BB : F)
+        for (auto& I : BB)
+          if (llvm::isa<llvm::LoadInst>(I) || llvm::isa<llvm::StoreInst>(I) ||
+              llvm::isa<llvm::AtomicRMWInst>(I) ||
+              llvm::isa<llvm::AtomicCmpXchgInst>(I) ||
+              (llvm::isa<llvm::CallBase>(I) &&
+               !llvm::cast<llvm::CallBase>(I).doesNotAccessMemory()))
+            HasMemAccess = true;
+      if (!HasMemAccess) {
+        F.setMemoryEffects(llvm::MemoryEffects::none());
+        F.setWillReturn();
+        F.setDoesNotThrow();
+      }
+    }
+  }
+
+  // Phase 2b: eliminate dead calls to the now-memory(none) callees.
+  {
+    llvm::ModulePassManager MPM;
+    MPM.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::InstCombinePass()));
+    MPM.addPass(llvm::GlobalDCEPass());
     MPM.run(M, MAM);
   }
 

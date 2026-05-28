@@ -1808,13 +1808,31 @@ void JitSCCPInstVisitor::visitLoadInst(LoadInst &I) {
       return (void)markConstant(IV, &I, C);
   }
 
+  // Shared page-readability cache for both JIT-SCCP extension blocks below.
+  static thread_local llvm::DenseMap<uintptr_t, bool> PageCache;
+
   // JIT-SCCP extension: !invariant.load host-memory resolution
   if (I.hasMetadata(LLVMContext::MD_invariant_load) && isBlockExecutable(I.getParent())) {
-    static thread_local llvm::DenseMap<uintptr_t, bool> PageCache;
     auto MaybeConst = clangRuntimeSpecializer::resolveInvariantLoadToConstant(I, PageCache);
     if (MaybeConst.has_value() && *MaybeConst) {
       markConstant(IV, &I, *MaybeConst);
       return;
+    }
+  }
+
+  // JIT-SCCP extension: resolve loads from constant-lattice pointers via host memory.
+  // Enables propagation through load chains inside callee bodies after the wrapper's
+  // captured-struct pointer has been resolved and propagated into callee arguments.
+  // PtrVal was computed above from I.getOperand(0); reuse it here.
+  if (isBlockExecutable(I.getParent()) && JitSCCPSolver::isConstant(PtrVal)) {
+    if (auto *C = dyn_cast_or_null<Constant>(
+            getConstant(PtrVal, I.getOperand(0)->getType()))) {
+      auto MaybeConst = clangRuntimeSpecializer::resolveConstantPtrLoad(
+          C, I.getType(), DL, I.getContext(), PageCache);
+      if (MaybeConst.has_value() && *MaybeConst) {
+        markConstant(IV, &I, *MaybeConst);
+        return;
+      }
     }
   }
 

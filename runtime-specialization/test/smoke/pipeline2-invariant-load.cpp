@@ -26,6 +26,8 @@ int main() {
 
     // EXE: DEBUG: Optimized specialized function IR:
     // EXE-NOT: invariant.load
+    // EXE-NOT: call{{.*}}test_invariant_load
+    // EXE: ret i32 10
     // EXE: Result: 10
     std::printf("Result: %d\n", res);
     return 0;

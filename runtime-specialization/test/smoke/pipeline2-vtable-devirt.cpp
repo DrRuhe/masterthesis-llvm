@@ -68,5 +68,6 @@ int main(int argc, char* argv[]) {
 
 // EXE-NOT: ERROR: Specialization failed:
 // EXE: DEBUG: Optimized specialized function IR:
+// EXE-NOT: call ptr
 // EXE-NOT: load ptr, ptr %vtable
 // EXE: Operators returned 5

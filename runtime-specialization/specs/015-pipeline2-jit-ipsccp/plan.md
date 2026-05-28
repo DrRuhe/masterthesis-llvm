@@ -200,3 +200,11 @@ All unknowns resolved through prior design exploration (see `benchmarks/reports/
 - [x] Run a quick benchmark comparison: `CRS_DEFAULT_PIPELINE=0` vs `CRS_DEFAULT_PIPELINE=2` on the `virtual_methods` use-case benchmark; record both results in DuckDB; confirm P2 JIT overhead is within 2× of P0 (SC-005)
 - [x] Verify SC-003 (verbatim copy): `diff <(cat JitSCCP/JitSCCPSolver.cpp | grep -v '^// JIT-SCCP') <upstream-SCCPSolver.cpp>` produces no output (modulo the added comment header)
 - [x] Run `optimize.py` dry-run with `--pipeline=2`; confirm `CRS_P2_*` vars appear and `CRS_DEFAULT_P1_*` vars are absent (SC-004)
+
+### Phase 11 — Fix: propagate !invariant.load values across call boundaries
+
+- [x] [complex] In `JitSCCP/JitSCCPSolver.cpp` `visitLoadInst`: after the existing `!invariant.load` block, add a second JIT-SCCP extension block — when the load's pointer has a constant SCCP lattice value, attempt a host memory read via `resolveInvariantLoadToConstant` (or a new `resolveLoadFromConstPtr` helper in `PointerChainResolver.h`); call `markConstant` on success. This enables the solver's internal worklist to propagate through load chains inside callee bodies after the wrapper's captured-struct pointer has been resolved and propagated into the callee argument.
+- [x] In `JITPipelineIPSCCP.cpp` Phase 2: add `SROAPass` as an FPM before `JitIPSCCPPass` so stack-allocated vtable pointers are SSA-promoted before the solver runs — `MPM.addPass(llvm::createModuleToFunctionPassAdaptor(llvm::SROAPass(llvm::SROAOptions::ModifyCFG)))` — add `#include "llvm/Transforms/Scalar/SROA.h"` to includes.
+- [x] Update `test/smoke/pipeline2-invariant-load.cpp`: add `// EXE-NOT: call{{.*}}test_invariant_load` and `// EXE: ret i32 10` between the existing `DEBUG: Optimized specialized function IR:` and `Result: 10` checks to assert the target was inlined and the return value folded, not merely that `!invariant.load` is absent from the wrapper.
+- [x] Update `test/smoke/pipeline2-vtable-devirt.cpp`: add `// EXE-NOT: call ptr` before the existing `EXE-NOT: load ptr, ptr %vtable` line to assert indirect virtual calls were eliminated from the inlined wrapper IR, not just the vtable loads.
+- [x] Run `ninja -C /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/debug check-smoke-runtime-specializer`; debug until all smoke tests pass.
