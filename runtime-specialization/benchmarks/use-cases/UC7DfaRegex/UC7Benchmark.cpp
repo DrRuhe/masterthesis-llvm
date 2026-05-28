@@ -48,11 +48,7 @@ static std::vector<char> make_corpus(int64_t size) {
     return buf;
 }
 
-#ifdef ALL_BENCHMARKS_BUILD
-static constexpr int64_t CORPUS_MAX = 1000LL * 1024 * 1024;   // 1 GB for AllBenchmarks
-#else
-static constexpr int64_t CORPUS_MAX = 500LL * 1024 * 1024;  // 500 MB streaming chunk
-#endif
+static constexpr int64_t CORPUS_MAX = 1000LL * 1024 * 1024;   // 1 GB buffer
 
 static std::vector<char> g_corpus;
 
@@ -73,14 +69,12 @@ static constexpr int MULTI_ACCEPT[2] = {2, 4};
 
 // --- a:low ---
 static void BM_UC7_email_low_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += dfa_match(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
-                                DFA_START, DFA_ACCEPT);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            dfa_match(g_corpus.data(), corpus_bytes,
+                      g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
+                      DFA_START, DFA_ACCEPT));
     }
 }
 
@@ -91,26 +85,21 @@ static void BM_UC7_email_low_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_email_low_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_dfa_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
 // --- a:tradeoff ---
 static void BM_UC7_email_tradeoff_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += dfa_match(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
-                                DFA_START, DFA_ACCEPT);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            dfa_match(g_corpus.data(), corpus_bytes,
+                      g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
+                      DFA_START, DFA_ACCEPT));
     }
 }
 
@@ -121,26 +110,21 @@ static void BM_UC7_email_tradeoff_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_email_tradeoff_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_email_match_tradeoff_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
 // --- a:abstract ---
 static void BM_UC7_email_abstract_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += dfa_match(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
-                                DFA_START, DFA_ACCEPT);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            dfa_match(g_corpus.data(), corpus_bytes,
+                      g_dfa_table, DFA_N_STATES, DFA_N_CHARS,
+                      DFA_START, DFA_ACCEPT));
     }
 }
 
@@ -151,13 +135,10 @@ static void BM_UC7_email_abstract_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_email_abstract_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_email_match_abstract_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -167,13 +148,11 @@ static void BM_UC7_email_abstract_specialized_exec(benchmark::State& state) {
 
 // --- a:low ---
 static void BM_UC7_url_low_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += url_match(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            url_match(g_corpus.data(), corpus_bytes,
+                      g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7));
     }
 }
 
@@ -184,25 +163,20 @@ static void BM_UC7_url_low_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_url_low_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_url_match_low_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
 // --- a:tradeoff ---
 static void BM_UC7_url_tradeoff_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += url_match(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            url_match(g_corpus.data(), corpus_bytes,
+                      g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7));
     }
 }
 
@@ -213,25 +187,20 @@ static void BM_UC7_url_tradeoff_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_url_tradeoff_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_url_match_tradeoff_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
 // --- a:abstract ---
 static void BM_UC7_url_abstract_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += url_match(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            url_match(g_corpus.data(), corpus_bytes,
+                      g_url_dfa_table, URL_N_STATES, DFA_N_CHARS, 0, 7));
     }
 }
 
@@ -242,13 +211,10 @@ static void BM_UC7_url_abstract_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_url_abstract_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_url_match_abstract_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -258,14 +224,12 @@ static void BM_UC7_url_abstract_specialized_exec(benchmark::State& state) {
 
 // --- a:low ---
 static void BM_UC7_multi_low_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += multi_pattern_match_count(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                                g_multi_dfa_table, 5, DFA_N_CHARS,
-                                                MULTI_ACCEPT, 2);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            multi_pattern_match_count(g_corpus.data(), corpus_bytes,
+                                      g_multi_dfa_table, 5, DFA_N_CHARS,
+                                      MULTI_ACCEPT, 2));
     }
 }
 
@@ -276,26 +240,21 @@ static void BM_UC7_multi_low_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_multi_low_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_multi_pattern_match_low_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
 // --- a:tradeoff ---
 static void BM_UC7_multi_tradeoff_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += multi_pattern_match_count(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                                g_multi_dfa_table, 5, DFA_N_CHARS,
-                                                MULTI_ACCEPT, 2);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            multi_pattern_match_count(g_corpus.data(), corpus_bytes,
+                                      g_multi_dfa_table, 5, DFA_N_CHARS,
+                                      MULTI_ACCEPT, 2));
     }
 }
 
@@ -306,26 +265,21 @@ static void BM_UC7_multi_tradeoff_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_multi_tradeoff_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_multi_pattern_match_tradeoff_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
 // --- a:abstract ---
 static void BM_UC7_multi_abstract_unspecialized(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += multi_pattern_match_count(g_corpus.data(), std::min(rem, CORPUS_MAX),
-                                                g_multi_dfa_table, 5, DFA_N_CHARS,
-                                                MULTI_ACCEPT, 2);
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(
+            multi_pattern_match_count(g_corpus.data(), corpus_bytes,
+                                      g_multi_dfa_table, 5, DFA_N_CHARS,
+                                      MULTI_ACCEPT, 2));
     }
 }
 
@@ -336,13 +290,10 @@ static void BM_UC7_multi_abstract_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC7_multi_abstract_specialized_exec(benchmark::State& state) {
-    int64_t corpus_size = state.range(0);
+    int64_t corpus_bytes = std::min(state.range(0), CORPUS_MAX);
     auto spec = create_multi_pattern_match_abstract_specialized();
     for (auto _ : state) {
-        int64_t result = 0;
-        for (int64_t rem = corpus_size; rem > 0; rem -= CORPUS_MAX)
-            result += spec(g_corpus.data(), std::min(rem, CORPUS_MAX));
-        benchmark::DoNotOptimize(result);
+        benchmark::DoNotOptimize(spec(g_corpus.data(), corpus_bytes));
     }
 }
 
@@ -480,13 +431,14 @@ UC7_BENCHMARK_SPEC(
 )
 UC7_JIT_ANALYSIS_SPEC(Arg(5LL * 1024 * 1024), Arg(50LL * 1024 * 1024), Arg(500LL * 1024 * 1024), Arg(1000LL * 1024 * 1024))
 #else
+// Single-call batch: SMALL=~1ms, MEDIUM=~10ms; LARGE/EXTRALARGE cap at buffer.
 UC7_BENCHMARK_SPEC(
-    Arg(44LL * 1024 * 1024),
-    Arg(440LL * 1024 * 1024),
-    Arg(4350LL * 1024 * 1024),
-    Arg(26000LL * 1024 * 1024)
+    Arg(50LL * 1024 * 1024),
+    Arg(500LL * 1024 * 1024),
+    Arg(1000LL * 1024 * 1024),
+    Arg(1000LL * 1024 * 1024)
 )
-UC7_JIT_ANALYSIS_SPEC(Arg(44LL * 1024 * 1024), Arg(440LL * 1024 * 1024), Arg(4350LL * 1024 * 1024), Arg(26000LL * 1024 * 1024))
+UC7_JIT_ANALYSIS_SPEC(Arg(50LL * 1024 * 1024), Arg(500LL * 1024 * 1024), Arg(1000LL * 1024 * 1024), Arg(1000LL * 1024 * 1024))
 #endif
 
 // ---------------------------------------------------------------------------

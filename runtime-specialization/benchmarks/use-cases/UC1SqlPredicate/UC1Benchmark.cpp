@@ -8,9 +8,9 @@
 static constexpr int     ROW_STRIDE   = 16;
 static constexpr int     COL_OFFSET   = 8;   // column A (primary)
 static constexpr int     COL_OFFSET_B = 0;   // column B (multi_predicate second column)
-// Fixed buffer: 50M rows × 16 B = 800 MB. For sizes larger than N_ROWS_MAX
-// the benchmarks loop through this buffer multiple times (streaming pattern).
-static constexpr int64_t N_ROWS_MAX   = 50'000'000;
+// Buffer = 1 GB / 16 B/row = 64 M rows.  Each benchmark calls the kernel
+// exactly once per iteration with min(state.range(0), N_ROWS_MAX) rows.
+static constexpr int64_t N_ROWS_MAX   = 64'000'000;
 
 // Global dataset: N_ROWS_MAX rows of ROW_STRIDE bytes.
 static std::vector<uint8_t> g_rows;
@@ -35,19 +35,48 @@ static void teardown_uc1(const benchmark::State&) {
     // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 
+// column_scan_unspecialized: same logic as column_scan in the kernel TU but defined
+// here so the unspecialized benchmark does identical work to the JIT-specialized variant
+// (scan + write matching indices to out).
+static int64_t column_scan_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                          int row_stride, int col_offset,
+                                          double threshold, int32_t* out) {
+    int64_t count = 0;
+    for (int64_t i = 0; i < n_rows; ++i) {
+        double val;
+        __builtin_memcpy(&val, rows + i * row_stride + col_offset, sizeof(double));
+        if (val > threshold)
+            out[count++] = static_cast<int32_t>(i);
+    }
+    return count;
+}
+
+// multi_predicate_count_unspecialized: AND of two column predicates, matching the
+// semantics of multi_predicate_count in the kernel TU.
+static int64_t multi_predicate_count_unspecialized(const uint8_t* rows, int64_t n_rows,
+                                                    int row_stride,
+                                                    int col_offset_a, int col_offset_b,
+                                                    double threshold_a, double threshold_b) {
+    int64_t count = 0;
+    for (int64_t i = 0; i < n_rows; ++i) {
+        double va, vb;
+        __builtin_memcpy(&va, rows + i * row_stride + col_offset_a, sizeof(double));
+        __builtin_memcpy(&vb, rows + i * row_stride + col_offset_b, sizeof(double));
+        if (va > threshold_a && vb > threshold_b)
+            ++count;
+    }
+    return count;
+}
+
 // ============================================================================
 // count_matching_rows / low
 // ============================================================================
 
 static void BM_UC1_count_matching_rows_low_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += count_matching_rows(g_rows.data(),
-                                         std::min(rem, (int64_t)N_ROWS_MAX),
-                                         ROW_STRIDE, COL_OFFSET, 0.5);
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            count_matching_rows(g_rows.data(), n_rows, ROW_STRIDE, COL_OFFSET, 0.5));
     }
 }
 
@@ -59,13 +88,10 @@ static void BM_UC1_count_matching_rows_low_jit_overhead(benchmark::State& state)
 }
 
 static void BM_UC1_count_matching_rows_low_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_sql_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX));
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows));
     }
 }
 
@@ -74,14 +100,10 @@ static void BM_UC1_count_matching_rows_low_specialized_exec(benchmark::State& st
 // ============================================================================
 
 static void BM_UC1_count_matching_rows_tradeoff_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += count_matching_rows(g_rows.data(),
-                                         std::min(rem, (int64_t)N_ROWS_MAX),
-                                         ROW_STRIDE, COL_OFFSET, 0.5);
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            count_matching_rows(g_rows.data(), n_rows, ROW_STRIDE, COL_OFFSET, 0.5));
     }
 }
 
@@ -93,13 +115,10 @@ static void BM_UC1_count_matching_rows_tradeoff_jit_overhead(benchmark::State& s
 }
 
 static void BM_UC1_count_matching_rows_tradeoff_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_count_matching_rows_tradeoff_specialized(COL_OFFSET, ROW_STRIDE, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX));
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows));
     }
 }
 
@@ -108,14 +127,10 @@ static void BM_UC1_count_matching_rows_tradeoff_specialized_exec(benchmark::Stat
 // ============================================================================
 
 static void BM_UC1_count_matching_rows_abstract_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += count_matching_rows(g_rows.data(),
-                                         std::min(rem, (int64_t)N_ROWS_MAX),
-                                         ROW_STRIDE, COL_OFFSET, 0.5);
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            count_matching_rows(g_rows.data(), n_rows, ROW_STRIDE, COL_OFFSET, 0.5));
     }
 }
 
@@ -127,13 +142,10 @@ static void BM_UC1_count_matching_rows_abstract_jit_overhead(benchmark::State& s
 }
 
 static void BM_UC1_count_matching_rows_abstract_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_count_matching_rows_abstract_specialized(COL_OFFSET, ROW_STRIDE, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX));
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows));
     }
 }
 
@@ -142,18 +154,11 @@ static void BM_UC1_count_matching_rows_abstract_specialized_exec(benchmark::Stat
 // ============================================================================
 
 static void BM_UC1_multi_predicate_low_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    // Unspecialized baseline: use a one-time specialized object but measure exec each iteration.
-    // The "unspecialized" here represents the cost of calling count_matching_rows twice
-    // (two-column predicate equivalent without specialization).
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t chunk = std::min(rem, (int64_t)N_ROWS_MAX);
-            total += count_matching_rows(g_rows.data(), chunk, ROW_STRIDE, COL_OFFSET, 0.5)
-                   + count_matching_rows(g_rows.data(), chunk, ROW_STRIDE, COL_OFFSET_B, 0.5);
-        }
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            multi_predicate_count_unspecialized(g_rows.data(), n_rows,
+                ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5));
     }
 }
 
@@ -165,13 +170,10 @@ static void BM_UC1_multi_predicate_low_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC1_multi_predicate_low_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_multi_predicate_low_specialized(ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX));
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows));
     }
 }
 
@@ -180,15 +182,11 @@ static void BM_UC1_multi_predicate_low_specialized_exec(benchmark::State& state)
 // ============================================================================
 
 static void BM_UC1_multi_predicate_tradeoff_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t chunk = std::min(rem, (int64_t)N_ROWS_MAX);
-            total += count_matching_rows(g_rows.data(), chunk, ROW_STRIDE, COL_OFFSET, 0.5)
-                   + count_matching_rows(g_rows.data(), chunk, ROW_STRIDE, COL_OFFSET_B, 0.5);
-        }
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            multi_predicate_count_unspecialized(g_rows.data(), n_rows,
+                ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5));
     }
 }
 
@@ -200,13 +198,10 @@ static void BM_UC1_multi_predicate_tradeoff_jit_overhead(benchmark::State& state
 }
 
 static void BM_UC1_multi_predicate_tradeoff_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_multi_predicate_tradeoff_specialized(ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX));
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows));
     }
 }
 
@@ -215,15 +210,11 @@ static void BM_UC1_multi_predicate_tradeoff_specialized_exec(benchmark::State& s
 // ============================================================================
 
 static void BM_UC1_multi_predicate_abstract_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t chunk = std::min(rem, (int64_t)N_ROWS_MAX);
-            total += count_matching_rows(g_rows.data(), chunk, ROW_STRIDE, COL_OFFSET, 0.5)
-                   + count_matching_rows(g_rows.data(), chunk, ROW_STRIDE, COL_OFFSET_B, 0.5);
-        }
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            multi_predicate_count_unspecialized(g_rows.data(), n_rows,
+                ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5));
     }
 }
 
@@ -235,13 +226,10 @@ static void BM_UC1_multi_predicate_abstract_jit_overhead(benchmark::State& state
 }
 
 static void BM_UC1_multi_predicate_abstract_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_multi_predicate_abstract_specialized(ROW_STRIDE, COL_OFFSET, COL_OFFSET_B, 0.5, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX));
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows));
     }
 }
 
@@ -250,14 +238,11 @@ static void BM_UC1_multi_predicate_abstract_specialized_exec(benchmark::State& s
 // ============================================================================
 
 static void BM_UC1_column_scan_low_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += count_matching_rows(g_rows.data(),
-                                          std::min(rem, (int64_t)N_ROWS_MAX),
-                                          ROW_STRIDE, COL_OFFSET, 0.5);
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            column_scan_unspecialized(g_rows.data(), n_rows,
+                ROW_STRIDE, COL_OFFSET, 0.5, g_out_indices.data()));
     }
 }
 
@@ -269,14 +254,10 @@ static void BM_UC1_column_scan_low_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC1_column_scan_low_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_column_scan_low_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX),
-                          g_out_indices.data());
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows, g_out_indices.data()));
     }
 }
 
@@ -285,14 +266,11 @@ static void BM_UC1_column_scan_low_specialized_exec(benchmark::State& state) {
 // ============================================================================
 
 static void BM_UC1_column_scan_tradeoff_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += count_matching_rows(g_rows.data(),
-                                          std::min(rem, (int64_t)N_ROWS_MAX),
-                                          ROW_STRIDE, COL_OFFSET, 0.5);
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            column_scan_unspecialized(g_rows.data(), n_rows,
+                ROW_STRIDE, COL_OFFSET, 0.5, g_out_indices.data()));
     }
 }
 
@@ -304,14 +282,10 @@ static void BM_UC1_column_scan_tradeoff_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC1_column_scan_tradeoff_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_column_scan_tradeoff_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX),
-                          g_out_indices.data());
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows, g_out_indices.data()));
     }
 }
 
@@ -320,14 +294,11 @@ static void BM_UC1_column_scan_tradeoff_specialized_exec(benchmark::State& state
 // ============================================================================
 
 static void BM_UC1_column_scan_abstract_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += count_matching_rows(g_rows.data(),
-                                          std::min(rem, (int64_t)N_ROWS_MAX),
-                                          ROW_STRIDE, COL_OFFSET, 0.5);
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(
+            column_scan_unspecialized(g_rows.data(), n_rows,
+                ROW_STRIDE, COL_OFFSET, 0.5, g_out_indices.data()));
     }
 }
 
@@ -339,14 +310,10 @@ static void BM_UC1_column_scan_abstract_jit_overhead(benchmark::State& state) {
 }
 
 static void BM_UC1_column_scan_abstract_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     auto spec = create_column_scan_abstract_specialized(ROW_STRIDE, COL_OFFSET, 0.5);
     for (auto _ : state) {
-        int64_t total = 0;
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            total += spec(g_rows.data(), std::min(rem, (int64_t)N_ROWS_MAX),
-                          g_out_indices.data());
-        benchmark::DoNotOptimize(total);
+        benchmark::DoNotOptimize(spec(g_rows.data(), n_rows, g_out_indices.data()));
     }
 }
 
@@ -590,28 +557,29 @@ BENCHMARK(BM_UC1_column_scan_abstract_specialized_exec)->Name("BM_g:uc1_sql;n:co
 // ============================================================================
 
 #ifdef ALL_BENCHMARKS_BUILD
-#define UC1_SIZES Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000)
-UC1_BENCHMARK_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_CMR_TRADEOFF(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_CMR_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_MP_LOW(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_MP_TRADEOFF(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_MP_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_CS_LOW(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_CS_TRADEOFF(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_BENCHMARK_CS_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
-UC1_JIT_ANALYSIS_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
+#define UC1_SIZES Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000)
+UC1_BENCHMARK_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_CMR_TRADEOFF(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_CMR_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_MP_LOW(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_MP_TRADEOFF(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_MP_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_CS_LOW(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_CS_TRADEOFF(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_BENCHMARK_CS_ABSTRACT(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
+UC1_JIT_ANALYSIS_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(64'000'000))
 #else
-UC1_BENCHMARK_SPEC(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_CMR_TRADEOFF(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_CMR_ABSTRACT(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_MP_LOW(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_MP_TRADEOFF(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_MP_ABSTRACT(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_CS_LOW(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_CS_TRADEOFF(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_BENCHMARK_CS_ABSTRACT(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
-UC1_JIT_ANALYSIS_SPEC(Arg(65'000'000LL), Arg(640'000'000LL), Arg(6'400'000'000LL), Arg(38'500'000'000LL))
+// Single-call batch: SMALL=~1ms, MEDIUM=~10ms; LARGE/EXTRALARGE cap at buffer.
+UC1_BENCHMARK_SPEC(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_CMR_TRADEOFF(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_CMR_ABSTRACT(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_MP_LOW(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_MP_TRADEOFF(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_MP_ABSTRACT(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_CS_LOW(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_CS_TRADEOFF(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_BENCHMARK_CS_ABSTRACT(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
+UC1_JIT_ANALYSIS_SPEC(Arg(6'400'000LL), Arg(64'000'000LL), Arg(64'000'000LL), Arg(64'000'000LL))
 #endif
 
 #ifndef ALL_BENCHMARKS_BUILD

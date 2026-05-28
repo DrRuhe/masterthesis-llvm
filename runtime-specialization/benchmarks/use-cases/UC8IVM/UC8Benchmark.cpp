@@ -10,9 +10,9 @@ static constexpr int     ROW_STRIDE    = 24;
 static constexpr int     GROUP_COL     = 4;
 static constexpr int     VALUE_COL     = 8;
 static constexpr int     N_BUCKETS     = 1024;
-// Fixed buffer: 50M rows × 24 B = 1200 MB.  For sizes larger than N_ROWS_MAX
-// the benchmarks loop through this buffer multiple times (streaming pattern).
-static constexpr int64_t N_ROWS_MAX    = 50'000'000;
+// Buffer = 1 GB / 24 B/row = 42 M rows.  Each benchmark calls the kernel
+// exactly once per iteration with min(state.range(0), N_ROWS_MAX) rows.
+static constexpr int64_t N_ROWS_MAX    = 42'000'000;
 
 // Global dataset: N_ROWS_MAX rows of ROW_STRIDE bytes.
 // Benchmarks pass size-specific n_rows via state.range(0).
@@ -45,21 +45,15 @@ static void teardown_uc8(const benchmark::State&) {
 }
 
 // ============================================================================
-// apply_row_delta — low
+// apply_row_delta — low (batch: single call per iteration)
 // ============================================================================
 
 static void BM_UC8_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i) {
-                apply_row_delta(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
-                                g_buckets.data(),
-                                N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
-            }
-        }
+        apply_row_delta_batch(g_deltas.data(), n_rows, g_buckets.data(),
+                              N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
@@ -67,217 +61,176 @@ static void BM_UC8_unspecialized(benchmark::State& state) {
 static void BM_UC8_jit_overhead(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            create_ivm_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
+            create_apply_row_delta_batch_low_specialized(
+                N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
     }
 }
 
 static void BM_UC8_specialized_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_ivm_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_apply_row_delta_batch_low_specialized(
+        n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i) {
-                spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
-                     g_buckets.data());
-            }
-        }
+        spec(g_deltas.data(), g_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
 
 // ============================================================================
-// apply_row_delta — tradeoff
+// apply_row_delta — tradeoff (batch)
 // ============================================================================
 
 static void BM_UC8_apply_row_delta_tradeoff_jit(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            create_apply_row_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
+            create_apply_row_delta_batch_tradeoff_specialized(
+                N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
     }
 }
 
 static void BM_UC8_apply_row_delta_tradeoff_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_apply_row_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_apply_row_delta_batch_tradeoff_specialized(
+        n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i)
-                spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE, g_buckets.data());
-        }
+        spec(g_deltas.data(), g_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
 
 // ============================================================================
-// apply_row_delta — abstract
+// apply_row_delta — abstract (batch)
 // ============================================================================
 
 static void BM_UC8_apply_row_delta_abstract_jit(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            create_apply_row_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
+            create_apply_row_delta_batch_abstract_specialized(
+                N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
     }
 }
 
 static void BM_UC8_apply_row_delta_abstract_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_apply_row_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_apply_row_delta_batch_abstract_specialized(
+        n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i)
-                spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE, g_buckets.data());
-        }
+        spec(g_deltas.data(), g_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
 
 // ============================================================================
-// multi_agg_delta — unspecialized helper
+// multi_agg_delta — unspecialized (batch: single call per iteration)
 // ============================================================================
 
-static void run_multi_agg_unspecialized(int64_t n_total) {
-    std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-    std::fill(g_count_buckets.begin(), g_count_buckets.end(), 0.0);
-    for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-        int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-        for (int64_t i = 0; i < batch; ++i) {
-            const uint8_t* row = g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE;
-            int32_t gk;
-            __builtin_memcpy(&gk, row + GROUP_COL, sizeof(int32_t));
-            int bucket = ((gk % N_BUCKETS) + N_BUCKETS) % N_BUCKETS;
-            double val;
-            __builtin_memcpy(&val, row + VALUE_COL, sizeof(double));
-            g_buckets[bucket]       += val;
-            g_count_buckets[bucket] += 1.0;
-        }
-    }
-}
-
 static void BM_UC8_multi_agg_delta_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
-        run_multi_agg_unspecialized(n_total);
+        std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
+        std::fill(g_count_buckets.begin(), g_count_buckets.end(), 0.0);
+        multi_agg_delta_batch(g_deltas.data(), n_rows,
+                              g_buckets.data(), g_count_buckets.data(),
+                              N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
         benchmark::DoNotOptimize(g_buckets.data());
         benchmark::DoNotOptimize(g_count_buckets.data());
     }
 }
 
 // ============================================================================
-// multi_agg_delta — low
+// multi_agg_delta — low (batch)
 // ============================================================================
 
 static void BM_UC8_multi_agg_delta_low_jit(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            create_multi_agg_delta_low_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
+            create_multi_agg_delta_batch_low_specialized(
+                N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
     }
 }
 
 static void BM_UC8_multi_agg_delta_low_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_multi_agg_delta_low_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_multi_agg_delta_batch_low_specialized(
+        n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
         std::fill(g_count_buckets.begin(), g_count_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i)
-                spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
-                     g_buckets.data(), g_count_buckets.data());
-        }
+        spec(g_deltas.data(), g_buckets.data(), g_count_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
         benchmark::DoNotOptimize(g_count_buckets.data());
     }
 }
 
 // ============================================================================
-// multi_agg_delta — tradeoff
+// multi_agg_delta — tradeoff (batch)
 // ============================================================================
 
 static void BM_UC8_multi_agg_delta_tradeoff_jit(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            create_multi_agg_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
+            create_multi_agg_delta_batch_tradeoff_specialized(
+                N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
     }
 }
 
 static void BM_UC8_multi_agg_delta_tradeoff_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_multi_agg_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_multi_agg_delta_batch_tradeoff_specialized(
+        n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
         std::fill(g_count_buckets.begin(), g_count_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i)
-                spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
-                     g_buckets.data(), g_count_buckets.data());
-        }
+        spec(g_deltas.data(), g_buckets.data(), g_count_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
         benchmark::DoNotOptimize(g_count_buckets.data());
     }
 }
 
 // ============================================================================
-// multi_agg_delta — abstract
+// multi_agg_delta — abstract (batch)
 // ============================================================================
 
 static void BM_UC8_multi_agg_delta_abstract_jit(benchmark::State& state) {
     for (auto _ : state) {
         benchmark::DoNotOptimize(
-            create_multi_agg_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
+            create_multi_agg_delta_batch_abstract_specialized(
+                N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE));
     }
 }
 
 static void BM_UC8_multi_agg_delta_abstract_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_multi_agg_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_multi_agg_delta_batch_abstract_specialized(
+        n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
         std::fill(g_count_buckets.begin(), g_count_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i)
-                spec(g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE,
-                     g_buckets.data(), g_count_buckets.data());
-        }
+        spec(g_deltas.data(), g_buckets.data(), g_count_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
         benchmark::DoNotOptimize(g_count_buckets.data());
     }
 }
 
 // ============================================================================
-// batch_delta — unspecialized
+// batch_delta — unspecialized (single call per iteration)
 // ============================================================================
 
 static void BM_UC8_batch_delta_unspecialized(benchmark::State& state) {
-    int64_t n_total = state.range(0);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX) {
-            int64_t batch = std::min(rem, (int64_t)N_ROWS_MAX);
-            for (int64_t i = 0; i < batch; ++i) {
-                const uint8_t* row = g_deltas.data() + static_cast<size_t>(i) * ROW_STRIDE;
-                int32_t gk;
-                __builtin_memcpy(&gk, row + GROUP_COL, sizeof(int32_t));
-                int bucket = ((gk % N_BUCKETS) + N_BUCKETS) % N_BUCKETS;
-                double val;
-                __builtin_memcpy(&val, row + VALUE_COL, sizeof(double));
-                g_buckets[bucket] += val;
-            }
-        }
+        apply_row_delta_batch(g_deltas.data(), n_rows, g_buckets.data(),
+                              N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
 
 // ============================================================================
-// batch_delta — low
+// batch_delta — low (single call per iteration)
 // ============================================================================
 
 static void BM_UC8_batch_delta_low_jit(benchmark::State& state) {
@@ -288,18 +241,17 @@ static void BM_UC8_batch_delta_low_jit(benchmark::State& state) {
 }
 
 static void BM_UC8_batch_delta_low_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_batch_delta_low_specialized(N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_batch_delta_low_specialized(n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            spec(g_deltas.data(), g_buckets.data());
+        spec(g_deltas.data(), g_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
 
 // ============================================================================
-// batch_delta — tradeoff
+// batch_delta — tradeoff (single call per iteration)
 // ============================================================================
 
 static void BM_UC8_batch_delta_tradeoff_jit(benchmark::State& state) {
@@ -310,18 +262,17 @@ static void BM_UC8_batch_delta_tradeoff_jit(benchmark::State& state) {
 }
 
 static void BM_UC8_batch_delta_tradeoff_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_batch_delta_tradeoff_specialized(N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_batch_delta_tradeoff_specialized(n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            spec(g_deltas.data(), g_buckets.data());
+        spec(g_deltas.data(), g_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
 
 // ============================================================================
-// batch_delta — abstract
+// batch_delta — abstract (single call per iteration)
 // ============================================================================
 
 static void BM_UC8_batch_delta_abstract_jit(benchmark::State& state) {
@@ -332,12 +283,11 @@ static void BM_UC8_batch_delta_abstract_jit(benchmark::State& state) {
 }
 
 static void BM_UC8_batch_delta_abstract_exec(benchmark::State& state) {
-    int64_t n_total = state.range(0);
-    auto spec = create_batch_delta_abstract_specialized(N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    int64_t n_rows = std::min(state.range(0), (int64_t)N_ROWS_MAX);
+    auto spec = create_batch_delta_abstract_specialized(n_rows, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     for (auto _ : state) {
         std::fill(g_buckets.begin(), g_buckets.end(), 0.0);
-        for (int64_t rem = n_total; rem > 0; rem -= N_ROWS_MAX)
-            spec(g_deltas.data(), g_buckets.data());
+        spec(g_deltas.data(), g_buckets.data());
         benchmark::DoNotOptimize(g_buckets.data());
     }
 }
@@ -349,37 +299,43 @@ static void BM_UC8_batch_delta_abstract_exec(benchmark::State& state) {
 
 static void BM_UC8_apply_row_delta_low_jit_analysis(benchmark::State& state) {
     clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
-        return create_ivm_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+        return create_apply_row_delta_batch_low_specialized(
+            N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     });
 }
 
 static void BM_UC8_apply_row_delta_tradeoff_jit_analysis(benchmark::State& state) {
     clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
-        return create_apply_row_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+        return create_apply_row_delta_batch_tradeoff_specialized(
+            N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     });
 }
 
 static void BM_UC8_apply_row_delta_abstract_jit_analysis(benchmark::State& state) {
     clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
-        return create_apply_row_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+        return create_apply_row_delta_batch_abstract_specialized(
+            N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     });
 }
 
 static void BM_UC8_multi_agg_delta_low_jit_analysis(benchmark::State& state) {
     clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
-        return create_multi_agg_delta_low_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+        return create_multi_agg_delta_batch_low_specialized(
+            N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     });
 }
 
 static void BM_UC8_multi_agg_delta_tradeoff_jit_analysis(benchmark::State& state) {
     clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
-        return create_multi_agg_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+        return create_multi_agg_delta_batch_tradeoff_specialized(
+            N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     });
 }
 
 static void BM_UC8_multi_agg_delta_abstract_jit_analysis(benchmark::State& state) {
     clangRuntimeSpecializer::benchmarkLambdaJITAnalysis(state, [&] {
-        return create_multi_agg_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+        return create_multi_agg_delta_batch_abstract_specialized(
+            N_ROWS_MAX, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     });
 }
 
@@ -557,27 +513,28 @@ UC8_BENCHMARK_SPEC(
     Arg(1'000'000),
     Arg(10'000'000),
     Arg(30'000'000),
-    Arg(50'000'000)
+    Arg(42'000'000)
 )
-UC8_JIT_ANALYSIS_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(50'000'000))
+UC8_JIT_ANALYSIS_SPEC(Arg(1'000'000), Arg(10'000'000), Arg(30'000'000), Arg(42'000'000))
 #else
+// Single-call batch: SMALL=~1ms, MEDIUM=~10ms; LARGE/EXTRALARGE cap at buffer.
 UC8_BENCHMARK_SPEC(
-    Arg(43'000'000LL),
-    Arg(430'000'000LL),
-    Arg(4'300'000'000LL),
-    Arg(26'000'000'000LL)
+    Arg(4'200'000LL),
+    Arg(42'000'000LL),
+    Arg(42'000'000LL),
+    Arg(42'000'000LL)
 )
-UC8_JIT_ANALYSIS_SPEC(Arg(43'000'000LL), Arg(430'000'000LL), Arg(4'300'000'000LL), Arg(26'000'000'000LL))
+UC8_JIT_ANALYSIS_SPEC(Arg(4'200'000LL), Arg(42'000'000LL), Arg(42'000'000LL), Arg(42'000'000LL))
 #endif
 
 #ifndef ALL_BENCHMARKS_BUILD
 int main(int argc, char** argv) {
-    validate_ivm_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
-    validate_apply_row_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
-    validate_apply_row_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
-    validate_multi_agg_delta_low_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
-    validate_multi_agg_delta_tradeoff_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
-    validate_multi_agg_delta_abstract_specialized(N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    validate_apply_row_delta_batch_low_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    validate_apply_row_delta_batch_tradeoff_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    validate_apply_row_delta_batch_abstract_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    validate_multi_agg_delta_batch_low_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    validate_multi_agg_delta_batch_tradeoff_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
+    validate_multi_agg_delta_batch_abstract_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     validate_batch_delta_low_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     validate_batch_delta_tradeoff_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
     validate_batch_delta_abstract_specialized(100, N_BUCKETS, GROUP_COL, VALUE_COL, ROW_STRIDE);
