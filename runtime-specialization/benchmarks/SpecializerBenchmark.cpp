@@ -20,7 +20,7 @@ extern "C" void BM_jit_overhead_____mypow(benchmark::State& state) {
     std::make_tuple(x),
         std::make_tuple(x));
 }
-BENCHMARK(BM_jit_overhead_____mypow)->Name("BM_g:synthetic;n:mypow;t:jit_overhead;")->Range(1, 2<<6);
+BENCHMARK(BM_jit_overhead_____mypow)->Name("BM_g:synthetic;n:mypow;t:jit_overhead;")->Range(1, 2<<6)->Iterations(1)->UseManualTime();
 
 extern "C" void BM_specialized_exec_mypow(benchmark::State& state) {
     int x = state.range(0);
@@ -47,7 +47,7 @@ void BM_jit_overhead_____config_count(benchmark::State& state) {
         std::make_tuple(&g_config, n),
         std::make_tuple(&g_config, n));
 }
-BENCHMARK(BM_jit_overhead_____config_count)->Name("BM_g:synthetic;n:config_count;t:jit_overhead;")->Range(64, 2<<10)->MinWarmUpTime(1.0);
+BENCHMARK(BM_jit_overhead_____config_count)->Name("BM_g:synthetic;n:config_count;t:jit_overhead;")->Range(64, 2<<10)->Iterations(1)->UseManualTime();
 
 void BM_specialized_exec_config_count(benchmark::State& state) {
     int n = state.range(0);
@@ -76,7 +76,7 @@ void BM_jit_overhead_____method_add(benchmark::State& state) {
         benchmark::DoNotOptimize(RS->specializeLambda<int>(lambda));
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
 }
-BENCHMARK(BM_jit_overhead_____method_add)->Name("BM_g:synthetic;n:method_add;t:jit_overhead;");
+BENCHMARK(BM_jit_overhead_____method_add)->Name("BM_g:synthetic;n:method_add;t:jit_overhead;")->Iterations(1)->UseManualTime();
 
 void BM_specialized_exec_method_add(benchmark::State& state) {
     namespace CRS = clangRuntimeSpecializer;

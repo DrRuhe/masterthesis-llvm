@@ -122,7 +122,7 @@ BENCHMARK(BM_unspecialized_single_filter)->Name("BM_g:db_operators;n:single_filt
 void BM_jit_overhead_single_filter(benchmark::State& state) {
     phaseJITOverhead(state, &g_single_filter);
 }
-BENCHMARK(BM_jit_overhead_single_filter)->Name("BM_g:db_operators;n:single_filter;t:jit_overhead;");
+BENCHMARK(BM_jit_overhead_single_filter)->Name("BM_g:db_operators;n:single_filter;t:jit_overhead;")->Iterations(1)->UseManualTime();
 
 void BM_specialized_exec_single_filter(benchmark::State& state) {
     phaseSpecializedExec(state, &g_single_filter);
@@ -157,7 +157,7 @@ BENCHMARK(BM_unspecialized_chained_filter)->Name("BM_g:db_operators;n:chained_fi
 void BM_jit_overhead_chained_filter(benchmark::State& state) {
     phaseJITOverhead(state, &g_outer_filter);
 }
-BENCHMARK(BM_jit_overhead_chained_filter)->Name("BM_g:db_operators;n:chained_filter;t:jit_overhead;");
+BENCHMARK(BM_jit_overhead_chained_filter)->Name("BM_g:db_operators;n:chained_filter;t:jit_overhead;")->Iterations(1)->UseManualTime();
 
 void BM_specialized_exec_chained_filter(benchmark::State& state) {
     phaseSpecializedExec(state, &g_outer_filter);

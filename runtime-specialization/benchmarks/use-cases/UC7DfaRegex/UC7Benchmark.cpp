@@ -392,10 +392,10 @@ BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;
 BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:unspecialized;")->LARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_UNSPE)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:jit_overhead;")->SMALL->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:jit_overhead;")->LARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
-BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:jit_overhead;")->SMALL->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:jit_overhead;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:jit_overhead;")->LARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
+BENCHMARK(BM_JIT)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:SMALL;t:specialized_exec;")->SMALL->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \
 BENCHMARK(BM_EXEC)->Name("BM_g:uc7_dfa;n:" VARIANT ";a:" ABSTRACTION ";s:LARGE;t:specialized_exec;")->LARGE->Setup(setup_uc7)->Teardown(teardown_uc7)->Unit(benchmark::kMillisecond); \

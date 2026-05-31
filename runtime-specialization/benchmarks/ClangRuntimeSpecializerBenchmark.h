@@ -65,6 +65,8 @@ void benchmarkUnspecialized(
 }
 
 // Phase 2: Measure JIT compilation overhead only.
+// Register with: ->Iterations(1)->UseManualTime()
+// Measures only JIT compilation time; dylib teardown happens after the timed region.
 template <class Fn, class Tuple>
 __attribute__((always_inline))
 void benchmarkJITOverhead(
@@ -85,9 +87,14 @@ void benchmarkJITOverhead(
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
-        benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        auto SpecFn = std::apply([&](auto&&... A) {
             return RS->template specializeOnly<R>(F, opts, std::forward<decltype(A)>(A)...);
-        }, specArgs));
+        }, specArgs);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        benchmark::DoNotOptimize(SpecFn);
+        // Report only the compile time; SpecFn destructs (munmap) after SetIterationTime.
+        state.SetIterationTime(std::chrono::duration<double>(t1 - t0).count());
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
     auto txStats = ClangRuntimeSpecializer::getLastTransformStats();

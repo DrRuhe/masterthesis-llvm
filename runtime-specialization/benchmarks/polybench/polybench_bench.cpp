@@ -1011,11 +1011,11 @@ BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:unsp
 BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:unspecialized;")->MEDIUM->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
 BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:unspecialized;")->LARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
 BENCHMARK(BM_unspecialized____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:unspecialized;")->EXTRALARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_overhead;")->MINI->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_overhead;")->SMALL->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_overhead;")->MEDIUM->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_overhead;")->LARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
-BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:jit_overhead;")->MINI->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:jit_overhead;")->SMALL->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:jit_overhead;")->MEDIUM->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:LARGE;t:jit_overhead;")->LARGE->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
+BENCHMARK(BM_jit_overhead_____##K)->Name("BM_g:polybench;n:" #K ";s:EXTRALARGE;t:jit_overhead;")->EXTRALARGE->Iterations(1)->UseManualTime()->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
 BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MINI;t:specialized_exec;")->MINI->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
 BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:SMALL;t:specialized_exec;")->SMALL->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
 BENCHMARK(BM_specialized_exec_##K)->Name("BM_g:polybench;n:" #K ";s:MEDIUM;t:specialized_exec;")->MEDIUM->Setup(K_SETUP)->Teardown(K_TEARDOWN); \
