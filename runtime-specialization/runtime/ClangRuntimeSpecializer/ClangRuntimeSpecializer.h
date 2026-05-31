@@ -699,7 +699,7 @@ namespace clangRuntimeSpecializer {
     std::vector<std::unique_ptr<llvm::Module>> BlobModules;
     std::unordered_map<std::string, size_t> FuncToBlobIdx;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
-    uint64_t GlobalSpecializationCount = 0;
+    mutable uint64_t GlobalSpecializationCount = 0;
     Options CurrentOptions = Options::Default();  // default options used by specializeOnly() / callSpecialized()
     Options CurrentCallOptions;  // per-invocation options set by specializeOnlyImpl() before JIT
     std::vector<std::unique_ptr<char[]>> SerializationBuffers;
@@ -892,7 +892,10 @@ namespace clangRuntimeSpecializer {
       llvm::Value* serializeArgumentToIR(llvm::IRBuilder<>& builder, T&& value) {
           using Decayed = std::decay_t<T>;
           // TODO implement proper serialization logic for all sorts of types.
-          if constexpr (std::is_integral_v<Decayed> && !std::is_same_v<Decayed, bool>) {
+          if constexpr (std::is_same_v<Decayed, bool>) {
+              log(LogLevel::Debug, "Serializing value of type i1 (bool)");
+              return llvm::ConstantInt::get(llvm::Type::getInt1Ty(builder.getContext()), value ? 1 : 0);
+          } else if constexpr (std::is_integral_v<Decayed>) {
               log(LogLevel::Debug, (llvm::Twine("Serializing value of type i") + llvm::Twine(sizeof(Decayed) * 8)).str());
               llvm::Type* Ty = llvm::Type::getIntNTy(builder.getContext(),
                                                     static_cast<unsigned>(sizeof(Decayed) * 8));

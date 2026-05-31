@@ -682,7 +682,7 @@ namespace clangRuntimeSpecializer {
   }
 
   std::string ClangRuntimeSpecializer::createUniqueWrapperName() const {
-    return "specialized_wrapper_" + std::to_string(const_cast<ClangRuntimeSpecializer*>(this)->GlobalSpecializationCount++) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
+    return "specialized_wrapper_" + std::to_string(GlobalSpecializationCount++) + "_" + std::to_string(reinterpret_cast<uintptr_t>(this));
   }
 
   void ClangRuntimeSpecializer::prepareModuleForJIT(llvm::Module& M, const std::string& WrapperName) const {
