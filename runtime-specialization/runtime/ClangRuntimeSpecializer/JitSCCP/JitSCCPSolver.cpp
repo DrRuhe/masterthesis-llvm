@@ -1808,17 +1808,38 @@ void JitSCCPInstVisitor::visitLoadInst(LoadInst &I) {
       return (void)markConstant(IV, &I, C);
   }
 
-  // JIT-SCCP extension: !invariant.load host-memory resolution.
+  // JIT-SCCP extension: host-memory resolution for !invariant.load loads.
+  //
   // Only folds loads that StaticMutabilityAnalysis proved are never written to
-  // in the IR (annotated with !invariant.load before this pass runs).  Folding
-  // loads from fields that may be written to by the specialized function would
-  // bake in the pre-execution host value and produce wrong results.
+  // in the IR (annotated !invariant.load before this pass runs).  This guards
+  // both resolution paths below: folding a field the function also writes to
+  // would bake in the pre-execution host value, producing wrong results.
   if (I.hasMetadata(LLVMContext::MD_invariant_load) && isBlockExecutable(I.getParent())) {
     static thread_local llvm::DenseMap<uintptr_t, bool> PageCache;
+
+    // Path A: pointer is a literal inttoptr constant in the IR (direct wrapper
+    // argument or field visible without inter-procedural propagation).
     auto MaybeConst = clangRuntimeSpecializer::resolveInvariantLoadToConstant(I, PageCache);
     if (MaybeConst.has_value() && *MaybeConst) {
       markConstant(IV, &I, *MaybeConst);
       return;
+    }
+
+    // Path B: pointer was propagated as a constant through a callee boundary by
+    // the SCCP solver (e.g. a struct pointer passed to a virtual-dispatch
+    // function whose argument lattice value is the wrapper's inttoptr constant).
+    // resolveInvariantLoadToConstant cannot see lattice values, so we extract
+    // the constant from the lattice and use resolveConstantPtrLoad instead.
+    if (JitSCCPSolver::isConstant(PtrVal)) {
+      if (auto *C = dyn_cast_or_null<llvm::Constant>(
+              getConstant(PtrVal, I.getOperand(0)->getType()))) {
+        auto MaybeConst2 = clangRuntimeSpecializer::resolveConstantPtrLoad(
+            C, I.getType(), DL, I.getContext(), PageCache);
+        if (MaybeConst2.has_value() && *MaybeConst2) {
+          markConstant(IV, &I, *MaybeConst2);
+          return;
+        }
+      }
     }
   }
 

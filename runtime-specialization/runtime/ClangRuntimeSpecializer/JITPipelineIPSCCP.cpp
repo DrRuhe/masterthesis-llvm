@@ -75,17 +75,16 @@ llvm::Error runIPSCCPPipeline(PipelineRunArgs& Args) {
     // than loads from alloca addresses it cannot resolve at JIT compile time.
     MPM.addPass(llvm::createModuleToFunctionPassAdaptor(
         llvm::SROAPass(llvm::SROAOptions::ModifyCFG)));
-    // Pre-annotate and fold invariant loads before the IPSCCP solver runs.
+    // Annotate invariant loads before the IPSCCP solver runs.
     // StaticMutabilityAnalysis marks loads from fields that are never written to
-    // in the IR as !invariant.load.  InvariantLoadToConstantPass then reads those
-    // fields from host memory and replaces them with IR constants.  This ensures
-    // JitIPSCCPPass sees actual IR constants rather than relying on the solver to
-    // speculatively read host memory for any constant-pointer load — which would
-    // be unsound for fields that the function also writes to.
+    // in the IR as !invariant.load.  JitIPSCCPPass then folds those annotated
+    // loads from host memory — both for direct inttoptr constants (path A) and
+    // for pointers propagated as constants across callee boundaries (path B).
+    // The !invariant.load gate on both paths ensures only provably-non-mutated
+    // fields are folded; fields the function also stores to remain unfoldable.
     if (!Args.IsLargeModule) {
       llvm::FunctionPassManager PreFPM;
       PreFPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
-      PreFPM.addPass(InvariantLoadToConstantPass());
       MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PreFPM)));
     }
     MPM.addPass(JitIPSCCPPass(Opts.P2FuncSpec));
