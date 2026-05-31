@@ -311,6 +311,14 @@ configs = [
         'CRS_P2_FUNC_SPEC_ITERS': '5',
         'CRS_P2_FORCE_SPEC': '1',
     }},
+    # P2 + O3 final: the confirmed optimal config from uc_optim_iter3_20260531.
+    {'name': 'pipeline_2_o3_final', 'env': {
+        'CRS_DEFAULT_PIPELINE': '2',
+        'CRS_DEFAULT_O3_FINAL': '1',
+        'CRS_P2_FORCE_SPEC': '1',
+        'CRS_P2_SPEC_ON_ADDR': '1',
+        'CRS_P2_SPEC_LITERAL': '1',
+    }},
 ]
 out_path = report_dir / "configs" / "ablation_uc.json"
 out_path.parent.mkdir(parents=True, exist_ok=True)
