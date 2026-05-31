@@ -618,8 +618,14 @@ namespace clangRuntimeSpecializer {
 
     // Build funcName -> blob index map from the pre-registered name lists.
     for (size_t i = 0; i < g_registered_blobs.size(); ++i) {
-      for (const auto& Name : g_registered_blobs[i].FuncNames)
-        Instance->FuncToBlobIdx[Name] = i;
+      for (const auto& Name : g_registered_blobs[i].FuncNames) {
+        auto [it, inserted] = Instance->FuncToBlobIdx.emplace(Name, i);
+        if (!inserted && it->second != i)
+          log(LogLevel::Warning, llvm::Twine("FuncToBlobIdx: name collision for '") + Name +
+              "' — blob " + llvm::Twine(it->second) + " overwritten by blob " + llvm::Twine(i) +
+              "; specializing this function will use the later-registered TU");
+        it->second = i;
+      }
     }
 
     {
