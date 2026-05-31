@@ -198,3 +198,115 @@ p2_min_func_size=50, p2_max_clones=10, p2_func_spec_iters=5
 SELECT * FROM v_optim_best_per_kernel WHERE study_name='uc_optim_iter3_20260531' ORDER BY kernel;
 SELECT * FROM v_optim_breakeven      WHERE study_name='uc_optim_iter3_20260531' ORDER BY kernel;
 ```
+
+---
+
+## 8. Specialization Failure Cases (RQ6 documentation)
+
+Three structural categories of specialization failure are identified. These are
+thesis-ready findings for RQ6 ("Where does specialization break down?").
+
+---
+
+### Case 1 — Benchmark Infrastructure Artifact: `count_matching_rows` (apparent JIT ~2300ms)
+
+**Symptom**: `count_matching_rows` reports ~2300ms JIT overhead in optimizer runs,
+giving a break-even of 25,000+ calls and only 1.01× exec speedup.
+
+**Root cause**: This is **not a property of the kernel**. The 2300ms is LLVM's
+one-time JIT startup cost (LLJIT creation, TargetMachine init, first IR parse,
+first codegen) paid by whichever kernel happens to run first in the binary.
+`count_matching_rows` is the first kernel registered in AllBenchmarks, so it
+always pays this cost in isolated optimizer runs (where the MEDIUM-only filter
+prevents earlier kernels from running first).
+
+**Evidence**: The same benchmark in a non-isolated run (SMALL → MEDIUM sequential)
+reports 53ms JIT (13 iterations). The MEDIUM JIT time is consistent with all other
+simple UC1 kernels (~40–60ms).
+
+**Fix**: Added `BM_jit_init_warmup` in `AllBenchmarks_main.cpp` (2026-05-31).
+The main function now calls `specializeOnly(mypow_bench, 2)` before
+`benchmark::Initialize()`, paying the startup cost once. All benchmarks — including
+count_matching_rows — subsequently report only the actual compilation cost.
+The warmup benchmark itself reports the startup cost as a measurement.
+
+**True JIT time after fix**: ~53ms (same as `column_scan`, `multi_predicate`).
+
+**True exec speedup**: 1.01× — this is the actual specialization result.
+
+---
+
+### Case 2 — Fundamentally Poor Specialization Candidate: `count_matching_rows` (exec)
+
+Even with the JIT artifact removed, `count_matching_rows` has only ~1.01× exec speedup.
+
+**Why specialization doesn't help**:
+The kernel is a single vectorized loop:
+```cpp
+for (int64_t i = 0; i < n_rows; ++i) {
+    double val = *(double*)(rows + i*row_stride + col_offset);
+    if (val > threshold) ++count;
+}
+```
+Specializing `row_stride`, `col_offset`, and `threshold` enables constant folding
+of address arithmetic and the comparison constant. But the static compiler with
+`-O3` already auto-vectorizes this loop using variable strides (via gather
+instructions or loop-invariant address computation). The vectorized code is already
+near-optimal; specialization adds no benefit beyond minor addressing simplification.
+
+**Is batching the fix?** No. The kernel is already a batch function — it processes
+all `n_rows` rows in a single call. There is no per-call dispatch overhead to
+eliminate. The problem is that the kernel is too simple for specialization to matter.
+
+**Thesis claim (RQ6, Case 2)**: "JIT specialization does not benefit kernels where
+the static compiler already achieves near-optimal code quality. For `count_matching_rows`,
+the single vectorizable loop with constant-foldable bounds yields only 1.01× speedup
+regardless of pipeline. The break-even call count (25,000+) makes specialization
+impractical for any realistic query plan."
+
+---
+
+### Case 3 — Marginal Candidates: `column_scan` (1.04×), `multi_predicate` (1.07×)
+
+These two kernels show small but consistent exec speedup under P2+O3.
+
+**`column_scan`**: Similar loop structure to `count_matching_rows` plus an output
+index array. P0 regressed this kernel badly (0.22×) because `InvariantLoadToConstantPass`
+materialized the threshold as a PC-relative address load in the JIT-compiled code,
+making each call fetch from cold JIT memory (~12ns). P2 fixes this regression by
+propagating the constant as a literal IR immediate, eliminating the memory load.
+Net result: 1.04× speedup — not a win, but not a regression either.
+
+**`multi_predicate`**: Two-column AND predicate; specializing both column offsets
+and both thresholds. Same PC-relative regression in P0 (0.32×). P2 fixes it (1.07×).
+The marginal speedup reflects that a two-condition loop still vectorizes well without
+specialization; constant folding eliminates some branching but the loop body is still
+dominated by memory bandwidth.
+
+**Thesis claim (RQ6, Case 3)**: "Kernels whose execution is dominated by memory
+bandwidth (scan-type loops) show marginal specialization benefit. The primary value of
+P2 for these kernels is avoiding P0's cache-cold constant-loading regression, not
+achieving meaningful speedup. The minimum viable specialization benefit threshold is
+approximately 1.1× exec speedup; below this, the JIT overhead is difficult to amortize."
+
+---
+
+### Case 4 — Dispatch-Overhead Failure (historical, now fixed): `apply_row_delta`, `batch_delta`, `multi_agg_delta`
+
+**Historical context (pre-batch-conversion, May 28 study)**:
+These UC8 kernels showed 0.20–0.63× speedup under P0 and 0.47–1.08× under P2+O3.
+Root cause: per-row calls to `callSpecialized` incurred 2–5ns indirect dispatch
+overhead per call. For kernels with 0.24–0.26ns unspecialized per-call duration,
+this overhead was 10–20× the computation.
+
+**Fix**: Converted to single-call batch kernels (commits `12cfe8097cfa`,
+`1098f5cca6ea`). Each kernel now processes the full dataset in one call.
+
+**Post-fix results (today's study)**: `apply_row_delta`, `batch_delta`,
+`multi_agg_delta` all achieve **2.38× speedup** with 3-call break-even.
+
+**Thesis claim (RQ6, Case 4)**: "Per-call indirect dispatch overhead (2–5 ns)
+makes specialization counter-productive for sub-microsecond kernels. The fix is
+architectural: redesign the call site to pass the full batch to one
+`callSpecialized` invocation, eliminating repeated dispatch overhead. After this
+redesign, kernels that were regressions become the strongest specialization wins."

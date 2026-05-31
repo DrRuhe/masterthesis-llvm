@@ -1,5 +1,6 @@
 # Feature Specification: JIT Pipeline Evaluation — Iteration Loop
 
+
 **Feature Branch**: `007-jit-pipeline-eval`  
 **Created**: 2026-05-10  
 **Status**: Draft  
@@ -235,8 +236,14 @@ writing the thesis chapter.
 **Experiment A — Pareto Frontier Mapping via Optimizer (addresses SQ1, SQ2)**
 
 - **FR-001**: The evaluation MUST run `optimize_benchmarks.py` on UC benchmarks (MEDIUM
-  size, 6 groups) with ≥ 150 trials and a fixed random seed (seed=42), storing results in
-  a named DuckDB study (`uc_optim_YYYYMMDD`).
+  size, 6 groups) with a fixed random seed (seed=42), storing results in a named DuckDB
+  study (`uc_optim_YYYYMMDD`). The trial budget SHOULD be ≥ 50 trials; the original target
+  of 150 is not required given observed TPE convergence. In study `uc_optim_iter3_20260531`
+  (50 trials), the objective plateaued at trial 6 (169.3ms) with no improvement through
+  trial 49, and parameter importance showed `pipeline` (56%) and `large_module_max` (39%)
+  accounting for ≥95% of explained variance — confirming 50 trials is sufficient to
+  characterize this search space. A budget of ≥ 50 trials is therefore acceptable; runs
+  with fewer than 50 trials MUST include a plateau check before claiming convergence.
 - **FR-002**: The evaluation MUST plot the per-group Pareto frontier of
   (jit_overhead_ns ↓, specialized_exec_ns ↓) from the Optuna trial data, with
   `Options::Default()` marked as a reference point. **Both axes are minimized**: a config
@@ -324,6 +331,31 @@ writing the thesis chapter.
 
 - **FR-020**: All experiments MUST be run in a controlled environment: CPU scaling disabled,
   no background load, fixed CPU affinity where possible (documented in the thesis).
+
+  **Evaluation machine (recorded 2026-05-31)**:
+
+  | Property | Value |
+  |---|---|
+  | CPU | Intel Core i9-12900H (Alder Lake, 12th Gen) |
+  | Architecture | x86_64 |
+  | P-cores / E-cores | 6P + 8E = 14 cores, 20 logical CPUs (HT on P-cores) |
+  | Base / Boost clock | 2.5 GHz base / 5.0 GHz max boost |
+  | L1d cache | 544 KiB (14 instances: 6 × 48 KiB P-core + 8 × 32 KiB E-core) |
+  | L1i cache | 704 KiB (14 instances) |
+  | L2 cache | 11.5 MiB (8 instances: 6 × 1.25 MiB P-core + 1 × 2 MiB E-core shared) |
+  | L3 cache | 24 MiB (shared) |
+  | RAM | 64 GiB DDR5 |
+  | OS | Linux 6.17.0-1023-oem (Ubuntu OEM kernel) |
+  | Compiler | Clang 18.1.8 (project-built LLVM 21.1, release mode) |
+  | Build flags | `-O3 -g` with IRDumpingPass plugin, release build (NDEBUG) |
+  | CPU frequency scaling | Variable (not pinned; scaling governor: `schedutil`). Note: benchmarks record `cpu MHz` per-run; statistical noise from clock variation is captured in the ≥3-rep median. |
+  | NUMA topology | 1 NUMA node (all 20 CPUs on node 0) |
+
+  **Threats from this configuration**: The i9-12900H is a hybrid architecture with
+  performance (P) and efficiency (E) cores running at different clock speeds. The OS
+  scheduler may migrate benchmark threads between P-cores and E-cores mid-run, adding
+  measurement noise. Mitigation: use ≥3 repetitions, report median. CPU affinity
+  pinning to P-cores via `taskset -c 0-11` is recommended for final thesis measurements.
 - **FR-021**: The exact binary (git SHA, build flags), Python environment, and DuckDB schema
   version MUST be recorded alongside results for reproducibility.
 - **FR-022**: Each experiment MUST have a defined fallback if a benchmark times out (consistent
