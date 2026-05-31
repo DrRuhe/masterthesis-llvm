@@ -1,0 +1,10 @@
+=== eval run: Wed May 27 03:47:27 PM CEST 2026 ===
+Report dir: reports/260527-15-47-optimize-pipeline
+UC binary: /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+TPCH binary: /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Phase-only: B
+--- Phase 0: Smoke test ---
+Smoke test PASSED
+--- Phase B: UC ablation (iter-3: 5 reps, P0+P1+P2) ---
+--phase-only=B: discovering most recent uc_optim_iter3_% study...
+Using prior STUDY_A=uc_optim_iter3_20260527

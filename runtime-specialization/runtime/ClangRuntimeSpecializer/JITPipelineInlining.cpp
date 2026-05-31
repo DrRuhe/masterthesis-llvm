@@ -109,14 +109,14 @@ llvm::Error runInliningPipeline(PipelineRunArgs& Args) {
     InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(
         StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()));
 
-    // 3d. Replace invariant loads with constants from host memory.
-    InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(
-        InvariantLoadToConstantPass()));
-
-    // Inline constant-arg call sites on small modules.
+    // Inline constant-arg call sites on small modules, then immediately resolve
+    // invariant loads: the lambda struct pointer (inttoptr i64 addr) is now visible
+    // in the wrapper body after inlining, so field loads tagged !invariant.load can
+    // be replaced with literal IR constants in the initial phase.
     if (!LargeModule) {
       InitialMPM.addPass(ConstantArgAlwaysInlinePass());
       InitialMPM.addPass(llvm::AlwaysInlinerPass(/*InsertLifetimeIntrinsics=*/true));
+      InitialMPM.addPass(llvm::createModuleToFunctionPassAdaptor(InvariantLoadToConstantPass()));
     }
     InitialMPM.run(M, MAM);
   }

@@ -1,0 +1,19 @@
+[
+  {
+    "name": "uc_workload_optimal",
+    "env": {
+      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "23",
+      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "1",
+      "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": "3",
+      "CRS_DEFAULT_EARLY_PRUNE": "1",
+      "CRS_DEFAULT_O3_FINAL": "1",
+      "CRS_DEFAULT_PIPELINE": "0",
+      "CRS_DEFAULT_P1_INLINE_THRESHOLD": "None",
+      "CRS_DEFAULT_P1_MAX_MODULE_GROWTH": "None",
+      "CRS_P2_MIN_FUNC_SIZE": "None",
+      "CRS_P2_MAX_CLONES": "None",
+      "CRS_P2_FUNC_SPEC_ITERS": "None",
+      "CRS_P2_FORCE_SPEC": "None"
+    }
+  }
+]

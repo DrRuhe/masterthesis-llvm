@@ -58,6 +58,8 @@ DEFAULT_SEARCH_SPACE = {
         {"name": "p2_max_clones",         "env_var": "CRS_P2_MAX_CLONES",                       "type": "int",        "min": 0,    "max": 20,    "depends_on_pipeline": 2},
         {"name": "p2_func_spec_iters",    "env_var": "CRS_P2_FUNC_SPEC_ITERS",                  "type": "int",        "min": 1,    "max": 10,    "depends_on_pipeline": 2},
         {"name": "p2_force_spec",         "env_var": "CRS_P2_FORCE_SPEC",                       "type": "categorical", "choices": [0, 1],        "depends_on_pipeline": 2},
+        {"name": "p2_spec_on_addr",       "env_var": "CRS_P2_SPEC_ON_ADDR",                     "type": "categorical", "choices": [0, 1],        "depends_on_pipeline": 2},
+        {"name": "p2_spec_literal",       "env_var": "CRS_P2_SPEC_LITERAL",                     "type": "categorical", "choices": [0, 1],        "depends_on_pipeline": 2},
     ],
 }
 
