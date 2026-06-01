@@ -181,6 +181,8 @@ param_env_map = {
     "p2_max_clones":        "CRS_P2_MAX_CLONES",
     "p2_func_spec_iters":   "CRS_P2_FUNC_SPEC_ITERS",
     "p2_force_spec":        "CRS_P2_FORCE_SPEC",
+    "p2_spec_on_addr":      "CRS_P2_SPEC_ON_ADDR",
+    "p2_spec_literal":      "CRS_P2_SPEC_LITERAL",
 }
 for k, v in params.items():
     if k in param_env_map:
