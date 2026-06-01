@@ -17,7 +17,9 @@
 #include <utility>
 #include <vector>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "llvm/IR/DebugInfoMetadata.h"
@@ -614,6 +616,30 @@ namespace clangRuntimeSpecializer {
 
       llvm::LLVMContext& Ctx = NewModule->getContext();
 
+      // Replace InternalLinkage globals with inttoptr constants pointing to the
+      // host's live memory (spec 017). Without this, the JIT uses a zero-initialized
+      // shadow copy: IPSCCP folds all loads to zero and collapses the function.
+      {
+        auto BlobIt = FuncToBlobIdx.find(std::string(TargetFunc->getName()));
+        if (BlobIt != FuncToBlobIdx.end() && BlobIt->second < BlobInternalGlobals.size()) {
+          auto &GlobalMap = BlobInternalGlobals[BlobIt->second];
+          if (!GlobalMap.empty()) {
+            auto *Int64Ty = llvm::Type::getInt64Ty(Ctx);
+            auto *PtrTy = llvm::PointerType::getUnqual(Ctx);
+            for (auto &GV : llvm::make_early_inc_range(NewModule->globals())) {
+              if (!GV.hasInternalLinkage()) continue;
+              auto It = GlobalMap.find(std::string(GV.getName()));
+              if (It == GlobalMap.end()) continue;
+              auto *Addr = llvm::ConstantInt::get(
+                  Int64Ty, reinterpret_cast<uint64_t>(It->second));
+              auto *PtrConst = llvm::ConstantExpr::getIntToPtr(Addr, PtrTy);
+              GV.replaceAllUsesWith(PtrConst);
+              GV.eraseFromParent();
+            }
+          }
+        }
+      }
+
       llvm::FunctionType* const FTy = llvm::FunctionType::get(TargetFuncInNewModule->getReturnType(), false);
 
       llvm::Function* const NewFunc = llvm::Function::Create(FTy, llvm::Function::ExternalLinkage, UniqueWrapperName, *NewModule);
@@ -698,6 +724,8 @@ namespace clangRuntimeSpecializer {
     // per-call CloneModule cost when multiple TUs are linked together.
     std::vector<std::unique_ptr<llvm::Module>> BlobModules;
     std::unordered_map<std::string, size_t> FuncToBlobIdx;
+    // Per-blob map from InternalLinkage global name to host address (spec 017).
+    std::vector<std::unordered_map<std::string, void*>> BlobInternalGlobals;
     std::unique_ptr<llvm::orc::LLJIT> JIT;
     mutable uint64_t GlobalSpecializationCount = 0;
     Options CurrentOptions = Options::Default();  // default options used by specializeOnly() / callSpecialized()

@@ -54,7 +54,8 @@ namespace {
   struct BlobEntry {
     const void* Ptr;
     std::uint64_t Len;
-    std::vector<std::string> FuncNames; // populated by v2 API; empty for v1 blobs
+    std::vector<std::string> FuncNames; // populated by v2/v3 API; empty for v1 blobs
+    std::vector<std::pair<std::string, void*>> InternalGlobals; // populated by v3 API
   };
   std::vector<BlobEntry> g_registered_blobs;
 } // namespace
@@ -66,7 +67,23 @@ extern "C" void clang_runtime_specializer_register_blob_v2(
   Names.reserve(nfuncs);
   for (std::uint64_t i = 0; i < nfuncs; ++i)
     Names.push_back(funcs[i]);
-  g_registered_blobs.push_back({ptr, len, std::move(Names)});
+  g_registered_blobs.push_back({ptr, len, std::move(Names), {}});
+}
+
+extern "C" void clang_runtime_specializer_register_blob_v3(
+    const void* ptr, std::uint64_t len,
+    const char* const* funcs, std::uint64_t nfuncs,
+    const char* const* global_names, const void* const* global_addrs,
+    std::uint64_t nglobals) {
+  std::vector<std::string> Names;
+  Names.reserve(nfuncs);
+  for (std::uint64_t i = 0; i < nfuncs; ++i)
+    Names.push_back(funcs[i]);
+  std::vector<std::pair<std::string, void*>> Globals;
+  Globals.reserve(nglobals);
+  for (std::uint64_t i = 0; i < nglobals; ++i)
+    Globals.emplace_back(global_names[i], const_cast<void*>(global_addrs[i]));
+  g_registered_blobs.push_back({ptr, len, std::move(Names), std::move(Globals)});
 }
 
 extern "C" {
@@ -626,6 +643,14 @@ namespace clangRuntimeSpecializer {
               "; specializing this function will use the later-registered TU");
         it->second = i;
       }
+    }
+
+    // Build per-blob InternalLinkage global address maps (spec 017).
+    Instance->BlobInternalGlobals.resize(g_registered_blobs.size());
+    for (size_t i = 0; i < g_registered_blobs.size(); ++i) {
+      auto &Map = Instance->BlobInternalGlobals[i];
+      for (auto &[Name, Addr] : g_registered_blobs[i].InternalGlobals)
+        Map.emplace(Name, Addr);
     }
 
     {

@@ -212,6 +212,23 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
 
   // === END PREPROCESSING ===
 
+  // Collect InternalLinkage data globals from the preprocessed clone (spec 017).
+  // These need host addresses at JIT time so specializeOnlyImpl can replace them
+  // with inttoptr constants pointing to live host memory instead of zero copies.
+  SmallVector<std::pair<std::string, GlobalVariable *>, 16> InternalGVs;
+  for (auto &GV : ClonedM->globals()) {
+    if (!GV.hasInternalLinkage() || GV.isDeclaration()) continue;
+    StringRef Name = GV.getName();
+    if (Name.starts_with("llvm.")) continue;
+    if (Name.starts_with("_ZTV") || Name.starts_with("_ZTI") || Name.starts_with("_ZTS"))
+      continue;
+    if (Name.starts_with("RuntimeSpecializeableIR") || Name.starts_with("__clangRS"))
+      continue;
+    GlobalVariable *OrigGV = M.getNamedGlobal(Name);
+    if (!OrigGV) continue;
+    InternalGVs.emplace_back(Name.str(), OrigGV);
+  }
+
   // 1) Serialize the preprocessed clone to LLVM bitcode in-memory.
   SmallVector<char, 0> BitcodeBuffer;
   raw_svector_ostream OS(BitcodeBuffer);
@@ -273,16 +290,59 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
     FuncsArrayPtr = ConstantPointerNull::get(PointerType::getUnqual(Ctx));
   }
 
+  // 4b) Build names+addrs arrays for InternalLinkage globals (spec 017).
+  //     The runtime uses these to replace JIT's zero copies with inttoptr constants.
+  auto *PtrTy = PointerType::getUnqual(Ctx);
+  Constant *GlobalNamesArrayPtr;
+  Constant *GlobalAddrsArrayPtr;
+  const uint64_t NumInternalGVs = InternalGVs.size();
+  if (!InternalGVs.empty()) {
+    SmallVector<Constant *, 16> GNamePtrs;
+    SmallVector<Constant *, 16> GAddrPtrs;
+    for (auto &[Name, OrigGV] : InternalGVs) {
+      ArrayType *StrTy = ArrayType::get(Type::getInt8Ty(Ctx), Name.size() + 1);
+      auto *StrGV = new GlobalVariable(M, StrTy, /*isConstant=*/true,
+                                       GlobalValue::InternalLinkage,
+                                       ConstantDataArray::getString(Ctx, Name, true), "");
+      StrGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+      Constant *StrGEPIdxs[] = {Zero32, Zero32};
+      GNamePtrs.push_back(ConstantExpr::getInBoundsGetElementPtr(StrTy, StrGV, StrGEPIdxs));
+      GAddrPtrs.push_back(OrigGV); // OrigGV is the pointer to the host global's storage
+    }
+    ArrayType *NamesArrTy = ArrayType::get(PtrTy, NumInternalGVs);
+    auto *NamesGV = new GlobalVariable(M, NamesArrTy, /*isConstant=*/true,
+                                       GlobalValue::InternalLinkage,
+                                       ConstantArray::get(NamesArrTy, GNamePtrs),
+                                       "RuntimeSpecializeableIR_global_names");
+    NamesGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+    Constant *NamesGEP[] = {Zero32, Zero32};
+    GlobalNamesArrayPtr = ConstantExpr::getInBoundsGetElementPtr(NamesArrTy, NamesGV, NamesGEP);
+
+    ArrayType *AddrsArrTy = ArrayType::get(PtrTy, NumInternalGVs);
+    auto *AddrsGV = new GlobalVariable(M, AddrsArrTy, /*isConstant=*/true,
+                                       GlobalValue::InternalLinkage,
+                                       ConstantArray::get(AddrsArrTy, GAddrPtrs),
+                                       "RuntimeSpecializeableIR_global_addrs");
+    AddrsGV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
+    Constant *AddrsGEP[] = {Zero32, Zero32};
+    GlobalAddrsArrayPtr =
+        ConstantExpr::getInBoundsGetElementPtr(AddrsArrTy, AddrsGV, AddrsGEP);
+  } else {
+    GlobalNamesArrayPtr = ConstantPointerNull::get(PtrTy);
+    GlobalAddrsArrayPtr = ConstantPointerNull::get(PtrTy);
+  }
+
   // 5) Register this IR blob at program startup via a module constructor.
-  //    v2 includes the function name array so the runtime can build a
-  //    funcName -> blob index map without parsing all blobs.
+  //    v3 adds InternalLinkage global names+addrs so the runtime can resolve
+  //    static globals to live host-memory pointers at specialization time (spec 017).
   FunctionType *RegTy = FunctionType::get(
       Type::getVoidTy(Ctx),
-      {PointerType::getUnqual(Ctx), Type::getInt64Ty(Ctx),
-       PointerType::getUnqual(Ctx), Type::getInt64Ty(Ctx)},
+      {PtrTy, Type::getInt64Ty(Ctx),   // blob ptr, len
+       PtrTy, Type::getInt64Ty(Ctx),   // funcs, nfuncs
+       PtrTy, PtrTy, Type::getInt64Ty(Ctx)},  // global_names, global_addrs, nglobals
       /*isVarArg=*/false);
   FunctionCallee RegFn = M.getOrInsertFunction(
-      "clang_runtime_specializer_register_blob_v2", RegTy);
+      "clang_runtime_specializer_register_blob_v3", RegTy);
 
   // Give the constructor a name unique to this TU (based on module identifier).
   std::string TUName = M.getModuleIdentifier();
@@ -299,7 +359,10 @@ PreservedAnalyses IRDumpingPass::run(Module &M, ModuleAnalysisManager &AM) {
       DataPtr,
       ConstantInt::get(Type::getInt64Ty(Ctx), Bytes.size()),
       FuncsArrayPtr,
-      ConstantInt::get(Type::getInt64Ty(Ctx), FuncNames.size())
+      ConstantInt::get(Type::getInt64Ty(Ctx), FuncNames.size()),
+      GlobalNamesArrayPtr,
+      GlobalAddrsArrayPtr,
+      ConstantInt::get(Type::getInt64Ty(Ctx), NumInternalGVs)
   });
   Builder.CreateRetVoid();
 
