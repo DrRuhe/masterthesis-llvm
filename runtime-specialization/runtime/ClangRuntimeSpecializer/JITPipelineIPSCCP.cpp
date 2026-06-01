@@ -82,7 +82,10 @@ llvm::Error runIPSCCPPipeline(PipelineRunArgs& Args) {
     // for pointers propagated as constants across callee boundaries (path B).
     // The !invariant.load gate on both paths ensures only provably-non-mutated
     // fields are folded; fields the function also stores to remain unfoldable.
-    if (!Args.IsLargeModule) {
+    // Run unconditionally (including large modules): this is a cheap annotation
+    // pass, and skipping it would leave loads un-annotated so both paths are
+    // blocked, which can cause P2FuncSpec to produce broken specializations.
+    {
       llvm::FunctionPassManager PreFPM;
       PreFPM.addPass(StaticMutabilityAnalysis::StaticMutabilityAnalysisPass());
       MPM.addPass(llvm::createModuleToFunctionPassAdaptor(std::move(PreFPM)));

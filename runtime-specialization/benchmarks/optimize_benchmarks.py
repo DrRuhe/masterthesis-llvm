@@ -508,7 +508,10 @@ def run_trial(
         bphase = bkv.get("kv_t", "")
         if not bkernel or not bphase:
             continue
-        ns = b.get("real_time", 0.0) * mult_map.get(b.get("time_unit", "ns"), 1.0)
+        # jit_overhead uses UseManualTime() but UC benchmarks don't call SetIterationTime,
+        # so real_time=0.  Use cpu_time instead (≈real_time for single-threaded JIT work).
+        time_key = "cpu_time" if bphase == "jit_overhead" else "real_time"
+        ns = b.get(time_key, 0.0) * mult_map.get(b.get("time_unit", "ns"), 1.0)
         if bphase == "jit_overhead":
             jit_by_kernel[bkernel] = ns
         elif bphase == "specialized_exec":
