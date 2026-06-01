@@ -37,7 +37,7 @@
 
 - [X] T008 Update `benchmarks/CMakeLists.txt` AllBenchmarks section (lines ~242–278): replace the single-kernel-source `foreach` loop with a nested foreach that iterates `${UC}_KERNELS_SRCS` for each UC and produces one `AllBenchmarks_<stem>.o` object per source. Update `add_benchmark(AllBenchmarks …)` to use `${_ALL_UC_KERNEL_OBJS}`. See plan.md §1.3.
 
-- [ ] R001 [REVIEW] Verify Phase 1 CMake infrastructure: from `llvm/llvm/build/debug` run `ninja UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort`. All six must build successfully — this confirms the list-variable CMake pattern compiles (Phase 2 renames will already be present since T001–T008 include the new filenames in `UC<N>_KERNEL_SRCS`). If any target fails, fix the CMakeLists error before proceeding. No code committed by this review task. **Depends on T001–T008 AND T009–T014 (renames needed so filenames match).**
+- [x] R001 [REVIEW] Verify Phase 1 CMake infrastructure: from `llvm/llvm/build/debug` run `ninja UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort`. All six must build successfully — this confirms the list-variable CMake pattern compiles (Phase 2 renames will already be present since T001–T008 include the new filenames in `UC<N>_KERNEL_SRCS`). If any target fails, fix the CMakeLists error before proceeding. No code committed by this review task. **Depends on T001–T008 AND T009–T014 (renames needed so filenames match).**
 
 ---
 
@@ -71,7 +71,7 @@
 
 - [X] T020 [P] Update `benchmarks/use-cases/UC14Sort/UC14Benchmark.cpp`: change `n:sort_int64;` → `n:generic_sort;a:low;` in all BENCHMARK Name strings.
 
-- [ ] R002 [REVIEW] Verify Phase 2 re-tagging: build all 6 UC binaries (`ninja UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort`). For each binary, run `./UCxBinary --benchmark_filter="a:low" --benchmark_list_tests` and verify (a) at least one result contains `a:low`, (b) no result still uses the old `kv_n` values (`predicate`, `gaussian5x5`, `email`, `ivm_sum`, `groupby_sum`, `sort_int64`). Run validation functions via `./UCxBinary --benchmark_filter=NOTHING`. All must pass without errors. No code committed by this review task. **Depends on T001–T020.**
+- [x] R002 [REVIEW] Verify Phase 2 re-tagging: build all 6 UC binaries (`ninja UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort`). For each binary, run `./UCxBinary --benchmark_filter="a:low" --benchmark_list_tests` and verify (a) at least one result contains `a:low`, (b) no result still uses the old `kv_n` values (`predicate`, `gaussian5x5`, `email`, `ivm_sum`, `groupby_sum`, `sort_int64`). Run validation functions via `./UCxBinary --benchmark_filter=NOTHING`. All must pass without errors. No code committed by this review task. **Depends on T001–T020.**
 
 ---
 
@@ -111,7 +111,7 @@
 
 - [X] T030 [US1] [US2] [US3] Rewrite `benchmarks/use-cases/UC1SqlPredicate/UC1Benchmark.cpp` to add benchmark functions and BENCHMARK macro registrations for all 9 variant×level combinations (low was already done in T015; add tradeoff and abstract). Benchmark name format: `BM_g:uc1_sql;n:<variant>;a:<level>;s:<size>;t:<type>;`. Add all `validate_*` calls to `main()`. Retain existing data fixtures (`g_rows`, `ROW_STRIDE`, `COL_OFFSET`). Add a second output buffer `g_out_indices` (pre-allocated `int32_t` array of N_ROWS_MAX) for `column_scan` benchmarks. `#ifdef ALL_BENCHMARKS_BUILD` guard uses smaller sizes. **Depends on T029.**
 
-- [ ] R003 [REVIEW] Verify UC1 complete implementation: (1) `ninja UC1SqlPredicate` builds without error. (2) `./UC1SqlPredicate --benchmark_filter=NOTHING` runs all 9 `validate_*` functions without throwing. (3) `./UC1SqlPredicate --benchmark_filter="s:SMALL" --benchmark_list_tests | grep -cE "a:(low|tradeoff|abstract)"` must return at least 27 (9 variants × 3 phases). (4) Check that no name string still contains the old `n:predicate` pattern. No code committed by this review task. **Depends on T021–T030.**
+- [x] R003 [REVIEW] Verify UC1 complete implementation: (1) `ninja UC1SqlPredicate` builds without error. (2) `./UC1SqlPredicate --benchmark_filter=NOTHING` runs all 9 `validate_*` functions without throwing. (3) `./UC1SqlPredicate --benchmark_filter="s:SMALL" --benchmark_list_tests | grep -cE "a:(low|tradeoff|abstract)"` must return at least 27 (9 variants × 3 phases). (4) Check that no name string still contains the old `n:predicate` pattern. No code committed by this review task. **Depends on T021–T030.**
 
 ---
 
@@ -143,7 +143,7 @@
 
 - [X] T040 [US1] [US2] [US3] Update `benchmarks/use-cases/UC2Convolution/UC2Benchmark.cpp` to add benchmark functions and registrations for all 9 variant×level combinations. Benchmark names: `BM_g:uc2_conv;n:<variant>;a:<level>;s:<size>;t:<type>;`. Add `validate_*` calls to `main()`. Reuse existing image data fixture. **Depends on T039.**
 
-- [ ] R004 [REVIEW] Verify UC2: `ninja UC2Convolution` builds. `./UC2Convolution --benchmark_filter=NOTHING` runs all 9 validations without error. `./UC2Convolution --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18 (6 variants × 3 phases for the two new levels). No code committed. **Depends on T031–T040.**
+- [x] R004 [REVIEW] Verify UC2: `ninja UC2Convolution` builds. `./UC2Convolution --benchmark_filter=NOTHING` runs all 9 validations without error. `./UC2Convolution --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18 (6 variants × 3 phases for the two new levels). No code committed. **Depends on T031–T040.**
 
 ---
 
@@ -175,7 +175,7 @@
 
 - [X] T050 [US1] [US2] [US3] Update `benchmarks/use-cases/UC7DfaRegex/UC7Benchmark.cpp` with all 9 variant×level benchmark registrations. Names: `BM_g:uc7_dfa;n:<variant>;a:<level>;s:<size>;t:<type>;`. Add validation calls. **Depends on T049.**
 
-- [ ] R005 [REVIEW] Verify UC7: `ninja UC7DfaRegex` builds. `./UC7DfaRegex --benchmark_filter=NOTHING` runs all validations without error. Verify `multi_pattern_match` variants produce a non-negative match count (not -1). `./UC7DfaRegex --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T041–T050.**
+- [x] R005 [REVIEW] Verify UC7: `ninja UC7DfaRegex` builds. `./UC7DfaRegex --benchmark_filter=NOTHING` runs all validations without error. Verify `multi_pattern_match` variants produce a non-negative match count (not -1). `./UC7DfaRegex --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T041–T050.**
 
 ---
 
@@ -207,7 +207,7 @@
 
 - [X] T060 [US1] [US2] [US3] Update `benchmarks/use-cases/UC8IVM/UC8Benchmark.cpp` with all 9 variant×level registrations. Names: `BM_g:uc8_ivm;n:<variant>;a:<level>;s:<size>;t:<type>;`. Add validation calls. **Depends on T059.**
 
-- [ ] R006 [REVIEW] Verify UC8: `ninja UC8IVM` builds. `./UC8IVM --benchmark_filter=NOTHING` runs all validations without error. `./UC8IVM --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T051–T060.**
+- [x] R006 [REVIEW] Verify UC8: `ninja UC8IVM` builds. `./UC8IVM --benchmark_filter=NOTHING` runs all validations without error. `./UC8IVM --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T051–T060.**
 
 ---
 
@@ -239,7 +239,7 @@
 
 - [X] T070 [US1] [US2] [US3] Update `benchmarks/use-cases/UC12GroupBy/UC12Benchmark.cpp` with all 9 variant×level registrations. Names: `BM_g:uc12_groupby;n:<variant>;a:<level>;s:<size>;t:<type>;`. Add validation calls. **Depends on T069.**
 
-- [ ] R007 [REVIEW] Verify UC12: `ninja UC12GroupBy` builds. `./UC12GroupBy --benchmark_filter=NOTHING` runs all validations. `./UC12GroupBy --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T061–T070.**
+- [x] R007 [REVIEW] Verify UC12: `ninja UC12GroupBy` builds. `./UC12GroupBy --benchmark_filter=NOTHING` runs all validations. `./UC12GroupBy --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T061–T070.**
 
 ---
 
@@ -271,7 +271,7 @@
 
 - [X] T080 [US1] [US2] [US3] Update `benchmarks/use-cases/UC14Sort/UC14Benchmark.cpp` with all 9 variant×level registrations. Names: `BM_g:uc14_sort;n:<variant>;a:<level>;s:<size>;t:<type>;`. Add validation calls. Sort benchmarks must re-initialize data before each timed call (use `benchmark::DoNotOptimize` after reset; keep a pre-shuffled reference copy to restore from). **Depends on T079.**
 
-- [ ] R008 [REVIEW] Verify UC14: `ninja UC14Sort` builds. `./UC14Sort --benchmark_filter=NOTHING` runs all validations. For sort benchmarks, verify sorted arrays are in correct order in the validation function (not just that no exception was thrown). `./UC14Sort --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T071–T080.**
+- [x] R008 [REVIEW] Verify UC14: `ninja UC14Sort` builds. `./UC14Sort --benchmark_filter=NOTHING` runs all validations. For sort benchmarks, verify sorted arrays are in correct order in the validation function (not just that no exception was thrown). `./UC14Sort --benchmark_list_tests | grep -cE "a:(tradeoff|abstract)"` ≥ 18. No code committed. **Depends on T071–T080.**
 
 ---
 
@@ -291,9 +291,9 @@
 
 - [X] T084 [US1] Verify SC-004 (numerical equivalence): all 6 individual UC binaries must run to completion without throwing `ClangRuntimeSpecializerChangesBehaviorError`. Run each with `--benchmark_filter="NOTHING"` so only `main()` validation logic executes: `for b in UC1SqlPredicate UC2Convolution UC7DfaRegex UC8IVM UC12GroupBy UC14Sort; do ninja $b && ./$b --benchmark_filter=NOTHING; done`.
 
-- [ ] T085 [US1] Verify SC-005 (JIT overhead no regression): after recording a full run, query `SELECT kv_n, kv_a, AVG(real_time) FROM benchmarks WHERE kv_t='jit_overhead' AND kv_a='low' GROUP BY kv_n, kv_a` and compare manually against pre-feature baseline values. Flag any variant with >10% regression.
+- [x] T085 [US1] Verify SC-005 (JIT overhead no regression): after recording a full run, query `SELECT kv_n, kv_a, AVG(real_time) FROM benchmarks WHERE kv_t='jit_overhead' AND kv_a='low' GROUP BY kv_n, kv_a` and compare manually against pre-feature baseline values. Flag any variant with >10% regression.
 
-- [ ] R009 [REVIEW] Final integration review: (1) `ninja AllBenchmarks` builds without error. (2) Run `./AllBenchmarks --benchmark_filter="s:SMALL" --benchmark_list_tests | grep -cE "a:(low|tradeoff|abstract)"` — verify result ≥ 162 (54 scenarios × 3 phases). (3) Run `./AllBenchmarks --benchmark_filter="uc1_sql.*s:SMALL"` for a quick smoke run and verify it completes without crash. (4) Confirm `kv_a` column exists in DuckDB after import. No code committed. **Depends on T081–T085.**
+- [x] R009 [REVIEW] Final integration review: (1) `ninja AllBenchmarks` builds without error. (2) Run `./AllBenchmarks --benchmark_filter="s:SMALL" --benchmark_list_tests | grep -cE "a:(low|tradeoff|abstract)"` — verify result ≥ 162 (54 scenarios × 3 phases). (3) Run `./AllBenchmarks --benchmark_filter="uc1_sql.*s:SMALL"` for a quick smoke run and verify it completes without crash. (4) Confirm `kv_a` column exists in DuckDB after import. No code committed. **Depends on T081–T085.**
 
 ---
 

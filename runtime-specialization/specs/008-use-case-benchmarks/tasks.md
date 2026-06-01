@@ -382,7 +382,7 @@ use-case binary without errors.
 
 **Independent Test**: `python3 optimize_benchmarks.py --db /tmp/uc_optim.duckdb --binary ./UC1SqlPredicate --study uc1_default --n-trials 5` completes without exception.
 
-- [ ] T011 [US3] Run `optimize_benchmarks.py` against `UC1SqlPredicate` (5 trials) and
+- [x] T011 [US3] Run `optimize_benchmarks.py` against `UC1SqlPredicate` (5 trials) and
   `UC7DfaRegex` (5 trials) in release mode; verify both studies complete and
   `v_optim_best_per_kernel` has entries for `predicate` and `email` kernels; document
   result in `specs/008-use-case-benchmarks/plan.md` under "## Spec 007 Compatibility".
@@ -393,14 +393,14 @@ use-case binary without errors.
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T012 [P] Run `ninja check-smoke-runtime-specializer` in debug build directory; confirm
+- [x] T012 [P] Run `ninja check-smoke-runtime-specializer` in debug build directory; confirm
   all smoke tests remain green (no regressions from new benchmark code)
 
-- [ ] T013 Run `ninja -C llvm/llvm/build/debug UC1SqlPredicate UC2Convolution UC7DfaRegex
+- [x] T013 Run `ninja -C llvm/llvm/build/debug UC1SqlPredicate UC2Convolution UC7DfaRegex
   UC8IVM UC12GroupBy UC14Sort` and verify each binary completes without ASan/UBSan errors
   using `ASAN_OPTIONS=detect_leaks=0` (SC-004)
 
-- [ ] T014 [P] Update `specs/008-use-case-benchmarks/plan.md` "## Speedup Findings" section
+- [x] T014 [P] Update `specs/008-use-case-benchmarks/plan.md` "## Speedup Findings" section
   with final measurements; update `docs/thesis.typ` with concise bullet points about the
   new use-case benchmark results and the lambda factory specialization pattern
 

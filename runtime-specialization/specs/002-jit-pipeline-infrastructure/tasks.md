@@ -16,11 +16,11 @@
 
 **Purpose**: Standardize env var names and prepare for pipeline interface work. These changes are self-contained and unblock all subsequent phases.
 
-- [ ] T001 Rename `CRS_DEFAULT_FIXPOINT` → `CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS` in `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
-- [ ] T002 Rename `CRS_DEFAULT_UNROLL` → `CRS_DEFAULT_LOOP_UNROLL_COUNT` in `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
-- [ ] T003 Rename `CRS_DEFAULT_LARGE_MOD` → `CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD` in `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
-- [ ] T004 Add `static const int kFuncSpecMaxGroups = (int)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS", 0.0); O.FuncSpecMaxGroups = kFuncSpecMaxGroups;` to `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
-- [ ] T005 Grep all files under `test/` and `benchmarks/` for the old env var names (`CRS_DEFAULT_FIXPOINT`, `CRS_DEFAULT_UNROLL`, `CRS_DEFAULT_LARGE_MOD`) and update any occurrences to the new names; run `ninja check-smoke-runtime-specializer` to confirm no regressions
+- [x] T001 Rename `CRS_DEFAULT_FIXPOINT` → `CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS` in `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
+- [x] T002 Rename `CRS_DEFAULT_UNROLL` → `CRS_DEFAULT_LOOP_UNROLL_COUNT` in `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
+- [x] T003 Rename `CRS_DEFAULT_LARGE_MOD` → `CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD` in `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
+- [x] T004 Add `static const int kFuncSpecMaxGroups = (int)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS", 0.0); O.FuncSpecMaxGroups = kFuncSpecMaxGroups;` to `Options::Default()` in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`
+- [x] T005 Grep all files under `test/` and `benchmarks/` for the old env var names (`CRS_DEFAULT_FIXPOINT`, `CRS_DEFAULT_UNROLL`, `CRS_DEFAULT_LARGE_MOD`) and update any occurrences to the new names; run `ninja check-smoke-runtime-specializer` to confirm no regressions
 
 **Checkpoint**: `Options::Default()` now reads 7 env vars with canonical names; existing smoke suite passes.
 
@@ -32,7 +32,7 @@
 
 **⚠️ CRITICAL**: US1 dispatch implementation and US3 pipeline extraction cannot begin until this phase is complete.
 
-- [ ] T006 Create `runtime/ClangRuntimeSpecializer/JITPipeline.h` defining: `struct PipelineRunArgs { llvm::Module& Mod; const Options& Opts; llvm::PassBuilder& PB; llvm::PassInstrumentationCallbacks& PIC; std::string& CurrentGroup; int& CurrentFixpointIter; bool IsLargeModule; };`; `struct PipelineEntry { llvm::StringRef Name; llvm::Error (*Run)(PipelineRunArgs&); };`; and the declaration `llvm::ArrayRef<PipelineEntry> getRegisteredPipelines();`
+- [x] T006 Create `runtime/ClangRuntimeSpecializer/JITPipeline.h` defining: `struct PipelineRunArgs { llvm::Module& Mod; const Options& Opts; llvm::PassBuilder& PB; llvm::PassInstrumentationCallbacks& PIC; std::string& CurrentGroup; int& CurrentFixpointIter; bool IsLargeModule; };`; `struct PipelineEntry { llvm::StringRef Name; llvm::Error (*Run)(PipelineRunArgs&); };`; and the declaration `llvm::ArrayRef<PipelineEntry> getRegisteredPipelines();`
 
 **Checkpoint**: `JITPipeline.h` compiles cleanly when included; interface ready for use in dispatch and extraction tasks.
 
@@ -48,17 +48,17 @@
 
 > **Write these FIRST; they must FAIL before implementation (constitution §III)**
 
-- [ ] T007 [P] [US1] Write `test/WIP/pipeline-dispatch.cpp`: two test cases compile a specializable function and call it with `CRS_DEFAULT_PIPELINE=0` and `CRS_DEFAULT_PIPELINE=1`; use FileCheck to verify each run completes and produces a valid specialized result (no crash, no abort)
-- [ ] T008 [P] [US1] Write `test/WIP/pipeline-invalid-index.cpp`: set `CRS_DEFAULT_PIPELINE=99` in the test env; FileCheck for `WARNING` in stderr output and verify the program exits successfully (no abort, result is correct)
-- [ ] T009 [P] [US1] Write `test/WIP/options-env-vars.cpp`: set `CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS=3`, `CRS_DEFAULT_LOOP_UNROLL_COUNT=32`, `CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD=5000` in the test env; specialize a function and FileCheck that at most 3 fixpoint iterations run (via pass trace output or log)
-- [ ] T010 [P] [US1] Write `test/WIP/funcspec-max-groups-env.cpp`: set `CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS=2` with `CRS_DEFAULT_PIPELINE=1`; verify the specialization succeeds; set `CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS=1` with `CRS_DEFAULT_PIPELINE=0`; FileCheck for `WARNING` about inapplicable option
+- [x] T007 [P] [US1] Write `test/WIP/pipeline-dispatch.cpp`: two test cases compile a specializable function and call it with `CRS_DEFAULT_PIPELINE=0` and `CRS_DEFAULT_PIPELINE=1`; use FileCheck to verify each run completes and produces a valid specialized result (no crash, no abort)
+- [x] T008 [P] [US1] Write `test/WIP/pipeline-invalid-index.cpp`: set `CRS_DEFAULT_PIPELINE=99` in the test env; FileCheck for `WARNING` in stderr output and verify the program exits successfully (no abort, result is correct)
+- [x] T009 [P] [US1] Write `test/WIP/options-env-vars.cpp`: set `CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS=3`, `CRS_DEFAULT_LOOP_UNROLL_COUNT=32`, `CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD=5000` in the test env; specialize a function and FileCheck that at most 3 fixpoint iterations run (via pass trace output or log)
+- [x] T010 [P] [US1] Write `test/WIP/funcspec-max-groups-env.cpp`: set `CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS=2` with `CRS_DEFAULT_PIPELINE=1`; verify the specialization succeeds; set `CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS=1` with `CRS_DEFAULT_PIPELINE=0`; FileCheck for `WARNING` about inapplicable option
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] In `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp` `specializeOnlyImpl()`: after resolving `Options`, call `getRegisteredPipelines()` and validate `OptimizationPipelineToUse`; if out of range, emit `CRS_LOG(WARNING, ...)` and clamp to 0
-- [ ] T012 [US1] In `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp` `specializeOnlyImpl()`: add WARNING if `FuncSpecMaxGroups > 0` and pipeline == 0 ("FuncSpecMaxGroups ignored by inlining pipeline"); add WARNING if `MaxFixpointIterations > 1` and pipeline == 1 ("MaxFixpointIterations > 1 has no effect on func-spec pipeline")
-- [ ] T013 [US1] Run `ninja check-wip-runtime-specializer` from `llvm/llvm/build/debug`; iterate until all 4 WIP tests (T007–T010) pass
-- [ ] T014 [US1] Run `ninja check-smoke-runtime-specializer` from `llvm/llvm/build/debug` to confirm the smoke suite is unbroken
+- [x] T011 [US1] In `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp` `specializeOnlyImpl()`: after resolving `Options`, call `getRegisteredPipelines()` and validate `OptimizationPipelineToUse`; if out of range, emit `CRS_LOG(WARNING, ...)` and clamp to 0
+- [x] T012 [US1] In `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp` `specializeOnlyImpl()`: add WARNING if `FuncSpecMaxGroups > 0` and pipeline == 0 ("FuncSpecMaxGroups ignored by inlining pipeline"); add WARNING if `MaxFixpointIterations > 1` and pipeline == 1 ("MaxFixpointIterations > 1 has no effect on func-spec pipeline")
+- [x] T013 [US1] Run `ninja check-wip-runtime-specializer` from `llvm/llvm/build/debug`; iterate until all 4 WIP tests (T007–T010) pass
+- [x] T014 [US1] Run `ninja check-smoke-runtime-specializer` from `llvm/llvm/build/debug` to confirm the smoke suite is unbroken
 
 **Checkpoint**: `CRS_DEFAULT_PIPELINE` switches pipelines correctly; invalid indices produce WARNINGs without abort; renamed env vars work; smoke suite green.
 
@@ -74,14 +74,14 @@
 
 ### Implementation for User Story 2
 
-- [ ] T015 [P] [US2] Add `DEFAULT_SEARCH_SPACE` dict constant to `benchmarks/optimize_benchmarks.py` with 6 entries covering all 7 env-var-exposed `Options` fields using new env var names and types from `contracts/search-space-descriptor.md`
-- [ ] T016 [P] [US2] Implement `_load_descriptor(path: Path | None) -> dict` in `benchmarks/optimize_benchmarks.py`: if `path` is None return `DEFAULT_SEARCH_SPACE`; otherwise parse JSON from file, validate `version == 1`, validate each entry has required fields and `type` is one of the 7 known types, raise `SystemExit` with descriptive message on validation failure
-- [ ] T017 [US2] Implement `_sample_params(trial: optuna.Trial, descriptor: dict) -> dict[str, Any]` in `benchmarks/optimize_benchmarks.py`: for each parameter entry dispatch on `type` to the appropriate `trial.suggest_*` call; `int_or_zero` uses `suggest_categorical([True, False])` + conditional `suggest_int`; return `{name: value}` dict
-- [ ] T018 [US2] Implement `_params_to_env(params: dict[str, Any], descriptor: dict) -> dict[str, str]` in `benchmarks/optimize_benchmarks.py`: build `{entry.env_var: str(params[entry.name])}` for each descriptor entry; used to override subprocess env vars
-- [ ] T019 [US2] Add `--search-space PATH` (optional, default None) argument to `argparse` in `benchmarks/optimize_benchmarks.py`; remove `--fixpoint-hi`, `--unroll-hi`, `--large-mod-hi` arguments (replaced by descriptor); call `_load_descriptor(args.search_space)` after parsing and store as `descriptor`
-- [ ] T020 [US2] Update `objective()` closure in `benchmarks/optimize_benchmarks.py` to replace the hardcoded `magic` dict construction with `magic = _sample_params(trial, descriptor)` and replace `_make_env(magic)` with `{**os.environ, **_params_to_env(magic, descriptor)}`; update `store_trial_params` call to pass the resulting `magic` as `params_json`
-- [ ] T021 [US2] Update the `optimization_sessions` INSERT in `benchmarks/optimize_benchmarks.py` (session start, currently around line 564) to include `search_space_json` in the column list and pass `json.dumps(descriptor)` as its value
-- [ ] T022 [US2] Manual validation: run `optimize_benchmarks.py <binary> --n-trials 6 --n-parallel 1 --search-space <path-to-2-pipeline-descriptor.json>`; verify in DuckDB that `optim_trial_params.params_json` is non-NULL for all 6 rows, that both `pipeline=0` and `pipeline=1` appear across trials, and that `optimization_sessions.search_space_json` equals the descriptor file contents
+- [x] T015 [P] [US2] Add `DEFAULT_SEARCH_SPACE` dict constant to `benchmarks/optimize_benchmarks.py` with 6 entries covering all 7 env-var-exposed `Options` fields using new env var names and types from `contracts/search-space-descriptor.md`
+- [x] T016 [P] [US2] Implement `_load_descriptor(path: Path | None) -> dict` in `benchmarks/optimize_benchmarks.py`: if `path` is None return `DEFAULT_SEARCH_SPACE`; otherwise parse JSON from file, validate `version == 1`, validate each entry has required fields and `type` is one of the 7 known types, raise `SystemExit` with descriptive message on validation failure
+- [x] T017 [US2] Implement `_sample_params(trial: optuna.Trial, descriptor: dict) -> dict[str, Any]` in `benchmarks/optimize_benchmarks.py`: for each parameter entry dispatch on `type` to the appropriate `trial.suggest_*` call; `int_or_zero` uses `suggest_categorical([True, False])` + conditional `suggest_int`; return `{name: value}` dict
+- [x] T018 [US2] Implement `_params_to_env(params: dict[str, Any], descriptor: dict) -> dict[str, str]` in `benchmarks/optimize_benchmarks.py`: build `{entry.env_var: str(params[entry.name])}` for each descriptor entry; used to override subprocess env vars
+- [x] T019 [US2] Add `--search-space PATH` (optional, default None) argument to `argparse` in `benchmarks/optimize_benchmarks.py`; remove `--fixpoint-hi`, `--unroll-hi`, `--large-mod-hi` arguments (replaced by descriptor); call `_load_descriptor(args.search_space)` after parsing and store as `descriptor`
+- [x] T020 [US2] Update `objective()` closure in `benchmarks/optimize_benchmarks.py` to replace the hardcoded `magic` dict construction with `magic = _sample_params(trial, descriptor)` and replace `_make_env(magic)` with `{**os.environ, **_params_to_env(magic, descriptor)}`; update `store_trial_params` call to pass the resulting `magic` as `params_json`
+- [x] T021 [US2] Update the `optimization_sessions` INSERT in `benchmarks/optimize_benchmarks.py` (session start, currently around line 564) to include `search_space_json` in the column list and pass `json.dumps(descriptor)` as its value
+- [x] T022 [US2] Manual validation: run `optimize_benchmarks.py <binary> --n-trials 6 --n-parallel 1 --search-space <path-to-2-pipeline-descriptor.json>`; verify in DuckDB that `optim_trial_params.params_json` is non-NULL for all 6 rows, that both `pipeline=0` and `pipeline=1` appear across trials, and that `optimization_sessions.search_space_json` equals the descriptor file contents
 
 **Checkpoint**: Descriptor-driven optimization works end-to-end; built-in default covers all 6 tunable parameters; study metadata is fully reproducible from DB.
 
@@ -93,12 +93,12 @@
 
 **Independent Test**: After extraction, run `ninja check-smoke-runtime-specializer` — all existing smoke tests must pass. Then set `CRS_DEFAULT_PIPELINE=0` and `CRS_DEFAULT_PIPELINE=1` and verify both produce correct results.
 
-- [ ] T023 [P] [US3] Create `runtime/ClangRuntimeSpecializer/JITPipelineInlining.cpp`: extract pipeline 0 body from the IR transform lambda in `ClangRuntimeSpecializer.cpp` (initial pass + fixpoint loop + O3 final), implement as `llvm::Error runInliningPipeline(PipelineRunArgs& Args)` using `Args.Mod`, `Args.Opts`, `Args.PB`, `Args.PIC`, `Args.CurrentGroup`, `Args.CurrentFixpointIter`, `Args.IsLargeModule` in place of the previously captured/global references; add matching header `JITPipelineInlining.h`
-- [ ] T024 [P] [US3] Create `runtime/ClangRuntimeSpecializer/JITPipelineFuncSpec.cpp`: extract pipeline 1 body from the IR transform lambda in `ClangRuntimeSpecializer.cpp` (linkage conversion + ConstantArgFunctionSpecializationPass fixpoint), implement as `llvm::Error runFuncSpecPipeline(PipelineRunArgs& Args)`; add matching header `JITPipelineFuncSpec.h`
-- [ ] T025 [US3] Create `runtime/ClangRuntimeSpecializer/JITPipelineRegistry.cpp`: include `JITPipelineInlining.h` and `JITPipelineFuncSpec.h`; define `static const PipelineEntry kPipelines[] = {{"inlining", runInliningPipeline}, {"func-spec", runFuncSpecPipeline}};`; define `llvm::ArrayRef<PipelineEntry> getRegisteredPipelines() { return kPipelines; }`
-- [ ] T026 [US3] Update the IR transform lambda in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp`: replace the inline pipeline bodies with a `PipelineRunArgs` construction and a call to `getRegisteredPipelines()[ValidatedPipeline].Run(Args)`; the `PIC` callbacks and trace state setup remain in the outer lambda
-- [ ] T027 [US3] Add `JITPipelineInlining.cpp`, `JITPipelineFuncSpec.cpp`, `JITPipelineRegistry.cpp` to the source list in `runtime/ClangRuntimeSpecializer/CMakeLists.txt`
-- [ ] T028 [US3] Run `ninja check-smoke-runtime-specializer` from `llvm/llvm/build/debug` to verify zero regressions from the extraction
+- [x] T023 [P] [US3] Create `runtime/ClangRuntimeSpecializer/JITPipelineInlining.cpp`: extract pipeline 0 body from the IR transform lambda in `ClangRuntimeSpecializer.cpp` (initial pass + fixpoint loop + O3 final), implement as `llvm::Error runInliningPipeline(PipelineRunArgs& Args)` using `Args.Mod`, `Args.Opts`, `Args.PB`, `Args.PIC`, `Args.CurrentGroup`, `Args.CurrentFixpointIter`, `Args.IsLargeModule` in place of the previously captured/global references; add matching header `JITPipelineInlining.h`
+- [x] T024 [P] [US3] Create `runtime/ClangRuntimeSpecializer/JITPipelineFuncSpec.cpp`: extract pipeline 1 body from the IR transform lambda in `ClangRuntimeSpecializer.cpp` (linkage conversion + ConstantArgFunctionSpecializationPass fixpoint), implement as `llvm::Error runFuncSpecPipeline(PipelineRunArgs& Args)`; add matching header `JITPipelineFuncSpec.h`
+- [x] T025 [US3] Create `runtime/ClangRuntimeSpecializer/JITPipelineRegistry.cpp`: include `JITPipelineInlining.h` and `JITPipelineFuncSpec.h`; define `static const PipelineEntry kPipelines[] = {{"inlining", runInliningPipeline}, {"func-spec", runFuncSpecPipeline}};`; define `llvm::ArrayRef<PipelineEntry> getRegisteredPipelines() { return kPipelines; }`
+- [x] T026 [US3] Update the IR transform lambda in `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp`: replace the inline pipeline bodies with a `PipelineRunArgs` construction and a call to `getRegisteredPipelines()[ValidatedPipeline].Run(Args)`; the `PIC` callbacks and trace state setup remain in the outer lambda
+- [x] T027 [US3] Add `JITPipelineInlining.cpp`, `JITPipelineFuncSpec.cpp`, `JITPipelineRegistry.cpp` to the source list in `runtime/ClangRuntimeSpecializer/CMakeLists.txt`
+- [x] T028 [US3] Run `ninja check-smoke-runtime-specializer` from `llvm/llvm/build/debug` to verify zero regressions from the extraction
 
 **Checkpoint**: Both pipelines are in dedicated TUs; `JITPipelineInlining.cpp` and `JITPipelineFuncSpec.cpp` contain zero references to each other; smoke suite green; adding a third pipeline requires only the steps in `quickstart.md`.
 
@@ -110,7 +110,7 @@
 
 **Independent Test**: Run two studies with different descriptors (e.g., one without `pipeline`, one with). Query `SELECT COUNT(*), COUNT(params_json) FROM optim_trial_params` and verify both counts are equal. Query `optimization_sessions` and verify `search_space_json` is populated for new studies.
 
-- [ ] T029 [US4] Manual validation: after completing US2 tasks, run two consecutive `optimize_benchmarks.py` studies — one with the built-in default descriptor (6 params) and one with a custom descriptor that adds a 7th fictional parameter (e.g., `CRS_EXTRA_TEST=1`); open DuckDB and verify: (a) `SELECT COUNT(*) = COUNT(params_json) FROM optim_trial_params` (no NULLs); (b) rows from the first study have 6-key `params_json`, rows from the second have 7-key `params_json`; (c) old rows (if any, from before this feature) are unaffected; (d) `optimization_sessions.search_space_json` matches the descriptor used for each study
+- [x] T029 [US4] Manual validation: after completing US2 tasks, run two consecutive `optimize_benchmarks.py` studies — one with the built-in default descriptor (6 params) and one with a custom descriptor that adds a 7th fictional parameter (e.g., `CRS_EXTRA_TEST=1`); open DuckDB and verify: (a) `SELECT COUNT(*) = COUNT(params_json) FROM optim_trial_params` (no NULLs); (b) rows from the first study have 6-key `params_json`, rows from the second have 7-key `params_json`; (c) old rows (if any, from before this feature) are unaffected; (d) `optimization_sessions.search_space_json` matches the descriptor used for each study
 
 **Checkpoint**: Schema extensibility confirmed; cross-study queries work without migration.
 
@@ -118,9 +118,9 @@
 
 ## Final Phase: Polish & Cross-Cutting Concerns
 
-- [ ] T030 Promote `test/WIP/pipeline-dispatch.cpp`, `test/WIP/pipeline-invalid-index.cpp`, `test/WIP/options-env-vars.cpp`, `test/WIP/funcspec-max-groups-env.cpp` to `test/smoke/` (update RUN lines if needed) and run `ninja check-smoke-runtime-specializer` to confirm they pass as smoke tests
-- [ ] T031 Run `ninja check-all-runtime-specializer` from `llvm/llvm/build/debug`; investigate any failures
-- [ ] T032 [P] Add a concise bullet to the "JIT Optimization Pipeline" section of `docs/thesis.typ` noting that pipelines are now separated into dedicated TUs (`JITPipelineInlining`, `JITPipelineFuncSpec`) and that pipeline selection is controlled by `CRS_DEFAULT_PIPELINE` with validated clamping
+- [x] T030 Promote `test/WIP/pipeline-dispatch.cpp`, `test/WIP/pipeline-invalid-index.cpp`, `test/WIP/options-env-vars.cpp`, `test/WIP/funcspec-max-groups-env.cpp` to `test/smoke/` (update RUN lines if needed) and run `ninja check-smoke-runtime-specializer` to confirm they pass as smoke tests
+- [x] T031 Run `ninja check-all-runtime-specializer` from `llvm/llvm/build/debug`; investigate any failures
+- [x] T032 [P] Add a concise bullet to the "JIT Optimization Pipeline" section of `docs/thesis.typ` noting that pipelines are now separated into dedicated TUs (`JITPipelineInlining`, `JITPipelineFuncSpec`) and that pipeline selection is controlled by `CRS_DEFAULT_PIPELINE` with validated clamping
 
 ---
 
