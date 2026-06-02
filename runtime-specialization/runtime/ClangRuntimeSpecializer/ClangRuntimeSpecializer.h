@@ -372,8 +372,8 @@ namespace clangRuntimeSpecializer {
       // --- Preset factories ---
       static Options Default() {
         // ENV-var overrides (read once per process — each optimizer trial is a fresh subprocess).
-        static const int      kFixpoint        = (int)_envOr("CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",      10.0);
-        static const int      kUnroll          = (int)_envOr("CRS_DEFAULT_LOOP_UNROLL_COUNT",            128.0);
+        static const int      kFixpoint        = (int)_envOr("CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",      16.0);
+        static const int      kUnroll          = (int)_envOr("CRS_DEFAULT_LOOP_UNROLL_COUNT",             44.0);
         static const size_t   kLargeMod        = (size_t)_envOr("CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", 10000.0);
         static const bool     kEarlyPrune      = _envOr("CRS_DEFAULT_EARLY_PRUNE", 1.0) != 0.0;
         static const bool     kO3Final         = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
@@ -381,11 +381,11 @@ namespace clangRuntimeSpecializer {
         static const unsigned kFuncSpecMaxGroups = (unsigned)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS",  0.0);
         static const int      kP1InlineThresh  = (int)_envOr("CRS_DEFAULT_P1_INLINE_THRESHOLD",       225.0);
         static const double   kP1MaxGrowth     = _envOr("CRS_DEFAULT_P1_MAX_MODULE_GROWTH",             2.0);
-        static const unsigned kP2MinFuncSize   = (unsigned)_envOr("CRS_P2_MIN_FUNC_SIZE",               1.0);
-        static const unsigned kP2MaxClones     = (unsigned)_envOr("CRS_P2_MAX_CLONES",                  0.0);
-        static const unsigned kP2FuncSpecIters = (unsigned)_envOr("CRS_P2_FUNC_SPEC_ITERS",            10.0);
-        static const bool     kP2ForceSpec     = _envOr("CRS_P2_FORCE_SPEC",                            0.0) != 0.0;
-        static const bool     kP2SpecOnAddr    = _envOr("CRS_P2_SPEC_ON_ADDR",                          0.0) != 0.0;
+        static const unsigned kP2MinFuncSize   = (unsigned)_envOr("CRS_P2_MIN_FUNC_SIZE",              18.0);
+        static const unsigned kP2MaxClones     = (unsigned)_envOr("CRS_P2_MAX_CLONES",                 18.0);
+        static const unsigned kP2FuncSpecIters = (unsigned)_envOr("CRS_P2_FUNC_SPEC_ITERS",            2.0);
+        static const bool     kP2ForceSpec     = _envOr("CRS_P2_FORCE_SPEC",                            1.0) != 0.0;
+        static const bool     kP2SpecOnAddr    = _envOr("CRS_P2_SPEC_ON_ADDR",                          1.0) != 0.0;
         static const bool     kP2SpecLiteral   = _envOr("CRS_P2_SPEC_LITERAL",                          1.0) != 0.0;
         Options O;
         O.MaxFixpointIterations     = kFixpoint;
