@@ -1,5 +1,5 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe | FileCheck %s --dump-input=always
+// RUN: CRS_DEFAULT_PIPELINE=0 %t.exe | FileCheck %s --dump-input=always
 
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>

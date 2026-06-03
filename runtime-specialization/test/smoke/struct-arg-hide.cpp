@@ -1,5 +1,5 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe 1 | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: CRS_DEFAULT_PIPELINE=0 %t.exe 1 | FileCheck %s --check-prefix=EXE --dump-input=always
 // RUN: CRS_DEFAULT_PIPELINE=1 %t.exe 1 | FileCheck %s --check-prefix=P1-EXE --dump-input=always
 
 #include "ClangRuntimeSpecializer.h"
@@ -31,7 +31,7 @@ int main(int argc, char** argv) {
     MyStruct* hidden_b = hide(&b);
 
 
-    // EXE: define noundef i32 @specialized_wrapper
+    // EXE: define {{.*}}i32 @specialized_wrapper
     // EXE: entry:
     // EXE:   ret i32 102
     //
@@ -45,7 +45,5 @@ int main(int argc, char** argv) {
     clangRuntimeSpecializer::assertSpecializedIsEquivalent(process_struct, std::tie(*hidden_a), std::tie(*hidden_b), comp);
     return 0;
 }
-
-
 
 

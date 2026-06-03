@@ -1,8 +1,8 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: CRS_DEFAULT_PIPELINE=0 %t.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
 // RUN: CRS_DEFAULT_PIPELINE=1 %t.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
 // RUN: %clangxx -g -O3 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.o3.exe
-// RUN: %t.o3.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
+// RUN: CRS_DEFAULT_PIPELINE=0 %t.o3.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
 // RUN: CRS_DEFAULT_PIPELINE=1 %t.o3.exe 2 | FileCheck %s --check-prefix=EXE --dump-input=always
 
 
@@ -51,5 +51,4 @@ int main(int argc, char** argv)
 
   return 0;
 }
-
 

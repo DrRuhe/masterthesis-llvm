@@ -1,7 +1,7 @@
 // RUN: %clangxx -g -O0 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.exe
-// RUN: %t.exe | FileCheck %s --dump-input=always
+// RUN: CRS_DEFAULT_PIPELINE=0 %t.exe | FileCheck %s --dump-input=always
 // RUN: %clangxx -g -O3 -fpass-plugin=%llvmshlibdir/LLVMRuntimeSpecializationComptimePlugin%shlibext %s -o %t.o3.exe
-// RUN: %t.o3.exe | FileCheck %s --dump-input=always
+// RUN: CRS_DEFAULT_PIPELINE=0 %t.o3.exe | FileCheck %s --dump-input=always
 
 #include "ClangRuntimeSpecializer.h"
 #include <cstdio>
