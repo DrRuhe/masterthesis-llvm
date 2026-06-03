@@ -1,0 +1,11 @@
+=== eval run: Mon Jun  1 03:16:11 PM CEST 2026 ===
+Report dir: reports/260601-15-16-optimize-pipeline
+UC binary: /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+TPCH binary: /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Phase-only: A
+--- Phase 0: Smoke test ---
+Smoke test PASSED
+--- Phase A: UC optimization (iter-3: 50 trials, P0+P1+P2) ---
+STUDY_A=uc_optim_iter3_20260601
+STUDY_A=uc_optim_iter3_20260601
+=== Phase A complete (single-phase mode). ===
