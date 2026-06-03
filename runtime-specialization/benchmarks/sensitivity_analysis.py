@@ -39,7 +39,9 @@ from ablation_benchmarks import (
 PARAM_ENV_MAP = {
     "fixpoint_max":          "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",
     "unroll_max":            "CRS_DEFAULT_LOOP_UNROLL_COUNT",
-    "large_module_max":      "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD",
+    "p0_large_module_max":   "CRS_DEFAULT_P0_LARGE_MODULE_INSTR_THRESHOLD",
+    "p1_large_module_max":   "CRS_DEFAULT_P1_LARGE_MODULE_INSTR_THRESHOLD",
+    "p2_large_module_max":   "CRS_DEFAULT_P2_LARGE_MODULE_INSTR_THRESHOLD",
     "early_prune":           "CRS_DEFAULT_EARLY_PRUNE",
     "o3_final":              "CRS_DEFAULT_O3_FINAL",
     "pipeline":              "CRS_DEFAULT_PIPELINE",
@@ -49,6 +51,8 @@ PARAM_ENV_MAP = {
     "p2_max_clones":         "CRS_P2_MAX_CLONES",
     "p2_func_spec_iters":    "CRS_P2_FUNC_SPEC_ITERS",
     "p2_force_spec":         "CRS_P2_FORCE_SPEC",
+    "p2_spec_on_addr":       "CRS_P2_SPEC_ON_ADDR",
+    "p2_spec_literal":       "CRS_P2_SPEC_LITERAL",
 }
 
 

@@ -44,7 +44,7 @@ struct PipelineRunArgs {
   /// Pipeline writes this inside fixpoint loops; -1 when not in a fixpoint loop.
   int& CurrentFixpointIter;
 
-  /// True when the module exceeds \c Opts.LargeModuleInstrThreshold instructions
+  /// True when the module exceeds the selected pipeline's large-module threshold
   /// after the prune step. Pipelines may use this to select conservative settings
   /// (e.g. skip aggressive loop unrolling).
   bool IsLargeModule;

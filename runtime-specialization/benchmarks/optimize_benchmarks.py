@@ -2,7 +2,7 @@
 """optimize_benchmarks.py — Find optimal JIT pipeline Options for a given workload.
 
 Minimizes jit_overhead_ns + specialized_exec_ns (per-kernel, then geomean across kernels)
-by tuning MaxFixpointIterations, LoopUnrollCount, LargeModuleInstrThreshold,
+by tuning MaxFixpointIterations, LoopUnrollCount, pipeline large-module thresholds,
 EnableEarlyPrune, and EnableO3Final via ENV var overrides on Options::Default().
 
 All benchmarks for a trial are run in a single subprocess invocation to amortize expensive
@@ -46,10 +46,13 @@ DEFAULT_SEARCH_SPACE = {
         # Always-active pipeline-agnostic params
         {"name": "fixpoint_max",          "env_var": "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",     "type": "int",        "min": 2,    "max": 30     },
         {"name": "unroll_max",            "env_var": "CRS_DEFAULT_LOOP_UNROLL_COUNT",            "type": "log_int",    "min": 1,    "max": 512    },
-        {"name": "large_module_max",      "env_var": "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1,    "max": 100000 },
         {"name": "early_prune",           "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"                                   },
         {"name": "o3_final",              "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"                                   },
         {"name": "pipeline",              "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "categorical", "choices": [0, 1, 2]      },
+        # Pipeline large-module thresholds
+        {"name": "p0_large_module_max",   "env_var": "CRS_DEFAULT_P0_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1, "max": 100000, "depends_on_pipeline": 0},
+        {"name": "p1_large_module_max",   "env_var": "CRS_DEFAULT_P1_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1, "max": 100000, "depends_on_pipeline": 1},
+        {"name": "p2_large_module_max",   "env_var": "CRS_DEFAULT_P2_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero","min": 1, "max": 100000, "depends_on_pipeline": 2},
         # Pipeline 1 knobs (only sampled when pipeline=1)
         {"name": "p1_inline_threshold",   "env_var": "CRS_DEFAULT_P1_INLINE_THRESHOLD",         "type": "log_int",    "min": 50,   "max": 2000,  "depends_on_pipeline": 1},
         {"name": "p1_max_module_growth",  "env_var": "CRS_DEFAULT_P1_MAX_MODULE_GROWTH",        "type": "float",      "min": 1.0,  "max": 5.0,   "depends_on_pipeline": 1},

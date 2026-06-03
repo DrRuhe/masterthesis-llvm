@@ -6,6 +6,7 @@
     {"name": "early_prune",        "env_var": "CRS_DEFAULT_EARLY_PRUNE",                 "type": "bool"},
     {"name": "o3_final",           "env_var": "CRS_DEFAULT_O3_FINAL",                    "type": "bool"},
     {"name": "pipeline",           "env_var": "CRS_DEFAULT_PIPELINE",                    "type": "categorical", "choices": [2]},
+    {"name": "p2_large_module_max","env_var": "CRS_DEFAULT_P2_LARGE_MODULE_INSTR_THRESHOLD", "type": "int_or_zero", "min": 1, "max": 100000, "depends_on_pipeline": 2},
     {"name": "p2_min_func_size",   "env_var": "CRS_P2_MIN_FUNC_SIZE",                    "type": "int",        "min": 1,   "max": 50,   "depends_on_pipeline": 2},
     {"name": "p2_max_clones",      "env_var": "CRS_P2_MAX_CLONES",                       "type": "int",        "min": 0,   "max": 20,   "depends_on_pipeline": 2},
     {"name": "p2_func_spec_iters", "env_var": "CRS_P2_FUNC_SPEC_ITERS",                  "type": "int",        "min": 1,   "max": 10,   "depends_on_pipeline": 2},

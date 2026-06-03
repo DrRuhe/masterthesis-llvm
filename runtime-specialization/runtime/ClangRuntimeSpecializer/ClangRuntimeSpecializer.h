@@ -251,11 +251,11 @@ namespace clangRuntimeSpecializer {
   /// Cost-model knobs for the Pipeline 2 JIT-IPSCCP function specializer.
   /// Backed by CRS_P2_* env vars in Options::Default().
   struct JitFunctionSpecializationOptions {
-    unsigned MinFunctionSize      = 1;     // minimum instruction count for specialization
-    unsigned MaxClones            = 0;     // 0 = unlimited
-    unsigned FuncSpecMaxIters     = 10;    // max specialization iterations inside the solver
-    bool     ForceSpecialization  = false; // bypass profitability check
-    bool     SpecializeOnAddress  = false;
+    unsigned MinFunctionSize      = 18;    // minimum instruction count for specialization
+    unsigned MaxClones            = 18;    // 0 = unlimited
+    unsigned FuncSpecMaxIters     = 2;     // max specialization iterations inside the solver
+    bool     ForceSpecialization  = true;  // bypass profitability check
+    bool     SpecializeOnAddress  = true;
     bool     SpecializeLiteralConstant = true;
   };
 
@@ -340,12 +340,14 @@ namespace clangRuntimeSpecializer {
     struct Options {
       // --- Pipeline configuration ---
       int MaxFixpointIterations = 10;        // 0 = skip fixpoint loop entirely
-      size_t LargeModuleInstrThreshold = 10000; // instrs after prune; > threshold → conservative unroll
+      size_t P0LargeModuleInstrThreshold = 10000; // instrs after prune; > threshold -> conservative P0
+      size_t P1LargeModuleInstrThreshold = 10000; // instrs after prune; > threshold -> conservative P1
+      size_t P2LargeModuleInstrThreshold = 3;     // instrs after prune; > threshold -> conservative P2
       int LoopUnrollCount = 128;             // full-unroll max count (small modules only)
       bool EnableEarlyPrune = true;          // run GlobalDCE before fixpoint
       bool EnableO3Final = true;             // run O3 as final pass
       unsigned FuncSpecMaxGroups = 0;        // 0 = unlimited; skip function if it has more distinct constant-arg groups
-      int OptimizationPipelineToUse = 0;    // 0 = inlining pipeline, 1 = function-specialization pipeline
+      int OptimizationPipelineToUse = 2;    // 0 = inlining, 1 = function-specialization, 2 = JIT-IPSCCP
 
       // --- Pipeline 1 budget knobs ---
       int    P1InlineThreshold = 225;        // env: CRS_DEFAULT_P1_INLINE_THRESHOLD; LLVM O3 default
@@ -374,10 +376,12 @@ namespace clangRuntimeSpecializer {
         // ENV-var overrides (read once per process — each optimizer trial is a fresh subprocess).
         static const int      kFixpoint        = (int)_envOr("CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",      16.0);
         static const int      kUnroll          = (int)_envOr("CRS_DEFAULT_LOOP_UNROLL_COUNT",             44.0);
-        static const size_t   kLargeMod        = (size_t)_envOr("CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD", 10000.0);
+        static const size_t   kP0LargeMod      = (size_t)_envOr("CRS_DEFAULT_P0_LARGE_MODULE_INSTR_THRESHOLD", 10000.0);
+        static const size_t   kP1LargeMod      = (size_t)_envOr("CRS_DEFAULT_P1_LARGE_MODULE_INSTR_THRESHOLD", 10000.0);
+        static const size_t   kP2LargeMod      = (size_t)_envOr("CRS_DEFAULT_P2_LARGE_MODULE_INSTR_THRESHOLD",     3.0);
         static const bool     kEarlyPrune      = _envOr("CRS_DEFAULT_EARLY_PRUNE", 1.0) != 0.0;
         static const bool     kO3Final         = _envOr("CRS_DEFAULT_O3_FINAL",    1.0) != 0.0;
-        static const int      kPipeline        = (int)_envOr("CRS_DEFAULT_PIPELINE",                    0.0);
+        static const int      kPipeline        = (int)_envOr("CRS_DEFAULT_PIPELINE",                    2.0);
         static const unsigned kFuncSpecMaxGroups = (unsigned)_envOr("CRS_DEFAULT_FUNC_SPEC_MAX_GROUPS",  0.0);
         static const int      kP1InlineThresh  = (int)_envOr("CRS_DEFAULT_P1_INLINE_THRESHOLD",       225.0);
         static const double   kP1MaxGrowth     = _envOr("CRS_DEFAULT_P1_MAX_MODULE_GROWTH",             2.0);
@@ -390,7 +394,9 @@ namespace clangRuntimeSpecializer {
         Options O;
         O.MaxFixpointIterations     = kFixpoint;
         O.LoopUnrollCount           = kUnroll;
-        O.LargeModuleInstrThreshold = kLargeMod;
+        O.P0LargeModuleInstrThreshold = kP0LargeMod;
+        O.P1LargeModuleInstrThreshold = kP1LargeMod;
+        O.P2LargeModuleInstrThreshold = kP2LargeMod;
         O.EnableEarlyPrune          = kEarlyPrune;
         O.EnableO3Final             = kO3Final;
         O.OptimizationPipelineToUse = kPipeline;
@@ -406,15 +412,16 @@ namespace clangRuntimeSpecializer {
         return O;
       }
       static Options O3Only() {
-        Options O; O.MaxFixpointIterations = 0; O.EnableEarlyPrune = false; return O;
+        Options O; O.MaxFixpointIterations = 0; O.EnableEarlyPrune = false;
+        O.OptimizationPipelineToUse = 0; return O;
       }
       static Options Aggressive() {
         Options O; O.MaxFixpointIterations = 20; O.LoopUnrollCount = 256;
-        O.LargeModuleInstrThreshold = 50000; return O;
+        O.withLargeModuleThreshold(50000); return O;
       }
       static Options Fast() {
         Options O; O.MaxFixpointIterations = 3;
-        O.LargeModuleInstrThreshold = 0; return O;
+        O.withLargeModuleThreshold(0); return O;
       }
       static Options NoOptimize() {
         Options O; O.MaxFixpointIterations = 0; O.EnableEarlyPrune = false;
@@ -441,15 +448,36 @@ namespace clangRuntimeSpecializer {
         Options O;
         O.MaxFixpointIterations     = static_cast<int>(std::round(lerp(0.0, kFixpointMax, t)));
         O.LoopUnrollCount           = static_cast<int>(std::round(lerp(1.0, kUnrollMax,   t)));
-        O.LargeModuleInstrThreshold = static_cast<size_t>(std::round(lerp(0.0, kLargeModMax, t)));
+        O.withLargeModuleThreshold(static_cast<size_t>(std::round(lerp(0.0, kLargeModMax, t))));
         O.EnableEarlyPrune = true; O.EnableO3Final = true;
         O.ExpectedCallDurationNs = callDurationNs; O.BudgetScale = budgetScale;
         return O;
       }
 
+      size_t largeModuleInstrThresholdForPipeline(int Pipeline) const {
+        switch (Pipeline) {
+        case 0:
+          return P0LargeModuleInstrThreshold;
+        case 1:
+          return P1LargeModuleInstrThreshold;
+        case 2:
+          return P2LargeModuleInstrThreshold;
+        default:
+          return P0LargeModuleInstrThreshold;
+        }
+      }
+
       // --- Fluent builder ---
       Options& withMaxFixpointIterations(int N)       { MaxFixpointIterations = N; return *this; }
-      Options& withLargeModuleThreshold(size_t N)      { LargeModuleInstrThreshold = N; return *this; }
+      Options& withLargeModuleThreshold(size_t N)      {
+        P0LargeModuleInstrThreshold = N;
+        P1LargeModuleInstrThreshold = N;
+        P2LargeModuleInstrThreshold = N;
+        return *this;
+      }
+      Options& withP0LargeModuleThreshold(size_t N)    { P0LargeModuleInstrThreshold = N; return *this; }
+      Options& withP1LargeModuleThreshold(size_t N)    { P1LargeModuleInstrThreshold = N; return *this; }
+      Options& withP2LargeModuleThreshold(size_t N)    { P2LargeModuleInstrThreshold = N; return *this; }
       Options& withLoopUnrollCount(int N)             { LoopUnrollCount = N; return *this; }
       Options& withEarlyPrune(bool V)                 { EnableEarlyPrune = V; return *this; }
       Options& withO3Final(bool V)                    { EnableO3Final = V; return *this; }

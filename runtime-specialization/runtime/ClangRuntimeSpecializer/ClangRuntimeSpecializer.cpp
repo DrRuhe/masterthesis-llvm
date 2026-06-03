@@ -476,12 +476,6 @@ namespace clangRuntimeSpecializer {
               g_lastTransformStats.FunctionCountAfterPrune    = countNonDecl(M);
               g_lastTransformStats.InstructionCountAfterPrune = countInstrs(M);
 
-              // Classify module size after pruning to gate expensive transforms.
-              // Large modules (e.g. the sqlite3 amalgamation compiled as a single
-              // translation unit) must use conservative inlining and loop-unroll
-              // settings to avoid catastrophic IR explosion.
-              const bool LargeModule =
-                  g_lastTransformStats.InstructionCountAfterPrune > Instance->CurrentCallOptions.LargeModuleInstrThreshold;
               const int Pipeline = Instance->CurrentCallOptions.OptimizationPipelineToUse;
 
               // Validate pipeline index; clamp to 0 on out-of-range value.
@@ -494,6 +488,14 @@ namespace clangRuntimeSpecializer {
                      "]. Clamping pipeline to 0.").str());
               }
               const int ValidPipeline = (Pipeline < 0 || Pipeline >= kNumPipelines) ? 0 : Pipeline;
+
+              // Classify module size after pruning to gate expensive transforms.
+              // Each pipeline has its own threshold because the conservative path
+              // trades off different passes for P0, P1, and P2.
+              const size_t LargeModuleInstrThreshold =
+                  Instance->CurrentCallOptions.largeModuleInstrThresholdForPipeline(ValidPipeline);
+              const bool LargeModule =
+                  g_lastTransformStats.InstructionCountAfterPrune > LargeModuleInstrThreshold;
 
               // Warn about options that are inapplicable to the selected pipeline.
               if (ValidPipeline == 0 && Instance->CurrentCallOptions.FuncSpecMaxGroups > 0) {

@@ -23,7 +23,7 @@ instead of the post-store value — silently wrong result.
 **Fix**:
 1. Add `StaticMutabilityAnalysis::StaticMutabilityAnalysisPass()` to P2 **before**
    `JitIPSCCPPass` (currently only in cleanup Phase 3).
-2. Remove the unconditional `resolveConstantPtrLoad` block from `visitLoadInst`, or gate
+2. Remove the unconditional `resolveConstantPtrLoad` block from `visitLoadInst`, or gateOka
    it on `I.hasMetadata(LLVMContext::MD_invariant_load)` — rely only on the annotation
    path for host-memory folding.
 

@@ -8,3 +8,6 @@ Smoke test PASSED
 --- Phase B: UC ablation (iter-3: 5 reps, P0+P1+P2) ---
 --phase-only=B: discovering most recent uc_optim_iter3_% study...
 Using prior STUDY_A=uc_optim_iter3_20260531
+STUDY_B=ablation_uc_iter3_20260531
+STUDY_B=ablation_uc_iter3_20260531
+=== Phase B complete (single-phase mode). ===

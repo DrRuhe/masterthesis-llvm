@@ -171,7 +171,9 @@ env = {}
 param_env_map = {
     "fixpoint_max":         "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS",
     "unroll_max":           "CRS_DEFAULT_LOOP_UNROLL_COUNT",
-    "large_module_max":     "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD",
+    "p0_large_module_max":  "CRS_DEFAULT_P0_LARGE_MODULE_INSTR_THRESHOLD",
+    "p1_large_module_max":  "CRS_DEFAULT_P1_LARGE_MODULE_INSTR_THRESHOLD",
+    "p2_large_module_max":  "CRS_DEFAULT_P2_LARGE_MODULE_INSTR_THRESHOLD",
     "early_prune":          "CRS_DEFAULT_EARLY_PRUNE",
     "o3_final":             "CRS_DEFAULT_O3_FINAL",
     "pipeline":             "CRS_DEFAULT_PIPELINE",
@@ -416,13 +418,11 @@ if should_run_phase E; then
         exit 2
     fi
 
-    # Write a fixed P2 baseline JSON for P2-specific sweeps (pipeline=2, all
-    # other P2 knobs at their defaults: min_func_size=1, max_clones=0,
-    # func_spec_iters=10, force_spec=0).
+    # Write a fixed P2 baseline JSON for P2-specific sweeps.
     # Format matches optimize_benchmarks.py --output-best: {"trial_id":..., "params":{...}}.
     P2_BASELINE_JSON="$REPORT_DIR/p2_baseline.json"
     cat > "$P2_BASELINE_JSON" <<'JSONEOF'
-{"trial_id": "p2_baseline", "params": {"fixpoint_max": 5, "unroll_max": 4, "large_module_max": 0, "early_prune": 1, "o3_final": 1, "pipeline": 2, "p2_min_func_size": 1, "p2_max_clones": 0, "p2_func_spec_iters": 10, "p2_force_spec": 0}}
+{"trial_id": "p2_baseline", "params": {"fixpoint_max": 16, "unroll_max": 44, "p2_large_module_max": 3, "early_prune": 1, "o3_final": 1, "pipeline": 2, "p2_min_func_size": 18, "p2_max_clones": 18, "p2_func_spec_iters": 2, "p2_force_spec": 1, "p2_spec_on_addr": 1, "p2_spec_literal": 1}}
 JSONEOF
 
     # Sweep list: (param_name, comma_separated_values) from the Phase A best-config baseline.
