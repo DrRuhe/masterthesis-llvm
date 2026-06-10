@@ -128,19 +128,14 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Research Question 4 (RQ4) — Generalization of Pipeline Settings
 
 ### RQ4-001: Run transfer experiment: UC-optimal config on TPC-H
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Apply UC-optimal config (from RQ1-001) to TPC-H; measure combined cost (jit_ns + spec_ns); run Wilcoxon rank-sum test comparing UC-optimal vs. Default on TPC-H.
-- **Why**: RQ4 asks "Do UC-optimal settings generalize to other workloads?" Transfer experiment is the direct answer.
-- **Outcome**: 
-  - p-value from Wilcoxon test; if p ≤ 0.05 and ratio > 1.05, conclude "UC-optimal does not generalize."
-  - If p > 0.05 or ratio ≤ 1.05, conclude "UC-optimal generalizes (or no significant difference detected)."
-  - Thesis statement for RQ4: "Configuration generalization depends on workload properties. UC-optimal settings [do/do not] generalize to TPC-H with significant impact."
-- **Reference**: Spec 007 Experiment C (FR-009 to FR-011); User Story 3.
-- **Prerequisite**: 
-  - [ ] RQ3-002 must inform feasibility (if TPC-H JIT is impractical, this experiment is too)
-  - [ ] UC-optimal config must be finalized (RQ1-001)
-- **Effort**: ~2 hours if TPC-H is viable; likely infeasible if TPC-H module is too large.
-- **Decision Point**: If TPC-H JIT time > 5 min, this experiment should be skipped and RQ4 scope narrowed to "UC workload family."
+- **Status**: ❌ SKIPPED — TPC-H JIT overhead > 2 minutes (infeasible, see RQ6-002)
+- **Decision Made**: TPC-H JIT time far exceeds 5-minute threshold → experiment skipped.
+  RQ4 scope narrowed to "UC workload family" generalization question.
+- **Alternative Evidence**: The `corpus_uc_p0_p2_20260601` ablation study compared p0_o3_optimal vs default
+  across ALL UC sizes/abstractions. p0_o3_optimal tuned for MEDIUM/low actually performed WORSE overall
+  (default: 1.71× vs p0_o3_optimal: 1.65×), demonstrating that UC-optimal settings do NOT generalize
+  to other UC sizes/abstractions. This is a weaker form of the generalization question.
+- **Reference**: `benchmarks/reports/260610-tpch-scope/scope_statement.md`; memory notes "TPC-H Benchmark Notes"
 
 ### RQ4-002: Run sensitivity analysis (OAT) for pipeline parameters
 - **Status**: ✅ Complete (2026-06-10)
