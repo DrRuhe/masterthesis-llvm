@@ -122,43 +122,75 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
 
     Tries optim_trial_params first; falls back to ablation_studies. Returns empty list
     if neither has data for the study.
+
+    Note: jit_overhead and specialized_exec benchmarks use different raw_params (the
+    jit benchmark appends "/iterations:1/manual_time"), so they appear in separate
+    v_ratios rows. We reconstruct per-kernel (jit, spec) pairs by joining jit rows
+    with spec rows on (run_id, kernel).
     """
     has_kv_a = _has_kv_a_column(con)
-    kv_a_expr = "r.kv_a" if has_kv_a else "NULL"
+    kv_a_expr = "j.kv_a" if has_kv_a else "NULL"
 
     out = []
     optim_rows = con.execute(
         f"""
-        SELECT 'trial_' || CAST(otp.trial_id AS VARCHAR) AS config_label,
-               otp.params_json,
-               r."group", r.kernel,
-               r.t_jit_ns / 1e6 AS jit_ms,
-               r.t_spec_ns / 1e6 AS spec_ms,
+        WITH jit AS (
+            SELECT otp.trial_id, otp.params_json, r."group", r.kernel,
+                   r.t_jit_ns{"," + "r.kv_a" if has_kv_a else ""}
+            FROM optim_trial_params otp
+            JOIN v_ratios r ON r.run_id = otp.run_id
+            WHERE otp.study_name = ?
+              AND NOT otp.used_timeout_fallback
+              AND r.t_jit_ns IS NOT NULL
+        ),
+        spec AS (
+            SELECT otp.trial_id, r.kernel, r.t_spec_ns
+            FROM optim_trial_params otp
+            JOIN v_ratios r ON r.run_id = otp.run_id
+            WHERE otp.study_name = ?
+              AND NOT otp.used_timeout_fallback
+              AND r.t_spec_ns IS NOT NULL
+        )
+        SELECT 'trial_' || CAST(j.trial_id AS VARCHAR) AS config_label,
+               j.params_json,
+               j."group", j.kernel,
+               j.t_jit_ns / 1e6 AS jit_ms,
+               s.t_spec_ns / 1e6 AS spec_ms,
                {kv_a_expr} AS kv_a
-        FROM optim_trial_params otp
-        JOIN v_ratios r USING (run_id)
-        WHERE otp.study_name = ?
-          AND NOT otp.used_timeout_fallback
-          AND r.t_jit_ns IS NOT NULL AND r.t_spec_ns IS NOT NULL
+        FROM jit j
+        JOIN spec s ON s.trial_id = j.trial_id AND s.kernel = j.kernel
         """,
-        [study_name],
+        [study_name, study_name],
     ).fetchall()
     out.extend(optim_rows)
 
     abl_rows = con.execute(
         f"""
-        SELECT a.config_name AS config_label,
-               a.params_json,
-               r."group", r.kernel,
-               r.t_jit_ns / 1e6 AS jit_ms,
-               r.t_spec_ns / 1e6 AS spec_ms,
-               {kv_a_expr} AS kv_a
-        FROM ablation_studies a
-        JOIN v_ratios r USING (run_id)
-        WHERE a.study_name = ?
-          AND r.t_jit_ns IS NOT NULL AND r.t_spec_ns IS NOT NULL
+        WITH jit AS (
+            SELECT a.config_name, a.params_json, r."group", r.kernel, r.t_jit_ns
+                   {", r.kv_a" if has_kv_a else ""}
+            FROM ablation_studies a
+            JOIN v_ratios r ON r.run_id = a.run_id
+            WHERE a.study_name = ?
+              AND r.t_jit_ns IS NOT NULL
+        ),
+        spec AS (
+            SELECT a.config_name, r.kernel, r.t_spec_ns
+            FROM ablation_studies a
+            JOIN v_ratios r ON r.run_id = a.run_id
+            WHERE a.study_name = ?
+              AND r.t_spec_ns IS NOT NULL
+        )
+        SELECT j.config_name AS config_label,
+               j.params_json,
+               j."group", j.kernel,
+               j.t_jit_ns / 1e6 AS jit_ms,
+               s.t_spec_ns / 1e6 AS spec_ms,
+               {kv_a_expr.replace("j.", "j.")} AS kv_a
+        FROM jit j
+        JOIN spec s ON s.config_name = j.config_name AND s.kernel = j.kernel
         """,
-        [study_name],
+        [study_name, study_name],
     ).fetchall()
     out.extend(abl_rows)
     return out
