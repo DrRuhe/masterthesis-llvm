@@ -113,15 +113,12 @@ This document is the authoritative reference for high-level tasks required to co
 - **Effort**: ~1.5 hours (bug fix + recompile + run 60 trials: 30 kernels × 2 sizes × 1 rep baseline).
 
 ### RQ3-002: Evaluate TPC-H on CRS (if feasible)
-- **Status**: 🔴 Blocked
-- **Data Needed**: Attempt JIT specialization on TPC-H Query 1; measure JIT time and specialized execution time.
-- **Why**: TPC-H represents even higher abstraction (full query operators); testing it answers "does specialization scale to realistic database workloads?"
-- **Known Issue**: Reflection 260531 §6.1 and memory notes state "JIT overhead > 2 minutes even with P0 (sqlite3VdbeExec module too large) — impractical." This is an RQ6 failure case, not a success case.
-- **Outcome**: Either (a) demonstrate that TPC-H can be specialized with reasonable overhead, or (b) document it as an RQ6 failure case with explanation.
-- **Reference**: Memory notes "TPC-H Benchmark Notes"; Spec 007 secondary workload mention.
-- **Prerequisite**: Decision: Is TPC-H worth investigating, or should it be marked as "out of scope / documented as failure case"?
-- **Effort**: ~30 minutes if skipping; ~2 hours if attempting fix.
-- **Note**: **Decision Point for Thesis Scope**. If TPC-H overhead is inherent to module size, this is valuable RQ6 finding. If it can be fixed, it's valuable for RQ3. Current hypothesis: it cannot be fixed without extracting the specific query from sqlite3VdbeExec — out of scope.
+- **Status**: ❌ SKIPPED — TPC-H JIT overhead > 2 minutes (infeasible, documented as RQ6 failure case)
+- **Decision Made**: TPC-H module (255,342 instrs) is 12× too large for practical specialization.
+  Documenting as RQ6 failure case is more valuable than attempting fix.
+- **Outcome**: TPC-H documented in `benchmarks/reports/260610-tpch-scope/scope_statement.md`
+  as RQ6 module-size failure case (answer (b)). This establishes the practical size limit.
+- **Reference**: `benchmarks/reports/260610-tpch-scope/module_stats.txt`, `scope_statement.md`; RQ6-002 ✅ Complete
 
 ---
 
