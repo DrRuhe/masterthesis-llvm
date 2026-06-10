@@ -1,0 +1,34 @@
+
+Study:   corpus_uc_final_20260610
+DB:      benchmarks.duckdb
+Binary:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Configs: 9  Reps: 5  Timeout: 300.0s
+Filter:  BM_g:uc.*a:low.*s:MEDIUM.*t:(specialized_exec|unspecialized|jit_overhead)
+
+Config [default]  (env: default)
+  [default] rep 1/5... OK
+  [default] rep 2/5... OK
+  [default] rep 3/5... OK
+  [default] rep 4/5... OK
+  [default] rep 5/5... OK
+  [default       ]  5/5 reps OK  jit=0.0ms  spec=123.6ms  unspec=149.6ms  speedup=1.21x
+
+Config [o3_only]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '1', 'CRS_DEFAULT_EARLY_PRUNE': '0', 'CRS_DEFAULT_O3_FINAL': '1'})
+  [o3_only] rep 1/5... OK
+  [o3_only] rep 2/5... OK
+  [o3_only] rep 3/5... OK
+  [o3_only] rep 4/5... OK
+  [o3_only] rep 5/5... OK
+  [o3_only       ]  5/5 reps OK  jit=0.0ms  spec=57.4ms  unspec=58.5ms  speedup=1.02x
+
+Config [no_prune]  (env: {'CRS_DEFAULT_EARLY_PRUNE': '0'})
+  [no_prune] rep 1/5... OK
+  [no_prune] rep 2/5... OK
+  [no_prune] rep 3/5... OK
+  [no_prune] rep 4/5... OK
+  [no_prune] rep 5/5... OK
+  [no_prune      ]  5/5 reps OK  jit=0.0ms  spec=107.4ms  unspec=130.6ms  speedup=1.22x
+
+Config [no_o3_final]  (env: {'CRS_DEFAULT_O3_FINAL': '0'})
+  [no_o3_final] rep 1/5... OK
+  [no_o3_final] rep 2/5... 

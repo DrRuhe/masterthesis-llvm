@@ -1,0 +1,34 @@
+[
+  {"name": "default",     "env": {}},
+  {"name": "o3_only",     "env": {"CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "1",
+                                   "CRS_DEFAULT_EARLY_PRUNE": "0",
+                                   "CRS_DEFAULT_O3_FINAL": "1"}},
+  {"name": "no_prune",    "env": {"CRS_DEFAULT_EARLY_PRUNE": "0"}},
+  {"name": "no_o3_final", "env": {"CRS_DEFAULT_O3_FINAL": "0"}},
+  {"name": "no_unroll",   "env": {"CRS_DEFAULT_LOOP_UNROLL_COUNT": "1"}},
+  {"name": "fixpoint_2",  "env": {"CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "2"}},
+  {"name": "aggressive",  "env": {"CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "20",
+                                   "CRS_DEFAULT_LOOP_UNROLL_COUNT": "256"}},
+  {"name": "p0_o3_optimal", "env": {
+    "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "16",
+    "CRS_DEFAULT_LOOP_UNROLL_COUNT": "62",
+    "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": "3",
+    "CRS_DEFAULT_EARLY_PRUNE": "1",
+    "CRS_DEFAULT_O3_FINAL": "1",
+    "CRS_DEFAULT_PIPELINE": "0"
+  }},
+  {"name": "uc_workload_optimal", "env": {
+    "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "22",
+    "CRS_DEFAULT_LOOP_UNROLL_COUNT": "5",
+    "CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD": "1",
+    "CRS_DEFAULT_EARLY_PRUNE": "1",
+    "CRS_DEFAULT_O3_FINAL": "1",
+    "CRS_DEFAULT_PIPELINE": "2",
+    "CRS_P2_MIN_FUNC_SIZE": "34",
+    "CRS_P2_MAX_CLONES": "16",
+    "CRS_P2_FUNC_SPEC_ITERS": "4",
+    "CRS_P2_FORCE_SPEC": "1",
+    "CRS_P2_SPEC_ON_ADDR": "1",
+    "CRS_P2_SPEC_LITERAL": "1"
+  }}
+]
