@@ -1,0 +1,63 @@
+┌─────────────────────┬─────────────────────┬─────────┬────────┐
+│     config_name     │       kernel        │ speedup │ n_reps │
+│       varchar       │       varchar       │ double  │ int64  │
+├─────────────────────┼─────────────────────┼─────────┼────────┤
+│ aggressive          │ box_filter          │   3.003 │     10 │
+│ aggressive          │ grouped_count       │   2.293 │     10 │
+│ aggressive          │ grouped_sum         │   2.179 │     10 │
+│ aggressive          │ batch_delta         │   2.149 │     10 │
+│ aggressive          │ grouped_minmax      │   2.138 │     10 │
+│ aggressive          │ multi_agg_delta     │   2.125 │     10 │
+│ aggressive          │ apply_row_delta     │   2.068 │     10 │
+│ aggressive          │ separable_gaussian  │    1.89 │     10 │
+│ aggressive          │ struct_sort         │   1.528 │     10 │
+│ aggressive          │ generic_sort        │   1.494 │     10 │
+│ aggressive          │ edge_detection      │   1.429 │     10 │
+│ aggressive          │ multi_key_sort      │   1.387 │     10 │
+│ aggressive          │ multi_pattern_match │   1.272 │     10 │
+│ aggressive          │ url_match           │   1.204 │     10 │
+│ aggressive          │ email_match         │   1.203 │     10 │
+│ aggressive          │ count_matching_rows │   1.013 │     10 │
+│ aggressive          │ column_scan         │     1.0 │     10 │
+│ aggressive          │ multi_predicate     │   0.995 │     10 │
+│ default             │ box_filter          │   2.996 │     10 │
+│ default             │ grouped_count       │   2.568 │     10 │
+│    ·                │       ·             │     ·   │      · │
+│    ·                │       ·             │     ·   │      · │
+│    ·                │       ·             │     ·   │      · │
+│ p0_o3_optimal       │ multi_predicate     │   1.021 │     10 │
+│ p0_o3_optimal       │ column_scan         │   1.009 │     10 │
+│ uc_workload_optimal │ box_filter          │    3.01 │     10 │
+│ uc_workload_optimal │ grouped_count       │   2.244 │     10 │
+│ uc_workload_optimal │ grouped_minmax      │   2.106 │     10 │
+│ uc_workload_optimal │ apply_row_delta     │    2.09 │     10 │
+│ uc_workload_optimal │ grouped_sum         │    2.09 │     10 │
+│ uc_workload_optimal │ multi_agg_delta     │   2.075 │     10 │
+│ uc_workload_optimal │ batch_delta         │   2.068 │     10 │
+│ uc_workload_optimal │ separable_gaussian  │   1.873 │     10 │
+│ uc_workload_optimal │ struct_sort         │   1.532 │     10 │
+│ uc_workload_optimal │ generic_sort        │   1.478 │     10 │
+│ uc_workload_optimal │ edge_detection      │   1.451 │     10 │
+│ uc_workload_optimal │ multi_key_sort      │    1.37 │     10 │
+│ uc_workload_optimal │ multi_pattern_match │   1.267 │     10 │
+│ uc_workload_optimal │ email_match         │   1.217 │     10 │
+│ uc_workload_optimal │ url_match           │   1.212 │     10 │
+│ uc_workload_optimal │ count_matching_rows │    1.02 │     10 │
+│ uc_workload_optimal │ multi_predicate     │   1.004 │     10 │
+│ uc_workload_optimal │ column_scan         │   0.999 │     10 │
+└─────────────────────┴─────────────────────┴─────────┴────────┘
+  162 rows (40 shown)                                4 columns
+┌─────────────────────┬─────────┬─────────────┬─────────────────┐
+│     config_name     │ kernels │ sum_speedup │ geomean_speedup │
+│       varchar       │  int64  │   double    │     double      │
+├─────────────────────┼─────────┼─────────────┼─────────────────┤
+│ p0_o3_optimal       │      18 │       1.716 │            1.74 │
+│ default             │      18 │       1.635 │           1.665 │
+│ o3_only             │      18 │        1.64 │           1.659 │
+│ aggressive          │      18 │       1.648 │           1.602 │
+│ no_prune            │      18 │       1.627 │           1.594 │
+│ fixpoint_2          │      18 │       1.644 │           1.593 │
+│ uc_workload_optimal │      18 │       1.639 │           1.592 │
+│ no_unroll           │      18 │       1.634 │           1.585 │
+│ no_o3_final         │      18 │       1.305 │           1.453 │
+└─────────────────────┴─────────┴─────────────┴─────────────────┘

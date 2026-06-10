@@ -42,4 +42,43 @@ Config [no_unroll]  (env: {'CRS_DEFAULT_LOOP_UNROLL_COUNT': '1'})
   [no_unroll] rep 2/5... OK
   [no_unroll] rep 3/5... OK
   [no_unroll] rep 4/5... OK
-  [no_unroll] rep 5/5... 
+  [no_unroll] rep 5/5... OK
+  [no_unroll     ]  5/5 reps OK  jit=0.0ms  spec=38.3ms  unspec=38.4ms  speedup=1.00x
+
+Config [fixpoint_2]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '2'})
+  [fixpoint_2] rep 1/5... OK
+  [fixpoint_2] rep 2/5... OK
+  [fixpoint_2] rep 3/5... OK
+  [fixpoint_2] rep 4/5... OK
+  [fixpoint_2] rep 5/5... OK
+  [fixpoint_2    ]  5/5 reps OK  jit=0.0ms  spec=13.7ms  unspec=28.4ms  speedup=2.08x
+
+Config [aggressive]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '20', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '256'})
+  [aggressive] rep 1/5... OK
+  [aggressive] rep 2/5... OK
+  [aggressive] rep 3/5... OK
+  [aggressive] rep 4/5... OK
+  [aggressive] rep 5/5... OK
+  [aggressive    ]  5/5 reps OK  jit=0.0ms  spec=12.7ms  unspec=29.2ms  speedup=2.29x
+
+Config [p0_o3_optimal]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '16', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '62', 'CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD': '3', 'CRS_DEFAULT_EARLY_PRUNE': '1', 'CRS_DEFAULT_O3_FINAL': '1', 'CRS_DEFAULT_PIPELINE': '0'})
+  [p0_o3_optimal] rep 1/5... OK
+  [p0_o3_optimal] rep 2/5... OK
+  [p0_o3_optimal] rep 3/5... OK
+  [p0_o3_optimal] rep 4/5... OK
+  [p0_o3_optimal] rep 5/5... OK
+  [p0_o3_optimal ]  5/5 reps OK  jit=0.0ms  spec=94.1ms  unspec=114.5ms  speedup=1.22x
+
+Config [uc_workload_optimal]  (env: {'CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS': '22', 'CRS_DEFAULT_LOOP_UNROLL_COUNT': '5', 'CRS_DEFAULT_LARGE_MODULE_INSTR_THRESHOLD': '1', 'CRS_DEFAULT_EARLY_PRUNE': '1', 'CRS_DEFAULT_O3_FINAL': '1', 'CRS_DEFAULT_PIPELINE': '2', 'CRS_P2_MIN_FUNC_SIZE': '34', 'CRS_P2_MAX_CLONES': '16', 'CRS_P2_FUNC_SPEC_ITERS': '4', 'CRS_P2_FORCE_SPEC': '1', 'CRS_P2_SPEC_ON_ADDR': '1', 'CRS_P2_SPEC_LITERAL': '1'})
+  [uc_workload_optimal] rep 1/5... OK
+  [uc_workload_optimal] rep 2/5... OK
+  [uc_workload_optimal] rep 3/5... OK
+  [uc_workload_optimal] rep 4/5... OK
+  [uc_workload_optimal] rep 5/5... OK
+  [uc_workload_optimal]  5/5 reps OK  jit=0.0ms  spec=89.8ms  unspec=113.7ms  speedup=1.27x
+
+Done. 45 runs (45 OK, 0 failed).
+Study 'corpus_uc_final_20260610' stored in benchmarks.duckdb
+
+SQL to explore results:
+  SELECT * FROM v_ablation_medians WHERE study_name='corpus_uc_final_20260610' ORDER BY config_name, kernel;
