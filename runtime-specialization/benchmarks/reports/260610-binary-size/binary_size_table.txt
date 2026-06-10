@@ -1,0 +1,82 @@
+Binary-Size Overhead of CRS IR-Dump + Runtime Infrastructure
+=============================================================
+Date: 2026-06-10
+Purpose: RQ2-001 — Quantify per-TU binary size cost of the IRDumpingPass plugin
+
+Subject TU
+----------
+File:      benchmarks/use-cases/UC1SqlPredicate/UC1ColumnScanLowKernels.cpp
+Content:   UC1 column-scan kernel + CRS specializeLambda call site
+Compiler:  llvm/build/release/bin/clang++ -O2 -std=c++17 -fexceptions -frtti
+Plugin:    llvm/build/release/lib/LLVMRuntimeSpecializationComptimePlugin.so
+
+Object File Sizes  (from `size` and `wc -c`)
+---------------------------------------------
+                        Without plugin    With plugin    Overhead
+                        --------------    -----------    --------
+text (size tool)*            1,146 B        107,690 B    +106,544 B  (+9,297%)
+data (size tool)               104 B            280 B        +176 B   (+169%)
+bss                              0 B              0 B           0 B
+Total sections (size)        1,250 B        107,970 B    +106,720 B  (+8,538%)
+On-disk file size            8,056 B        141,776 B    +133,720 B  (+1,660%)
+                               7.9 KB         138.5 KB     +130.6 KB
+
+* size(1) on ELF counts .text + .rodata + .gcc_except_table + similar sections
+  as "text".  See section breakdown below for the split.
+
+Detailed Section Breakdown  (from `readelf -S --wide`)
+------------------------------------------------------
+                        Without plugin    With plugin    Overhead
+                        --------------    -----------    --------
+.text* (code only)              23 B         3,498 B     +3,475 B
+.rodata* (read-only data)      241 B        96,339 B    +96,098 B
+  of which: .rodata blob          0 B        93,944 B
+.data*                         104 B           272 B       +168 B
+.init_array                      0 B             8 B         +8 B
+
+IR Blob Analysis
+----------------
+The IR-dumping plugin embeds a serialized LLVM bitcode snapshot of the TU
+as a read-only data blob registered at startup via clang_runtime_specializer_register_blob_v2.
+
+.rodata section (IR blob):       93,944 bytes  (91.7 KB)
+  As % of total file overhead:    93,944 / 133,720 = 70.2%
+  As % of with-plugin file size:  93,944 / 141,776 = 66.3%
+
+Extra .text from LLVM/CRS API header inlines pulled in by the plugin:
+  3,475 bytes (3.4 KB) — these are LLVM inline methods (IRBuilder, ORC thread-safe
+  wrappers, CallInst::Create, etc.) needed by the JIT wrapper generated at compile
+  time. In a linked binary most of these are COMDAT-deduplicated across TUs.
+
+Summary Table
+-------------
+Metric                         Without plugin    With plugin    Overhead
+-----------------------------  --------------    -----------    --------
+Object file (on disk)               7.9 KB        138.5 KB    +130.6 KB  (+1,660%)
+Loadable sections (text+data)       1.2 KB        105.4 KB    +104.2 KB
+  of which IR blob (.rodata)          0 KB          91.7 KB     +91.7 KB
+  of which extra code (.text)       0.0 KB           3.4 KB      +3.4 KB
+  of which data (.data*)            0.1 KB           0.3 KB      +0.2 KB
+
+AllBenchmarks Binary (full suite, for reference)
+------------------------------------------------
+  .text:      113,550,009 bytes  (108.3 MB)
+  File size:  149,885,488 bytes  (142.9 MB)
+  Path: llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+
+Notes
+-----
+1. The dominant overhead source is the embedded IR bitcode blob (~92 KB for this
+   single small kernel TU).  The blob size scales with TU complexity.
+
+2. The extra ~3.5 KB .text overhead from LLVM header inlines is largely
+   COMDAT-deduplicated at link time — in a multi-TU binary this cost is paid once
+   per unique inline instantiation, not once per TU.
+
+3. The without-plugin build still compiles with the CRS header included (for the
+   function signature), so the 23 B .text and 241 B .rodata present in the
+   without-plugin object are CRS error-class type-info stubs, not kernel code.
+
+4. Measurement flags: -O2 (not -O3) for a conservative baseline.  The build
+   system uses -O3; at -O3 the kernel .text without plugin would be comparable
+   but the IR blob size is the same (it is generated before optimisation).
