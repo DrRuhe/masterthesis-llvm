@@ -405,3 +405,4 @@ This document is the authoritative reference for high-level tasks required to co
 | Date | Session | Status Update | Reference |
 |------|---------|---------------|-----------|
 | 2026-06-10 | Initial creation | All tasks identified and prioritized | — |
+| 2026-06-10 | Data collection | Completed: RQ1-002 (polybench funcptr fix), RQ2-001 (binary size), RQ3-001 (polybench eval), RQ4-002 (sensitivity), RQ5-001 (break-even), RQ6-002 (TPC-H scope), INF-002/003/004. RQ1-001 corpus ablation IN PROGRESS (6/9 configs done). | `specs/PLAN.md`, `benchmarks/reports/260610-*/` |
