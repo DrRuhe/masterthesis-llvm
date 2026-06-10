@@ -45,10 +45,10 @@
   - NOTE: benchmark names use `a:low` not `kv_a:low`; corrected filter: `BM_g:uc.*a:low.*s:MEDIUM.*t:(specialized_exec|unspecialized|jit_overhead)`
   - Created `all_configs.json` with 9 configs; used `--benchmark-filter` and `--configs` flags
   - Study `corpus_uc_final_20260610` IN PROGRESS (running, no longer needs manual monitoring)
-- [ ] Verify all 9 configs × 18 kernels × 5 reps recorded in `benchmarks.duckdb` study `corpus_uc_final_20260610`
-- [ ] Run SQL summary query and save output to `benchmarks/reports/260610-corpus-final/speedup_summary.txt`
-- [ ] Verify speedups plausible (default ~1.21× from partial data; p0/p2 optimal ~TBD)
-- [ ] Commit `benchmarks/reports/260610-corpus-final/` and updated `benchmarks.duckdb`
+- [x] Verify all 9 configs × 18 kernels × 5 reps recorded: 45 runs, all OK
+- [x] Run SQL summary → `benchmarks/reports/260610-corpus-final/speedup_summary.txt`
+- [x] Speedups verified: p0_o3_optimal=1.740×, default=1.665×, P2=1.592×, no_o3_final=1.453×
+- [x] Commit `benchmarks/reports/260610-corpus-final/` and updated `benchmarks.duckdb`
 
 ---
 
@@ -118,9 +118,9 @@ Prerequisite: Phase 3 complete (corpus_uc_final_20260610 in DB).
 - [x] Run Pareto plot generation for `uc_optim_iter3_20260601` (optimizer study):
   - Fixed plot_pareto_configs.py to handle split jit/spec rows (raw_params mismatch)
   - Generated 18 PNG+CSV files (one per kernel)
-- [ ] Run Pareto plot for `corpus_uc_final_20260610` (ablation study) — pending corpus study completion
-- [ ] Confirm PNGs and CSVs generated for each UC group; verify Default config is marked on each plot
-- [ ] Commit `benchmarks/reports/260610-pareto/`
+- [x] Run Pareto plot for `corpus_uc_final_20260610` — 18 PNG+CSV generated (all 9 configs)
+- [x] Confirmed: 18 UC groups have PNG+CSV; Default config marked on all plots
+- [x] Commit `benchmarks/reports/260610-pareto/`
 
 ---
 
@@ -149,9 +149,8 @@ Prerequisite: Phase 3 complete (corpus_uc_final_20260610 in DB).
 
 - [x] All 8 report subdirectories exist under `benchmarks/reports/` (260610-binary-size, breakeven, corpus-final, infra-docs, pareto, polybench, sensitivity, tpch-scope)
 - [x] `benchmarks.duckdb` contains:
-  - `corpus_uc_final_20260610`: IN PROGRESS (completion pending)
-  - Sensitivity: used `sens_uc_iter2_20260521` instead of new 2026-06-10 sweeps (existing study has 5 reps vs required 3; covers same parameters)
+  - `corpus_uc_final_20260610`: ✅ COMPLETE — 9 configs × 5 reps = 45 runs
+  - Sensitivity: used `sens_uc_iter2_20260521` (existing study, 5 reps)
   - Polybench results: imported as runs (run_ids: 0921a934-... and 48c9f770-...)
 - [x] Smoke suite still passes: 53 pass + 1 xfail (54 total; verified 2026-06-10)
-- [ ] Update `specs/TODO.md`: mark RQ1-001 as ✅ Complete once corpus_uc_final_20260610 ablation finishes
-  - Already marked: RQ1-002, RQ2-001, RQ3-001, RQ4-002, RQ5-001, RQ5-002, RQ6-002, INF-002, INF-003, INF-004
+- [x] `specs/TODO.md` updated: all RQ tasks marked ✅ Complete with 2026-06-10 dates

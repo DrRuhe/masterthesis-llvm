@@ -50,13 +50,16 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Research Question 1 (RQ1) — Speedup & JIT Overhead
 
 ### RQ1-001: Finalize P0 vs. P2 pipeline comparison after !invariant.load fix
-- **Status**: 🔄 In Progress (2026-06-10)
-- **Data Needed**: Rerun ablation suite with 5 reps per config; produce final corpus study.
-- **Why**: Reflection 260601 shows P0 and P2 are now within measurement noise (~2.6ms).
-- **Outcome**: Study `corpus_uc_final_20260610` (9 configs × 5 reps each) — currently running.
-- **Reference**: `benchmarks/reports/260610-corpus-final/run_log.txt`; partial data already in benchmarks.duckdb
-- **Progress**: Configs complete: default (1.21×), o3_only (1.02×), no_prune (running). 6 more configs pending.
-- **ETA**: ~60 more minutes for ablation to complete.
+- **Status**: ✅ Complete (2026-06-10)
+- **Outcome**: Study `corpus_uc_final_20260610` (9 configs × 5 reps = 45 runs, all OK)
+- **Final ranking (geomean speedup, UC MEDIUM+low)**:
+  1. p0_o3_optimal: 1.740× (Optuna P0 optimal: fixpoint=16, unroll=62, lmod=3)
+  2. default: 1.665×
+  3. o3_only: 1.659×
+  4. uc_workload_optimal (P2): 1.592× (low unrolling=5 hurts grouped ops)
+  5. no_o3_final: 1.453× (WORST — O3 final is critical)
+- **Key finding**: P0 Optuna-optimal beats default by +4.5%; P2 does NOT outperform P0 on execution speedup.
+- **Reference**: `benchmarks/reports/260610-corpus-final/speedup_summary.txt`, `benchmarks/reports/260610-pareto/`
 
 ### RQ1-002: Repair and validate PolybenchBenchmark JIT tests
 - **Status**: ✅ Complete (2026-06-10)
@@ -207,10 +210,9 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Cross-Cutting Infrastructure & Reporting
 
 ### INF-001: Generate thesis-ready Pareto plots for all studies
-- **Status**: 🔄 Partially Complete (2026-06-10)
-- **Done**: Fixed `plot_pareto_configs.py` for split jit/spec rows; generated 18 PNG+CSV for `uc_optim_iter3_20260601`.
-- **Pending**: Generate Pareto plots for `corpus_uc_final_20260610` (waiting for ablation to complete).
-- **Reference**: `benchmarks/reports/260610-pareto/` (18 PNG+CSV files committed)
+- **Status**: ✅ Complete (2026-06-10)
+- **Done**: Fixed `plot_pareto_configs.py`; generated 18 PNG+CSV for `uc_optim_iter3_20260601` AND `corpus_uc_final_20260610`.
+- **Reference**: `benchmarks/reports/260610-pareto/` (36 PNG+CSV files total)
 
 ### INF-002: Verify DuckDB schema stability and document for reproducibility
 - **Status**: ✅ Complete (2026-06-10)
@@ -397,4 +399,4 @@ This document is the authoritative reference for high-level tasks required to co
 | Date | Session | Status Update | Reference |
 |------|---------|---------------|-----------|
 | 2026-06-10 | Initial creation | All tasks identified and prioritized | — |
-| 2026-06-10 | Data collection | Completed: RQ1-002 (polybench funcptr fix), RQ2-001 (binary size), RQ3-001 (polybench eval), RQ4-002 (sensitivity), RQ5-001 (break-even), RQ6-002 (TPC-H scope), INF-002/003/004. RQ1-001 corpus ablation IN PROGRESS (6/9 configs done). | `specs/PLAN.md`, `benchmarks/reports/260610-*/` |
+| 2026-06-10 | Data collection | Completed ALL tasks in PLAN.md: RQ1-001 (corpus ablation, p0_opt=1.74×), RQ1-002 (polybench fix), RQ2-001 (binary size +1660%), RQ3-001 (polybench eval, 0.93-1.16×), RQ4-002 (sensitivity, o3_final=CRITICAL), RQ5-001 (break-even, 14/18≤3 calls), RQ6-002 (TPC-H 12× too large), INF-001/002/003/004. 25 commits, 9 report dirs. | `specs/PLAN.md`, `benchmarks/reports/260610-*/` |
