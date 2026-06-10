@@ -1,0 +1,47 @@
+TPC-H sqlite3VdbeExec Module Statistics
+========================================
+Date: 2026-06-10
+Source: sqlite3_with_ir.o (release build, built 2026-06-10)
+Method: extracted RuntimeSpecializeableIR_data blob via nm + binary offset,
+        analyzed with llvm-dis and llvm-bcanalyzer
+
+Blob size:           4,078 KB  (4,176,428 bytes raw)
+Function count:      2,017  (non-declaration functions in IR module)
+Instruction count:   255,342  (total LLVM IR instructions across all function bodies)
+
+  Instruction breakdown (from llvm-bcanalyzer --stats):
+    INST_BR:       46,047
+    INST_GEP:      44,520
+    INST_LOAD:     44,303
+    INST_CMP2:     29,487
+    INST_BINOP:    21,806
+    INST_STORE:    21,780
+    INST_CALL:     15,284
+    INST_PHI:      13,928
+    INST_CAST:     12,093
+    INST_RET:       2,017
+    INST_VSELECT:   1,804
+    INST_ALLOCA:    1,078
+    INST_SWITCH:      547
+    INST_INSERTELT:   504
+    other:            144
+
+AllBenchmarks binary (all 65 blobs combined):
+  blobs:        65
+  bitcode:      59,022 KB
+  functions:    4,182
+  instructions: 418,548
+  (sqlite3 blob is 1 of 65 blobs in AllBenchmarks; the above per-blob stats
+   were extracted directly from sqlite3_with_ir.o)
+
+TPC-H benchmark tests available (from AllBenchmarks --benchmark_list_tests):
+  Groups: db/sqlite3/tpch, db/duckdb/tpch
+  Queries: Q1-Q22 (22 queries each)
+  Phases per query: unspecialized, jit_overhead, specialized_exec, jit_analysis
+  Total: 176 benchmark cases (88 sqlite3 + 88 duckdb)
+
+JIT overhead observation (measured 2026-05-31):
+  - jit_overhead benchmark crashes or exceeds 2 minutes under P0 pipeline
+  - SIGSEGV observed in TPCHBenchmark across 5 repetitions (phase_c_tpch.log)
+  - "TPC-H JIT overhead exceeds 2 minutes (sqlite3VdbeExec module too large)"
+  - Source: MEMORY.md project notes, benchmarks/reports/260531-2115-Review/scope-decisions.md
