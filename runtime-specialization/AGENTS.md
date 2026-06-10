@@ -1,8 +1,14 @@
 # LLVM Runtime Specializer
 
-`.specify/memory/constitution.md` is the authoritative reference for architecture,
-build/test commands, and non-negotiable project rules. Read it first when starting
-work on this project.
+## Before Starting Any Work
+
+1. **Constitution** (`.specify/memory/constitution.md`) — authoritative reference for architecture,
+   build/test commands, and non-negotiable project rules.
+2. **Thesis Completion TODO** (`specs/TODO.md`) — tracks all missing data and open questions 
+   required to complete the thesis evaluation. **Before starting evaluation work, read this file 
+   to understand what data gaps exist and what has already been attempted.** When discovering new 
+   open tasks during a session, update this file with a description, status, and reference to the 
+   relevant spec or reflection document.
 
 ## Spec-driven workflow
 
