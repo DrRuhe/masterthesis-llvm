@@ -4,6 +4,7 @@
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/Support/raw_ostream.h"
@@ -12,6 +13,7 @@
 #include "llvm/ADT/StringRef.h"
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
 
 using namespace llvm;
 
@@ -90,6 +92,16 @@ bool isSpecOnlyFuncPtrUserCall(StringRef MangledName) {
          MangledName.contains("compareFunctionInstructionCounts");
 }
 
+// Returns true for the already-resolved function-pointer APIs. Some wrapper
+// patterns instantiate these directly with a nullptr resolvedName at -O0.
+bool isSpecOnlyFuncPtrResolvedCall(StringRef MangledName) {
+  return MangledName.contains("specializeOnlyResolved") ||
+         MangledName.contains("callSpecializedResolved") ||
+         MangledName.contains("specializeOrFallbackResolved") ||
+         MangledName.contains("assertSpecializedIsEquivalentResolved") ||
+         MangledName.contains("compareFunctionInstructionCountsResolved");
+}
+
 // Look inside a specializeLambda function body for its call to
 // specializeLambdaResolved — that call exists because the user-facing overload
 // calls specializeLambdaResolved(nullptr, lambda) to force template instantiation.
@@ -124,23 +136,127 @@ Function* findSpecOnlyResolvedInBody(Function* SpecOnlyFn) {
   return nullptr;
 }
 
-// Scan the arguments of a call site for one that is a compile-time constant
-// function (i.e., a direct reference to a function global).  Returns the
-// Function* if found, nullptr otherwise (FR-025 non-constant pointer check).
+Function *resolveFunctionValue(Value *V, SmallPtrSetImpl<Value *> &Visited);
+
+// Resolve an Argument value to a unique constant function by inspecting direct
+// callers of the argument's parent function. Returns nullptr on ambiguity.
+Function *resolveArgFromCallers(Argument *Arg,
+                                SmallPtrSetImpl<Value *> &Visited) {
+  Function *Parent = Arg->getParent();
+  if (!Parent || Parent->isDeclaration())
+    return nullptr;
+
+  Function *UniqueTarget = nullptr;
+  bool SawDirectCaller = false;
+  for (User *U : Parent->users()) {
+    auto *CallerCB = dyn_cast<CallBase>(U);
+    if (!CallerCB || CallerCB->getCalledFunction() != Parent)
+      continue;
+    SawDirectCaller = true;
+
+    if (Arg->getArgNo() >= CallerCB->arg_size())
+      return nullptr;
+
+    Value *Actual = CallerCB->getArgOperand(Arg->getArgNo())->stripPointerCasts();
+    SmallPtrSet<Value *, 16> ActualVisited;
+    for (Value *Seen : Visited)
+      ActualVisited.insert(Seen);
+    auto *ActualFn = resolveFunctionValue(Actual, ActualVisited);
+    if (!ActualFn)
+      return nullptr;
+
+    if (!UniqueTarget)
+      UniqueTarget = ActualFn;
+    else if (UniqueTarget != ActualFn)
+      return nullptr;
+  }
+
+  if (SawDirectCaller)
+    return UniqueTarget;
+  return nullptr;
+}
+
+// Follow a function-pointer value through trivial SSA/memory plumbing commonly
+// produced at -O0 (loads/stores to allocas, argument forwarding).
+Function *resolveFunctionValue(Value *V, SmallPtrSetImpl<Value *> &Visited) {
+  V = V->stripPointerCasts();
+  if (!Visited.insert(V).second)
+    return nullptr;
+
+  if (auto *F = dyn_cast<Function>(V))
+    return F;
+
+  if (auto *Arg = dyn_cast<Argument>(V))
+    return resolveArgFromCallers(Arg, Visited);
+
+  if (auto *LI = dyn_cast<LoadInst>(V))
+    return resolveFunctionValue(LI->getPointerOperand(), Visited);
+
+  // Handles captures/tuple fields where the function pointer is loaded via GEP.
+  if (auto *GEP = dyn_cast<GetElementPtrInst>(V))
+    return resolveFunctionValue(GEP->getPointerOperand(), Visited);
+
+  if (auto *AI = dyn_cast<AllocaInst>(V)) {
+    Value *Stored = nullptr;
+    for (User *U : AI->users()) {
+      if (auto *SI = dyn_cast<StoreInst>(U)) {
+        if (SI->getPointerOperand() != AI)
+          continue;
+        Value *Candidate = SI->getValueOperand();
+        if (!Stored)
+          Stored = Candidate;
+        else if (Stored != Candidate)
+          return nullptr;
+        continue;
+      }
+      if (isa<LoadInst>(U))
+        continue;
+      if (auto *II = dyn_cast<IntrinsicInst>(U)) {
+        if (II->getIntrinsicID() == Intrinsic::lifetime_start ||
+            II->getIntrinsicID() == Intrinsic::lifetime_end ||
+            II->getIntrinsicID() == Intrinsic::dbg_declare ||
+            II->getIntrinsicID() == Intrinsic::dbg_value ||
+            II->getIntrinsicID() == Intrinsic::dbg_assign)
+          continue;
+      }
+      return nullptr;
+    }
+    if (Stored)
+      return resolveFunctionValue(Stored, Visited);
+  }
+
+  return nullptr;
+}
+
+// Resolve the function pointer argument used by a specialization call site.
+//
+// Fast path: direct compile-time constant function operand at this call site.
+// Fallback: if the operand is a function argument of the current helper
+// function, infer its unique constant target from direct callers of that helper.
+// This covers wrapper patterns like benchmark helpers that forward `F` into
+// specializeOnly/callSpecialized.
 Function* findFunctionPtrArg(CallBase* CI) {
   for (unsigned i = 0; i < CI->arg_size(); ++i) {
-    Value* Stripped = CI->getArgOperand(i)->stripPointerCasts();
-    if (auto* F = dyn_cast<Function>(Stripped))
-      return F;
+    SmallPtrSet<Value *, 8> Visited;
+    if (Function *Resolved = resolveFunctionValue(CI->getArgOperand(i), Visited))
+      return Resolved;
   }
+
   return nullptr;
 }
 
 // Data for a specializeOnly/callSpecialized(F* func, args...) call site.
 struct SpecFuncPtrSite {
+  enum class RewriteMode : uint8_t {
+    InsertBeforeFuncPtr,
+    ReplaceResolvedNameArg,
+  };
+
   CallBase* CI;
   std::string ResolvedName;  // mangled name of the target function
   unsigned FuncPtrArgIdx;    // index of the function pointer in CI's arg list
+  unsigned ResolvedNameArgIdx; // only used in ReplaceResolvedNameArg mode
+  RewriteMode Mode;
 };
 
 } // namespace
@@ -201,13 +317,6 @@ PreservedAnalyses IRRewritingPass::run(Module &M, ModuleAnalysisManager &AM) {
 
   for (auto& F : M) {
     if (F.isDeclaration()) continue;
-    if (F.getName().contains("specializeLambda") ||
-        F.getName().contains("specializeOnly") ||
-        F.getName().contains("callSpecialized") ||
-        F.getName().contains("specializeOrFallback") ||
-        F.getName().contains("assertSpecializedIsEquivalent") ||
-        F.getName().contains("compareFunctionInstructionCounts"))
-      continue;
 
     for (auto& BB : F) {
       for (auto& I : BB) {
@@ -215,21 +324,53 @@ PreservedAnalyses IRRewritingPass::run(Module &M, ModuleAnalysisManager &AM) {
         if (!CI) continue;
         auto* Callee = CI->getCalledFunction();
         if (!Callee) continue;
-        if (!isSpecOnlyFuncPtrUserCall(Callee->getName())) continue;
+        bool IsUserCall = isSpecOnlyFuncPtrUserCall(Callee->getName());
+        bool IsResolvedCall = isSpecOnlyFuncPtrResolvedCall(Callee->getName());
+        if (!IsUserCall && !IsResolvedCall) continue;
 
         Function* TargetFn = findFunctionPtrArg(CI);
         if (!TargetFn) continue;
 
         unsigned FuncPtrArgIdx = 0;
+        bool FoundFuncPtrArg = false;
         for (unsigned i = 0; i < CI->arg_size(); ++i) {
-          Value* Stripped = CI->getArgOperand(i)->stripPointerCasts();
-          if (dyn_cast<Function>(Stripped) == TargetFn) {
+          SmallPtrSet<Value *, 8> Visited;
+          if (resolveFunctionValue(CI->getArgOperand(i), Visited) == TargetFn) {
             FuncPtrArgIdx = i;
+            FoundFuncPtrArg = true;
             break;
           }
         }
+        if (!FoundFuncPtrArg)
+          continue;
 
-        SpecFuncPtrSites.push_back({CI, TargetFn->getName().str(), FuncPtrArgIdx});
+        if (IsResolvedCall) {
+          unsigned ResolvedNameArgIdx = UINT32_MAX;
+          if (FuncPtrArgIdx > 0 &&
+              isa<ConstantPointerNull>(CI->getArgOperand(FuncPtrArgIdx - 1))) {
+            // In all *Resolved funcptr APIs, resolvedName is immediately before
+            // the function pointer parameter.
+            ResolvedNameArgIdx = FuncPtrArgIdx - 1;
+          } else {
+            for (unsigned i = 0; i < FuncPtrArgIdx; ++i) {
+              if (isa<ConstantPointerNull>(CI->getArgOperand(i))) {
+                ResolvedNameArgIdx = i;
+                break;
+              }
+            }
+          }
+          if (ResolvedNameArgIdx == UINT32_MAX)
+            continue;
+
+          SpecFuncPtrSites.push_back({
+              CI, TargetFn->getName().str(), FuncPtrArgIdx, ResolvedNameArgIdx,
+              SpecFuncPtrSite::RewriteMode::ReplaceResolvedNameArg});
+          continue;
+        }
+
+        SpecFuncPtrSites.push_back({
+            CI, TargetFn->getName().str(), FuncPtrArgIdx, UINT32_MAX,
+            SpecFuncPtrSite::RewriteMode::InsertBeforeFuncPtr});
       }
     }
   }
@@ -244,20 +385,18 @@ PreservedAnalyses IRRewritingPass::run(Module &M, ModuleAnalysisManager &AM) {
          OpFunc->hasLinkOnceODRLinkage()))
       OpFunc->setLinkage(GlobalValue::ExternalLinkage);
 
-  // FR-010: Collect specialization target function names from the ORIGINAL module
-  // before any transforms. Restricted to originally-externally-visible functions
-  // so every collected name is a GlobalDCE root and survives compile-time DCE.
-  // Also include lambda operator() targets (which may have internal linkage).
+  // FR-010: Collect only actual specialization targets from rewritten call sites.
+  // Keeping this list precise avoids cross-TU name collisions for unrelated
+  // inline/library functions and keeps funcName->blob dispatch stable.
   SmallVector<std::string, 64> FuncNames;
-  for (auto &F : M) {
-    if (!F.isDeclaration() && !F.getName().starts_with("__clangRS") &&
-        !F.hasInternalLinkage() && !F.hasPrivateLinkage())
-      FuncNames.push_back(F.getName().str());
-  }
   for (auto* OpFunc : LambdaTargets) {
     std::string Name = OpFunc->getName().str();
     if (llvm::find(FuncNames, Name) == FuncNames.end())
       FuncNames.push_back(Name);
+  }
+  for (const auto &Site : SpecFuncPtrSites) {
+    if (llvm::find(FuncNames, Site.ResolvedName) == FuncNames.end())
+      FuncNames.push_back(Site.ResolvedName);
   }
 
   // Write FuncNames to !crs.func_names named metadata for IRDumpingPass to read.
@@ -327,15 +466,17 @@ PreservedAnalyses IRRewritingPass::run(Module &M, ModuleAnalysisManager &AM) {
   }
 
   // ── PHASE N2: Rewrite specializeOnly/callSpecialized(F* func, ...) sites ──
-  for (auto& [CI, ResolvedName, FuncPtrArgIdx] : SpecFuncPtrSites) {
+  for (auto& [CI, ResolvedName, FuncPtrArgIdx, ResolvedNameArgIdx, Mode] : SpecFuncPtrSites) {
     Function* Callee = CI->getCalledFunction();
 
-    Function* ResolvedFn = findSpecOnlyResolvedInBody(Callee);
-    if (!ResolvedFn) {
-      report_fatal_error(
-          "IRRewritingPass: could not find specializeOnlyResolved/callSpecializedResolved "
-          "in the IR module.  Ensure ClangRuntimeSpecializer.h defines the Resolved "
-          "overloads and the TU is compiled with the IRRewriting plugin.");
+    Function* ResolvedFn = nullptr;
+    if (Mode == SpecFuncPtrSite::RewriteMode::InsertBeforeFuncPtr) {
+      ResolvedFn = findSpecOnlyResolvedInBody(Callee);
+      if (!ResolvedFn) {
+        continue;
+      }
+    } else {
+      ResolvedFn = Callee;
     }
 
     ArrayType* NameArrTy =
@@ -352,11 +493,19 @@ PreservedAnalyses IRRewritingPass::run(Module &M, ModuleAnalysisManager &AM) {
         NameArrTy, NameGV, NameGEPIdxs);
 
     SmallVector<Value*, 6> NewArgs;
-    for (unsigned i = 0; i < FuncPtrArgIdx; i++)
-      NewArgs.push_back(CI->getArgOperand(i));
-    NewArgs.push_back(NamePtr);
-    for (unsigned i = FuncPtrArgIdx; i < CI->arg_size(); i++)
-      NewArgs.push_back(CI->getArgOperand(i));
+    if (Mode == SpecFuncPtrSite::RewriteMode::InsertBeforeFuncPtr) {
+      for (unsigned i = 0; i < FuncPtrArgIdx; i++)
+        NewArgs.push_back(CI->getArgOperand(i));
+      NewArgs.push_back(NamePtr);
+      for (unsigned i = FuncPtrArgIdx; i < CI->arg_size(); i++)
+        NewArgs.push_back(CI->getArgOperand(i));
+    } else {
+      for (unsigned i = 0; i < CI->arg_size(); ++i)
+        NewArgs.push_back(CI->getArgOperand(i));
+      if (ResolvedNameArgIdx >= NewArgs.size())
+        report_fatal_error("IRRewritingPass: invalid resolvedName arg index");
+      NewArgs[ResolvedNameArgIdx] = NamePtr;
+    }
 
     CallBase* NewCB;
     if (auto* II = dyn_cast<InvokeInst>(CI)) {
