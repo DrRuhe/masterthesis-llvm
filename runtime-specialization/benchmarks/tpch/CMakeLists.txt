@@ -34,19 +34,13 @@ string(REGEX REPLACE "-isystem [^ ]+/c\\+\\+/v1/?" "" _duckdb_cxx_flags "${_duck
 
 set(_saved_cxx_flags "${CMAKE_CXX_FLAGS}")
 set(CMAKE_CXX_FLAGS "${_duckdb_cxx_flags}")
-# Inject IR-dumping plugin into all DuckDB unity-TUs via the directory COMPILE_OPTIONS
-# property, which is inherited by every OBJECT library target in the subdirectory.
-# Only inject when the compiler is our project's clang (>= 21): loading an LLVM 21
-# plugin into an older host clang causes an ABI mismatch crash (e.g. debug builds
-# that use the host clang 18 as CMAKE_CXX_COMPILER).
-if(CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 21)
-    add_compile_options(
-        "-fpass-plugin=$<TARGET_FILE:LLVMRuntimeSpecializationComptimePlugin>"
-        -fvisibility=default
-        -w -Wno-error)
-else()
-    add_compile_options(-fvisibility=default -w -Wno-error)
-endif()
+# DuckDB is compiled without the IR-dumping plugin. Injecting it requires the
+# plugin to load into the host clang (CMAKE_CXX_COMPILER, which may be the nix
+# release clang). The release libLLVM exports DisableABIBreakingChecks, not
+# EnableABIBreakingChecks, so the plugin fails to load against a release host.
+# DuckDB TPC-H specialization is impractical (module too large), so no blobs
+# are needed from DuckDB object files.
+add_compile_options(-fvisibility=default -w -Wno-error)
 FetchContent_MakeAvailable(duckdb)
 set(CMAKE_CXX_FLAGS "${_saved_cxx_flags}")
 
