@@ -9,30 +9,30 @@
 
 ## Phase 0 — Commit uncommitted fix (polybench funcptr forwarding)
 
-- [ ] Confirm smoke suite is green: `cd llvm/llvm/build/debug && ninja check-smoke-runtime-specializer` (expect 53 pass + 1 xfail)
-- [ ] Stage and commit `comptime/IRRewritingPass.cpp` (resolveArgFromCallers / funcptr forwarding fix)
-- [ ] Stage and commit `benchmarks/ClangRuntimeSpecializerBenchmark.h` (NTTP helper templates added)
-- [ ] Stage and commit `benchmarks/SpecializerBenchmark.cpp`, `benchmarks/DBOperatorsBenchmark.cpp`, `benchmarks/polybench/polybench_bench.cpp` (macro migration to NTTP form)
-- [ ] Stage and commit `benchmarks/tpch/CMakeLists.txt`
-- [ ] Stage and commit `test/smoke/call-specialized-forwarded-funcptr.cpp`, `test/smoke/speconly-forwarded-funcptr.cpp`, `test/smoke/speconly-std-apply-funcptr.cpp`
-- [ ] Re-run smoke suite after commit to confirm still green
+- [x] Confirm smoke suite is green: `cd llvm/llvm/build/debug && ninja check-smoke-runtime-specializer` (expect 53 pass + 1 xfail)
+- [x] Stage and commit `comptime/IRRewritingPass.cpp` (resolveArgFromCallers / funcptr forwarding fix)
+- [x] Stage and commit `benchmarks/ClangRuntimeSpecializerBenchmark.h` (NTTP helper templates added)
+- [x] Stage and commit `benchmarks/SpecializerBenchmark.cpp`, `benchmarks/DBOperatorsBenchmark.cpp`, `benchmarks/polybench/polybench_bench.cpp` (macro migration to NTTP form)
+- [x] Stage and commit `benchmarks/tpch/CMakeLists.txt`
+- [x] Stage and commit `test/smoke/call-specialized-forwarded-funcptr.cpp`, `test/smoke/speconly-forwarded-funcptr.cpp`, `test/smoke/speconly-std-apply-funcptr.cpp`
+- [x] Re-run smoke suite after commit to confirm still green
 
 ---
 
 ## Phase 1 — Rebuild release binaries
 
-- [ ] `cd llvm/llvm/build/release && ninja AllBenchmarks PolyBenchBenchmark` — picks up IRRewritingPass + polybench_bench.cpp changes
-- [ ] Confirm both binaries exist under `build/release/tools/runtime-specialization/benchmarks/`
+- [x] `cd llvm/llvm/build/release && ninja AllBenchmarks PolyBenchBenchmark` — picks up IRRewritingPass + polybench_bench.cpp changes
+- [x] Confirm both binaries exist under `build/release/tools/runtime-specialization/benchmarks/`
 
 ---
 
 ## Phase 2 — Validate polybench JIT fix (TODO: RQ1-002)
 
-- [ ] Run a single polybench JIT smoke check (1 kernel, MEDIUM) to confirm no `ClangRuntimeSpecializerDumpedIRError`:
+- [x] Run a single polybench JIT smoke check (1 kernel, MEDIUM) to confirm no `ClangRuntimeSpecializerDumpedIRError`:
   ```
   PolyBenchBenchmark --benchmark_filter='BM_g:polybench.*n:correlation.*s:MEDIUM.*t:jit_overhead' --benchmark_repetitions=1
   ```
-- [ ] Confirm output shows a non-zero `real_time` (not 0.0 or an error)
+- [x] Confirm output shows a non-zero `real_time` (not 0.0 or an error) — got 143ms
 - [ ] If it errors: [complex] debug — the NTTP IRRewritingPass fix may not reach through the `kernel_##K` static function definition in polybench_bench.cpp; inspect generated IR
 
 ---
@@ -93,16 +93,14 @@ Prerequisite: Phase 2 validates JIT works.
 
 ## Phase 5 — Binary-size overhead measurement (TODO: RQ2-001)
 
-- [ ] Create output directory `benchmarks/reports/260610-binary-size/`
-- [ ] Identify a representative UC benchmark TU (e.g. `UC1Kernels` or `DBOperatorsBenchmark`)
-- [ ] [complex] Compile the TU twice — once with `-fpass-plugin=LLVMRuntimeSpecializationComptimePlugin`, once without — and measure binary sizes using `size` and `wc -c`:
-  - Without plugin: `clang++ -O2 -c UC1Kernels.cpp -o without_plugin.o && size without_plugin.o`
-  - With plugin: same + `-fpass-plugin=...` → `size with_plugin.o`
-  - Full linked binaries: compare `SpecializerBenchmark` (with CRS) vs a stripped version without linking the CRS runtime (`-lClangRuntimeSpecializer` omitted if possible, or use `size` on the final binary sections)
-  - Record: `.text` size, `.data` size, total; IR-blob contribution via `objdump -s --section=.rodata | grep -c crs_blob` or similar
-- [ ] Compute overhead percentage: `(with_CRS - without_CRS) / without_CRS × 100`
-- [ ] Save measurements to `benchmarks/reports/260610-binary-size/binary_size_table.txt`
-- [ ] Commit `benchmarks/reports/260610-binary-size/`
+- [x] Create output directory `benchmarks/reports/260610-binary-size/`
+- [x] Identify a representative UC benchmark TU (e.g. `UC1Kernels` or `DBOperatorsBenchmark`)
+- [x] [complex] Compile the TU twice — once with `-fpass-plugin=LLVMRuntimeSpecializationComptimePlugin`, once without — and measure binary sizes using `size` and `wc -c`:
+  - UC1ColumnScanLowKernels.cpp: 7.9 KB → 138.5 KB (+1,660%)
+  - Dominant cost: 91.7 KB IR bitcode blob in .rodata (70% of overhead)
+- [x] Compute overhead percentage: (with_CRS - without_CRS) / without_CRS × 100 = +1,660%
+- [x] Save measurements to `benchmarks/reports/260610-binary-size/binary_size_table.txt`
+- [x] Commit `benchmarks/reports/260610-binary-size/`
 
 ---
 
@@ -157,14 +155,11 @@ Prerequisite: Phase 3 complete (corpus_uc_final_20260610 in DB).
 
 ## Phase 8 — Pareto plots (TODO: INF-001)
 
-- [ ] Create output directory `benchmarks/reports/260610-pareto/`
-- [ ] Run Pareto plot generation for `uc_optim_iter3_20260601` (optimizer study):
-  ```
-  python3 benchmarks/reporting/plot_pareto_configs.py \
-    --study uc_optim_iter3_20260601 \
-    --out-dir benchmarks/reports/260610-pareto/
-  ```
-- [ ] Run Pareto plot for `corpus_uc_final_20260610` (ablation study)
+- [x] Create output directory `benchmarks/reports/260610-pareto/`
+- [x] Run Pareto plot generation for `uc_optim_iter3_20260601` (optimizer study):
+  - Fixed plot_pareto_configs.py to handle split jit/spec rows (raw_params mismatch)
+  - Generated 18 PNG+CSV files (one per kernel)
+- [ ] Run Pareto plot for `corpus_uc_final_20260610` (ablation study) — pending corpus study completion
 - [ ] Confirm PNGs and CSVs generated for each UC group; verify Default config is marked on each plot
 - [ ] Commit `benchmarks/reports/260610-pareto/`
 
@@ -172,27 +167,22 @@ Prerequisite: Phase 3 complete (corpus_uc_final_20260610 in DB).
 
 ## Phase 9 — TPC-H module-size documentation (TODO: RQ6-002)
 
-- [ ] Create output directory `benchmarks/reports/260610-tpch-scope/`
-- [ ] Measure sqlite3VdbeExec module stats by running AllBenchmarks with filter `BM_g:tpch` and extracting `jit_module_instrs` counter from the JSON output (runs only unspecialized; does not attempt JIT)
-- [ ] Record: blob size (KB), function count, instruction count; save to `benchmarks/reports/260610-tpch-scope/module_stats.txt`
-- [ ] Write `benchmarks/reports/260610-tpch-scope/scope_statement.md`: "TPC-H (sqlite3VdbeExec) has X instructions / Y functions / Z KB blob. UC MEDIUM modules average ~21k instructions. JIT overhead for TPC-H exceeds 2 minutes under P0 (measured 2026-05-31). Conclusion: module-size limit for practical specialization is ~21k instructions; TPC-H exceeds this by factor N×. Documented as RQ6 failure case."
-- [ ] Commit `benchmarks/reports/260610-tpch-scope/`
+- [x] Create output directory `benchmarks/reports/260610-tpch-scope/`
+- [x] Measure sqlite3VdbeExec module stats: 255,342 instrs / 2,017 funcs / 4,078 KB blob
+- [x] Record: blob size (KB), function count, instruction count; saved to `benchmarks/reports/260610-tpch-scope/module_stats.txt`
+- [x] Write `benchmarks/reports/260610-tpch-scope/scope_statement.md`: 12× factor vs UC MEDIUM; documented as RQ6 failure case
+- [x] Commit `benchmarks/reports/260610-tpch-scope/`
 
 ---
 
 ## Phase 10 — Infrastructure documentation (TODO: INF-002, INF-003, INF-004)
 
-- [ ] Create `benchmarks/reports/260610-infra-docs/`
-- [ ] Export DuckDB schema to `benchmarks/reports/260610-infra-docs/schema.sql`:
-  ```
-  duckdb benchmarks/benchmarks.duckdb ".schema"
-  ```
-- [ ] Compile study summary table (study name, date, phase, trial/rep count, best config, best combined ms) via SQL and save to `benchmarks/reports/260610-infra-docs/study_summary.txt`
-- [ ] Record hardware + environment to `benchmarks/reports/260610-infra-docs/environment.txt`:
-  - `uname -a`, `lscpu | grep -E 'Model|CPU|Thread|Core|Socket|MHz'`
-  - `clang --version`, `python3 --version`, `python3 -c "import optuna; print(optuna.__version__)"`
-  - CPU frequency scaling status: `cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor`
-- [ ] Commit `benchmarks/reports/260610-infra-docs/`
+- [x] Create `benchmarks/reports/260610-infra-docs/`
+- [x] Export DuckDB schema to `benchmarks/reports/260610-infra-docs/schema.sql`
+- [x] Compile study summary table saved to `benchmarks/reports/260610-infra-docs/study_summary.txt`
+- [x] Record hardware + environment to `benchmarks/reports/260610-infra-docs/environment.txt`:
+  - Core i9-12900H, 20 threads, Clang 21.1.8, Python 3.13.13, Optuna 4.8.0, governor=powersave
+- [x] Commit `benchmarks/reports/260610-infra-docs/`
 
 ---
 
