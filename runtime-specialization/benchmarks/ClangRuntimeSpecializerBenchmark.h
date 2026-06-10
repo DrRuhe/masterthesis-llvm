@@ -42,6 +42,50 @@ public:
 
 namespace clangRuntimeSpecializer {
 
+template <class R, class Fn, class Tuple, size_t... I>
+__attribute__((always_inline))
+auto specializeOnlyFromTupleImpl(
+    ClangRuntimeSpecializer* RS,
+    Fn F,
+    const ClangRuntimeSpecializer::Options& opts,
+    Tuple& args,
+    std::index_sequence<I...>) {
+    return RS->template specializeOnly<R>(F, opts, std::get<I>(args)...);
+}
+
+template <class R, class Fn, class Tuple>
+__attribute__((always_inline))
+auto specializeOnlyFromTuple(
+    ClangRuntimeSpecializer* RS,
+    Fn F,
+    const ClangRuntimeSpecializer::Options& opts,
+    Tuple& args) {
+    using TupleT = std::remove_reference_t<Tuple>;
+    return specializeOnlyFromTupleImpl<R>(
+        RS, F, opts, args, std::make_index_sequence<std::tuple_size_v<TupleT>>{});
+}
+
+template <class R, auto F, class Tuple, size_t... I>
+__attribute__((always_inline))
+auto specializeOnlyFromTupleNTTPImpl(
+    ClangRuntimeSpecializer* RS,
+    const ClangRuntimeSpecializer::Options& opts,
+    Tuple& args,
+    std::index_sequence<I...>) {
+    return RS->template specializeOnly<R>(F, opts, std::get<I>(args)...);
+}
+
+template <class R, auto F, class Tuple>
+__attribute__((always_inline))
+auto specializeOnlyFromTupleNTTP(
+    ClangRuntimeSpecializer* RS,
+    const ClangRuntimeSpecializer::Options& opts,
+    Tuple& args) {
+    using TupleT = std::remove_reference_t<Tuple>;
+    return specializeOnlyFromTupleNTTPImpl<R, F>(
+        RS, opts, args, std::make_index_sequence<std::tuple_size_v<TupleT>>{});
+}
+
 // Phase 1: Measure unspecialized execution only.
 template <class Fn, class Tuple>
 __attribute__((always_inline))
@@ -88,12 +132,47 @@ void benchmarkJITOverhead(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         auto t0 = std::chrono::high_resolution_clock::now();
-        auto SpecFn = std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<R>(F, opts, std::forward<decltype(A)>(A)...);
-        }, specArgs);
+        auto SpecFn = specializeOnlyFromTuple<R>(RS, F, opts, specArgs);
         auto t1 = std::chrono::high_resolution_clock::now();
         benchmark::DoNotOptimize(SpecFn);
         // Report only the compile time; SpecFn destructs (munmap) after SetIterationTime.
+        state.SetIterationTime(std::chrono::duration<double>(t1 - t0).count());
+    }
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+    auto txStats = ClangRuntimeSpecializer::getLastTransformStats();
+
+    state.counters["jit_module_fns"]    = (double)modStats.FunctionCount;
+    state.counters["jit_module_instrs"] = (double)modStats.InstructionCount;
+    state.counters["jit_blob_kb"]       = (double)(modStats.BitcodeSizeBytes / 1024);
+    state.counters["jit_pruned_fns"]    = (double)txStats.FunctionCountAfterPrune;
+    state.counters["jit_pruned_instrs"] = (double)txStats.InstructionCountAfterPrune;
+}
+
+// NTTP variant: one instantiation per function symbol. This keeps the function
+// target constant through helper wrappers and avoids signature-only sharing.
+template <auto F, class Tuple>
+__attribute__((always_inline))
+void benchmarkJITOverhead(
+    benchmark::State& state,
+    Tuple normalArgs,
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+
+    auto InvokeNormal = [&](auto&&... a) {
+        return std::invoke(F, std::forward<decltype(a)>(a)...);
+    };
+    using R = decltype(std::apply(InvokeNormal, normalArgs));
+
+    auto modStats = ClangRuntimeSpecializer::getModuleStats();
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    for (auto _ : state) {
+        auto t0 = std::chrono::high_resolution_clock::now();
+        auto SpecFn = specializeOnlyFromTupleNTTP<R, F>(RS, opts, specArgs);
+        auto t1 = std::chrono::high_resolution_clock::now();
+        benchmark::DoNotOptimize(SpecFn);
         state.SetIterationTime(std::chrono::duration<double>(t1 - t0).count());
     }
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
@@ -125,9 +204,34 @@ void benchmarkSpecializedExec(
     // One-time setup: compile the specialized function before the timed loop.
     auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
-    auto SpecFnPtr = std::apply([&](auto&&... A) {
-        return RS->template specializeOnly<R>(F, opts, std::forward<decltype(A)>(A)...);
-    }, specArgs);
+    auto SpecFnPtr = specializeOnlyFromTuple<R>(RS, F, opts, specArgs);
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+
+    for (auto _ : state) {
+        if constexpr (std::is_void_v<R>)
+            SpecFnPtr();
+        else
+            benchmark::DoNotOptimize(SpecFnPtr());
+    }
+}
+
+template <auto F, class Tuple>
+__attribute__((always_inline))
+void benchmarkSpecializedExec(
+    benchmark::State& state,
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+
+    auto InvokeNormal = [&](auto&&... a) {
+        return std::invoke(F, std::forward<decltype(a)>(a)...);
+    };
+    using R = decltype(std::apply(InvokeNormal, specArgs));
+
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    auto SpecFnPtr = specializeOnlyFromTupleNTTP<R, F>(RS, opts, specArgs);
     ClangRuntimeSpecializer::setLogLevel(PrevLevel);
 
     for (auto _ : state) {
@@ -148,9 +252,7 @@ inline void writePassTraceJSON(const std::string& BenchmarkName,
                                const std::vector<ClangRuntimeSpecializer::PassRecord>& Trace) {
     const char* TraceDir = std::getenv("CRS_PASS_TRACE_DIR");
     if (!TraceDir)
-        throw std::runtime_error(
-            "CRS_PASS_TRACE_DIR must be set before running benchmarkJITAnalysis. "
-            "Use record_benchmark.py or export CRS_PASS_TRACE_DIR=/path/to/dir.");
+        return;
 
     std::string Filename = BenchmarkName + "_pass_trace.json";
     for (char& C : Filename)
@@ -203,10 +305,12 @@ void benchmarkJITAnalysis(
 
     // Chrome trace requires CRS_CHROME_TRACE_DIR; use it to build the output path.
     const char* ChromeDir = std::getenv("CRS_CHROME_TRACE_DIR");
-    if (!ChromeDir)
-        throw std::runtime_error(
+    if (!ChromeDir) {
+        state.SkipWithError(
             "CRS_CHROME_TRACE_DIR must be set before running benchmarkJITAnalysis. "
             "Use record_benchmark.py or export CRS_CHROME_TRACE_DIR=/path/to/dir.");
+        return;
+    }
     std::string ChromeTraceFilename = state.name() + "_chrome_trace.json";
     for (char& C : ChromeTraceFilename)
         if (C != '.' && C != '-' && C != '_' &&
@@ -219,9 +323,50 @@ void benchmarkJITAnalysis(
     ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
     for (auto _ : state) {
         auto T0 = std::chrono::steady_clock::now();
-        benchmark::DoNotOptimize(std::apply([&](auto&&... A) {
-            return RS->template specializeOnly<R>(F, opts, std::forward<decltype(A)>(A)...);
-        }, specArgs));
+        benchmark::DoNotOptimize(specializeOnlyFromTuple<R>(RS, F, opts, specArgs));
+        double Ms = std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - T0).count();
+        state.SetIterationTime(Ms / 1000.0);
+    }
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+
+    writePassTraceJSON(state.name(), ClangRuntimeSpecializer::getLastPassTrace());
+}
+
+template <auto F, class Tuple>
+__attribute__((always_inline))
+void benchmarkJITAnalysis(
+    benchmark::State& state,
+    Tuple specArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+
+    auto InvokeNormal = [&](auto&&... a) {
+        return std::invoke(F, std::forward<decltype(a)>(a)...);
+    };
+    using R = decltype(std::apply(InvokeNormal, specArgs));
+
+    const char* ChromeDir = std::getenv("CRS_CHROME_TRACE_DIR");
+    if (!ChromeDir) {
+        state.SkipWithError(
+            "CRS_CHROME_TRACE_DIR must be set before running benchmarkJITAnalysis. "
+            "Use record_benchmark.py or export CRS_CHROME_TRACE_DIR=/path/to/dir.");
+        return;
+    }
+    std::string ChromeTraceFilename = state.name() + "_chrome_trace.json";
+    for (char& C : ChromeTraceFilename)
+        if (C != '.' && C != '-' && C != '_' &&
+            !(C >= 'a' && C <= 'z') && !(C >= 'A' && C <= 'Z') && !(C >= '0' && C <= '9'))
+            C = '_';
+    opts.TimeTraceOutputPath = std::string(ChromeDir) + "/" + ChromeTraceFilename;
+    opts.EnablePassTrace = true;
+
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    for (auto _ : state) {
+        auto T0 = std::chrono::steady_clock::now();
+        benchmark::DoNotOptimize(specializeOnlyFromTupleNTTP<R, F>(RS, opts, specArgs));
         double Ms = std::chrono::duration<double, std::milli>(
             std::chrono::steady_clock::now() - T0).count();
         state.SetIterationTime(Ms / 1000.0);
@@ -244,10 +389,12 @@ void benchmarkLambdaJITAnalysis(
     auto* RS = ClangRuntimeSpecializer::init();
 
     const char* ChromeDir = std::getenv("CRS_CHROME_TRACE_DIR");
-    if (!ChromeDir)
-        throw std::runtime_error(
+    if (!ChromeDir) {
+        state.SkipWithError(
             "CRS_CHROME_TRACE_DIR must be set before running benchmarkJITAnalysis. "
             "Use record_benchmark.py or export CRS_CHROME_TRACE_DIR=/path/to/dir.");
+        return;
+    }
     std::string ChromeTraceFilename = state.name() + "_chrome_trace.json";
     for (char& C : ChromeTraceFilename)
         if (C != '.' && C != '-' && C != '_' &&
