@@ -22,13 +22,13 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead<kernel_##K>(S, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec<kernel_##K>(S, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0)); \
-    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis<kernel_##K>(S, A); }
 
 #define POLYBENCH_IMPL_2(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -36,13 +36,13 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead<kernel_##K>(S, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec<kernel_##K>(S, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1)); \
-    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis<kernel_##K>(S, A); }
 
 #define POLYBENCH_IMPL_3(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -50,13 +50,13 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead<kernel_##K>(S, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec<kernel_##K>(S, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2)); \
-    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis<kernel_##K>(S, A); }
 
 #define POLYBENCH_IMPL_4(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -64,13 +64,13 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead<kernel_##K>(S, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec<kernel_##K>(S, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3)); \
-    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis<kernel_##K>(S, A); }
 
 #define POLYBENCH_IMPL_5(K) \
   static void BM_unspecialized____##K(benchmark::State& S) { \
@@ -78,13 +78,13 @@ extern "C" void polybench_free_data(void* p) {
     CRS::benchmarkUnspecialized(S, kernel_##K, A); } \
   static void BM_jit_overhead_____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkJITOverhead(S, kernel_##K, A, A); } \
+    CRS::benchmarkJITOverhead<kernel_##K>(S, A, A); } \
   static void BM_specialized_exec_##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkSpecializedExec(S, kernel_##K, A); } \
+    CRS::benchmarkSpecializedExec<kernel_##K>(S, A); } \
   static void BM_jit_analysis____##K(benchmark::State& S) { \
     auto A = std::make_tuple((int)S.range(0), (int)S.range(1), (int)S.range(2), (int)S.range(3), (int)S.range(4)); \
-    CRS::benchmarkJITAnalysis(S, kernel_##K, A); }
+    CRS::benchmarkJITAnalysis<kernel_##K>(S, A); }
 
 
 

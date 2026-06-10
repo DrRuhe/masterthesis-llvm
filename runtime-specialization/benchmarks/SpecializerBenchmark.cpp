@@ -14,19 +14,17 @@ BENCHMARK(BM_unspecialized____mypow)->Name("BM_g:synthetic;n:mypow;t:unspecializ
 
 extern "C" void BM_jit_overhead_____mypow(benchmark::State& state) {
     int x = state.range(0);
-    clangRuntimeSpecializer::benchmarkJITOverhead(
+    clangRuntimeSpecializer::benchmarkJITOverhead<mypow_bench>(
         state,
-        mypow_bench,
-    std::make_tuple(x),
+        std::make_tuple(x),
         std::make_tuple(x));
 }
 BENCHMARK(BM_jit_overhead_____mypow)->Name("BM_g:synthetic;n:mypow;t:jit_overhead;")->Range(1, 2<<6)->Iterations(1)->UseManualTime();
 
 extern "C" void BM_specialized_exec_mypow(benchmark::State& state) {
     int x = state.range(0);
-    clangRuntimeSpecializer::benchmarkSpecializedExec(
+    clangRuntimeSpecializer::benchmarkSpecializedExec<mypow_bench>(
         state,
-        mypow_bench,
         std::make_tuple(x));
 }
 BENCHMARK(BM_specialized_exec_mypow)->Name("BM_g:synthetic;n:mypow;t:specialized_exec;")->Range(1, 2<<6);
@@ -42,8 +40,8 @@ BENCHMARK(BM_unspecialized____config_count)->Name("BM_g:synthetic;n:config_count
 
 void BM_jit_overhead_____config_count(benchmark::State& state) {
     int n = state.range(0);
-    clangRuntimeSpecializer::benchmarkJITOverhead(
-        state, config_count,
+    clangRuntimeSpecializer::benchmarkJITOverhead<config_count>(
+        state,
         std::make_tuple(&g_config, n),
         std::make_tuple(&g_config, n));
 }
@@ -51,8 +49,8 @@ BENCHMARK(BM_jit_overhead_____config_count)->Name("BM_g:synthetic;n:config_count
 
 void BM_specialized_exec_config_count(benchmark::State& state) {
     int n = state.range(0);
-    clangRuntimeSpecializer::benchmarkSpecializedExec(
-        state, config_count, std::make_tuple(&g_config, n));
+    clangRuntimeSpecializer::benchmarkSpecializedExec<config_count>(
+        state, std::make_tuple(&g_config, n));
 }
 BENCHMARK(BM_specialized_exec_config_count)->Name("BM_g:synthetic;n:config_count;t:specialized_exec;")->Range(64, 2<<10);
 
