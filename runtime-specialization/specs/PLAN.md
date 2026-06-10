@@ -56,7 +56,7 @@
 
 Prerequisite: Phase 2 validates JIT works.
 
-- [ ] Create output directory `benchmarks/reports/260610-polybench/`
+- [x] Create output directory `benchmarks/reports/260610-polybench/`
 - [x] Run polybench with default config, 1 rep (--benchmark_repetitions=3 creates duplicate name violation; used 1 rep instead)
 - [x] Import results into `benchmarks.duckdb` — run_id: 0921a934-275b-445c-869f-9a528bc3558d
 - [x] Run polybench with uc_workload_optimal P2 config, 1 rep
@@ -100,7 +100,7 @@ Prerequisite: Phase 2 validates JIT works.
 
 Prerequisite: Phase 3 complete (corpus_uc_final_20260610 in DB).
 
-- [ ] Create output directory `benchmarks/reports/260610-breakeven/`
+- [x] Create output directory `benchmarks/reports/260610-breakeven/`
 - [x] Run break-even SQL using per-kernel cpu_time (real_time=0 for jit_overhead due to UseManualTime bug)
   - Used uc_optim_iter3_20260601 best trial (trial 28, P0 optimal)
   - Custom query with cpu_time for JIT overhead instead of v_optim_breakeven
