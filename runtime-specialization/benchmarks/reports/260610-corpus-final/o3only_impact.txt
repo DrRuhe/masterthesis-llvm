@@ -1,0 +1,24 @@
+┌─────────────────────┬─────────────────┬────────────────┬────────┐
+│       kernel        │ speedup_default │ speedup_o3only │  diff  │
+│       varchar       │     double      │     double     │ double │
+├─────────────────────┼─────────────────┼────────────────┼────────┤
+│ grouped_sum         │           2.525 │          2.312 │  0.213 │
+│ multi_agg_delta     │           2.446 │          2.318 │  0.128 │
+│ grouped_count       │           2.568 │          2.487 │  0.081 │
+│ grouped_minmax      │           2.432 │          2.361 │   0.07 │
+│ struct_sort         │            1.57 │          1.522 │  0.048 │
+│ email_match         │           1.251 │          1.207 │  0.044 │
+│ box_filter          │           2.996 │          2.956 │   0.04 │
+│ separable_gaussian  │           1.936 │          1.925 │  0.011 │
+│ column_scan         │           1.012 │          1.007 │  0.005 │
+│ generic_sort        │           1.442 │          1.452 │  -0.01 │
+│ count_matching_rows │           1.011 │          1.031 │  -0.02 │
+│ url_match           │            1.21 │          1.233 │ -0.022 │
+│ multi_pattern_match │           1.241 │          1.274 │ -0.032 │
+│ batch_delta         │            2.32 │          2.364 │ -0.043 │
+│ multi_predicate     │           0.974 │          1.019 │ -0.045 │
+│ edge_detection      │           1.384 │          1.432 │ -0.048 │
+│ multi_key_sort      │           1.355 │          1.405 │  -0.05 │
+│ apply_row_delta     │           2.334 │          2.386 │ -0.052 │
+└─────────────────────┴─────────────────┴────────────────┴────────┘
+  18 rows                                               4 columns

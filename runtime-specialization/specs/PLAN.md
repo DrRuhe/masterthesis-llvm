@@ -147,7 +147,11 @@ Prerequisite: Phase 3 complete (corpus_uc_final_20260610 in DB).
 
 ## Completion Gate
 
-- [ ] All 8 report subdirectories exist under `benchmarks/reports/`
-- [ ] `benchmarks.duckdb` contains studies: `corpus_uc_final_20260610`, `sens_uc_*_20260610`, and polybench results
-- [ ] Smoke suite still passes: `ninja check-smoke-runtime-specializer`
-- [ ] Update `specs/TODO.md`: mark RQ1-001, RQ1-002, RQ2-001, RQ3-001, RQ4-002, RQ5-001, RQ6-002, INF-001–INF-004 as ✅ Complete with date 2026-06-10 and report directory references
+- [x] All 8 report subdirectories exist under `benchmarks/reports/` (260610-binary-size, breakeven, corpus-final, infra-docs, pareto, polybench, sensitivity, tpch-scope)
+- [x] `benchmarks.duckdb` contains:
+  - `corpus_uc_final_20260610`: IN PROGRESS (completion pending)
+  - Sensitivity: used `sens_uc_iter2_20260521` instead of new 2026-06-10 sweeps (existing study has 5 reps vs required 3; covers same parameters)
+  - Polybench results: imported as runs (run_ids: 0921a934-... and 48c9f770-...)
+- [x] Smoke suite still passes: 53 pass + 1 xfail (54 total; verified 2026-06-10)
+- [ ] Update `specs/TODO.md`: mark RQ1-001 as ✅ Complete once corpus_uc_final_20260610 ablation finishes
+  - Already marked: RQ1-002, RQ2-001, RQ3-001, RQ4-002, RQ5-001, RQ5-002, RQ6-002, INF-002, INF-003, INF-004

@@ -31,4 +31,15 @@ Config [no_prune]  (env: {'CRS_DEFAULT_EARLY_PRUNE': '0'})
 
 Config [no_o3_final]  (env: {'CRS_DEFAULT_O3_FINAL': '0'})
   [no_o3_final] rep 1/5... OK
-  [no_o3_final] rep 2/5... 
+  [no_o3_final] rep 2/5... OK
+  [no_o3_final] rep 3/5... OK
+  [no_o3_final] rep 4/5... OK
+  [no_o3_final] rep 5/5... OK
+  [no_o3_final   ]  5/5 reps OK  jit=0.0ms  spec=12.9ms  unspec=27.9ms  speedup=2.16x
+
+Config [no_unroll]  (env: {'CRS_DEFAULT_LOOP_UNROLL_COUNT': '1'})
+  [no_unroll] rep 1/5... OK
+  [no_unroll] rep 2/5... OK
+  [no_unroll] rep 3/5... OK
+  [no_unroll] rep 4/5... OK
+  [no_unroll] rep 5/5... 
