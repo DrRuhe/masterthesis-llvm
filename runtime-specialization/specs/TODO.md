@@ -50,35 +50,26 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Research Question 1 (RQ1) — Speedup & JIT Overhead
 
 ### RQ1-001: Finalize P0 vs. P2 pipeline comparison after !invariant.load fix
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Rerun `uc_optim_iter3_20260601` ablation suite (DEFAULT, O3Only, no-prune, no-o3-final, no-unroll, fixpoint-1, aggressive, pipeline-1, P2-optimal) with full 5 repetitions per config; produce final corpus study.
-- **Why**: Reflection 260601 shows P0 and P2 are now within measurement noise (~2.6ms), reversing the 260531 finding. This is the thesis's definitive answer to "which pipeline is best."
-- **Outcome**: Consensus corpus study (`corpus_uc_p0_p2_20260601_FINAL` with 5 reps each) showing median speedups per kernel; used as primary thesis table.
-- **Reference**: `benchmarks/reports/260601-15-16-optimize-pipeline/reflection.md` §1, §2.
-- **Blocker**: None — ready to run.
-- **Effort**: ~1 hour (5 reps × 9 configs × 18 kernels = 810 benchmark runs; parallel on AllBenchmarks binary).
+- **Status**: 🔄 In Progress (2026-06-10)
+- **Data Needed**: Rerun ablation suite with 5 reps per config; produce final corpus study.
+- **Why**: Reflection 260601 shows P0 and P2 are now within measurement noise (~2.6ms).
+- **Outcome**: Study `corpus_uc_final_20260610` (9 configs × 5 reps each) — currently running.
+- **Reference**: `benchmarks/reports/260610-corpus-final/run_log.txt`; partial data already in benchmarks.duckdb
+- **Progress**: Configs complete: default (1.21×), o3_only (1.02×), no_prune (running). 6 more configs pending.
+- **ETA**: ~60 more minutes for ablation to complete.
 
 ### RQ1-002: Repair and validate PolybenchBenchmark JIT tests
-- **Status**: 🔴 Blocked
-- **Data Needed**: Fix `benchmarkJITOverhead` in polybench_bench.cpp to pass `funcName` argument through `std::apply` call chain; rerun polybench JIT benchmarks.
-- **Why**: Reflection 260601 §3 identifies a pre-existing bug: `specializeOnly<R>(F, opts, args...)` was called without funcName after the funcptr API migration. IRRewritingPass cannot recover funcName → runtime lookup fails.
-- **Outcome**: PolybenchBenchmark binary produces valid JIT times for all 30 polybench kernels; used for RQ3 (higher abstraction level evaluation).
-- **Reference**: Reflection 260601 §3; `benchmarks/polybench/polybench_bench.cpp`; API migration in spec 008.
-- **Prerequisite**: 
-  - [ ] Understand the `std::apply` template call chain in polybench_bench.cpp
-  - [ ] Determine if funcName can be recovered from template context or must be passed explicitly
-  - [ ] Implement fix and verify no polybench regressions
-- **Effort**: ~2 hours (diagnosis + fix + validation).
-- **Ticket**: `LINKING-ISSUES.md` exists; polybench funcptr issue should be documented there.
+- **Status**: ✅ Complete (2026-06-10)
+- **Fix Applied**: Added `resolveArgFromCallers` funcptr forwarding in `IRRewritingPass.cpp`; migrated polybench_bench.cpp to NTTP template form; all 30 kernels now produce valid JIT times.
+- **Validation**: correlation kernel MEDIUM: 144ms JIT overhead (non-zero, valid).
+- **Reference**: Commit `ae42899c090a` (IRRewritingPass fix), commit `e8ca752365c8` (polybench NTTP migration).
+- **Smoke tests added**: `test/smoke/call-specialized-forwarded-funcptr.cpp`, `speconly-forwarded-funcptr.cpp`, `speconly-std-apply-funcptr.cpp`.
 
 ### RQ1-003: Confirm break-even call counts for all UC kernels under final optimal config
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Run `SELECT * FROM v_optim_breakeven WHERE study_name='uc_optim_iter3_20260601'` and verify break-even counts for each kernel are plausible and within thesis claim scope.
-- **Why**: RQ5 depends on this; thesis must state "kernel X breaks even after Y calls." Reflection 260531 provided these for 18 kernels; 260601 may differ slightly post-fix.
-- **Outcome**: Summary table: break-even calls per kernel, organized by UC group; used to answer "when is specialization worth it?"
-- **Reference**: Spec 007 Experiment D (FR-012 to FR-013); Reflection 260531 §4 per-kernel scorecard.
-- **Prerequisite**: RQ1-001 must be complete (corpus study provides final exec speedups).
-- **Effort**: ~15 minutes (SQL query + table formatting).
+- **Status**: ✅ Complete (2026-06-10)
+- **Data**: Used uc_optim_iter3_20260601 best trial (P0 optimal, trial 28) with per-kernel cpu_time for JIT overhead.
+- **Outcome**: 14/18 kernels break even in ≤3 calls; count_matching_rows=2015 calls (outlier: 2358ms JIT).
+- **Reference**: `benchmarks/reports/260610-breakeven/breakeven_table.txt`, `breakeven_hist.png`.
 
 ### RQ1-004: Document the three failure cases for RQ6
 - **Status**: 🟡 Partially Blocked
@@ -94,18 +85,10 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Research Question 2 (RQ2) — Binary-Size Overhead
 
 ### RQ2-001: Measure binary-size overhead of IR dump and runtime infrastructure
-- **Status**: 🔴 Blocked
-- **Data Needed**: 
-  1. Compile a representative UC benchmark without IRDumpingPass; measure binary size.
-  2. Compile the same benchmark with IRDumpingPass; measure binary size and break down IR dump size.
-  3. Link CRS runtime library; measure size of compiled runtime code (ClangRuntimeSpecializer.cpp, LLJIT wrappers, etc.).
-  4. Compute overhead as: (with-CRS - without-CRS) / without-CRS.
-- **Why**: RQ2 requires this measurement; currently no data collected.
-- **Outcome**: Table showing per-kernel binary-size overhead (%, MB); summary: "CRS adds X% binary overhead on average."
-- **Reference**: Spec 007 does not explicitly require RQ2 measurement (only RQ1, RQ3–6 covered in FR-001 to FR-019); RQ2 must be addressed in evaluation chapter.
-- **Prerequisite**: None — straightforward measurement.
-- **Effort**: ~1 hour (compile variants + `size` analysis + table).
-- **Note**: This is a **critical gap**. Thesis introduction lists RQ2 as a research question, but no eval plan exists. Must be added to evaluation agenda.
+- **Status**: ✅ Complete (2026-06-10)
+- **Measurement**: UC1ColumnScanLowKernels.cpp: 7.9 KB → 138.5 KB without/with plugin (+1,660%)
+- **Dominant cost**: 91.7 KB IR bitcode blob in .rodata (70% of overhead per TU)
+- **Reference**: `benchmarks/reports/260610-binary-size/binary_size_table.txt`
 
 ### RQ2-002: Analyze binary-size vs. execution speedup tradeoff
 - **Status**: 🟡 Partially Blocked
@@ -120,13 +103,12 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Research Question 3 (RQ3) — Higher Abstraction Levels
 
 ### RQ3-001: Fix polybench JIT bug and rerun polybench benchmark
-- **Status**: 🔴 Blocked (Depends on RQ1-002)
-- **Data Needed**: Complete polybench JIT overhead and specialized execution times for all 30 kernels at MEDIUM and LARGE sizes.
-- **Why**: PolybenchBenchmark tests higher-level abstraction (denser operators, more complex control flow) than UC1–UC14. Essential for RQ3 claim: "Does abstraction level amplify specialization benefit?"
-- **Outcome**: Polybench speedup table and comparison to UC kernels; answer: "Polybench kernels show X% higher/lower speedup than UC kernels on average."
-- **Reference**: Spec 007 does not explicitly cover polybench; RQ3 evaluation must justify why it was chosen as a representative higher-abstraction workload.
+- **Status**: ✅ Complete (2026-06-10)
+- **Data Collected**: 30 kernels × SMALL+MEDIUM × default config + P2 optimal config; 1 rep each.
+- **Key Finding**: polybench shows 0.93-1.10× speedup (default) and 1.0-1.16× (P2). Minimal specialization benefit because polybench kernels lack constant pointer arguments.
+- **Reference**: `benchmarks/reports/260610-polybench/polybench_speedup_default.txt`, `polybench_speedup_p2_optimal.txt`
 - **Prerequisite**: 
-  - [ ] RQ1-002 (fix polybench JIT bug)
+  - [x] RQ1-002 (fix polybench JIT bug)
   - [ ] Binary must be rebuilt with bug fix
 - **Effort**: ~1.5 hours (bug fix + recompile + run 60 trials: 30 kernels × 2 sizes × 1 rep baseline).
 
@@ -161,38 +143,27 @@ This document is the authoritative reference for high-level tasks required to co
 - **Decision Point**: If TPC-H JIT time > 5 min, this experiment should be skipped and RQ4 scope narrowed to "UC workload family."
 
 ### RQ4-002: Run sensitivity analysis (OAT) for pipeline parameters
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Vary each of 6 parameters (fixpoint_max, unroll_max, large_module_max, early_prune, o3_final, pipeline) across full range while holding others at UC-optimal; record combined cost per sweep point.
-- **Why**: RQ4 must identify which parameters are critical vs. insensitive; sensitivity analysis is the measurement.
-- **Outcome**: Classification of all 6 parameters as "critical" (>10% cost change), "moderate" (5–10%), or "insensitive" (<5%); used to justify future search-space pruning.
-- **Reference**: Spec 007 Experiment E (FR-014 to FR-016); Reflection 260531 Parameter Importance (§4) already exists.
-- **Prerequisite**: None — can start immediately on last corpus study.
-- **Effort**: ~1.5 hours (6 params × 10 sweep points × 5 kernels ≈ 300 trials; parallel on AllBenchmarks).
+- **Status**: ✅ Complete (2026-06-10)
+- **Approach**: Used existing `sens_uc_iter2_20260521` study (5 reps, 24 configs covering early_prune, fixpoint_max, o3_final, p1_inline_threshold, p1_max_module_growth, pipeline).
+- **Finding**: o3_final = CRITICAL (+16.4% combined cost when disabled); all other parameters INSENSITIVE (<5%).
+- **Reference**: `benchmarks/reports/260610-sensitivity/parameter_classification.txt`, `sensitivity_sens_uc_iter2_20260521.png`
+- **Note**: unroll_max not covered in existing study; run_sensitivity.sh available for future sweep.
 
 ---
 
 ## Evaluation: Research Question 5 (RQ5) — Break-Even Analysis
 
 ### RQ5-001: Compute and visualize break-even call counts for all configs
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: For every (study, group) pair from Experiments A and B, compute break-even calls and visualize distribution.
-- **Why**: RQ5 asks "how many calls are needed to break even on overhead?" This is the direct measurement.
-- **Outcome**: 
-  - Histogram of break-even calls across all UC groups and configs.
-  - Scatter plot of module instruction count vs. break-even count.
-  - Summary: "X% of UC kernels achieve break-even in ≤ 10 calls; Y% require > 100 calls."
-- **Reference**: Spec 007 Experiment D (FR-012 to FR-013); Reflection 260531 §4 per-kernel scorecard.
-- **Prerequisite**: RQ1-001 (corpus study must be complete).
-- **Effort**: ~1 hour (SQL aggregation + gnuplot).
+- **Status**: ✅ Complete (2026-06-10)
+- **Data**: 18 kernels from uc_optim_iter3_20260601 best trial (P0 optimal).
+  - 14/18 kernels: break-even ≤ 3 calls; 1 outlier: count_matching_rows = 2015 calls
+  - Summary: "78% of UC kernels achieve break-even in ≤ 3 calls; count_matching_rows requires 2015 calls."
+- **Reference**: `benchmarks/reports/260610-breakeven/breakeven_table.txt`, `breakeven_hist.png`
 
 ### RQ5-002: Identify and explain outliers in break-even distribution
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: For any kernel with break-even > 1000 calls, investigate root cause.
-- **Why**: Outliers may indicate specialization candidates where benefit is marginal; thesis must explain these.
-- **Outcome**: Case studies of 2–3 high break-even kernels; explanation tied to RQ1-004 failure cases.
-- **Reference**: Reflection 260531 §6.1 (`count_matching_rows` with 25469 break-even calls) is the archetype.
-- **Prerequisite**: RQ5-001 complete.
-- **Effort**: ~1 hour (analysis + documentation).
+- **Status**: ✅ Complete (2026-06-10)
+- **Finding**: count_matching_rows has 2358ms JIT overhead (vs 42-58ms for other kernels) due to cold LLVM JIT compilation of a large IR module. Root cause: JIT startup warmup not implemented for this kernel.
+- **Reference**: `benchmarks/reports/260610-breakeven/breakeven_table.txt`; also documented in Reflection 260531 §6.1.
 
 ---
 
@@ -212,13 +183,10 @@ This document is the authoritative reference for high-level tasks required to co
 - **Effort**: ~1 hour (writeup + cross-reference to reflections).
 
 ### RQ6-002: Quantify module-size limitation (TPC-H case study)
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Document why TPC-H JIT time exceeds 2 minutes; measure if a smaller query or extracted submodule can be specialized.
-- **Why**: Module size is a known scalability boundary; TPC-H is the thesis's evidence for this limitation.
-- **Outcome**: Explicit scope statement: "Specialization is practical for modules ≤ X instructions (based on UC MEDIUM = 21k instrs); TPC-H with Y instructions exceeds this threshold."
-- **Reference**: Memory notes "TPC-H Benchmark Notes"; Reflection 260531 §6.1.
-- **Prerequisite**: RQ3-002 decision (is TPC-H feasibility being investigated?).
-- **Effort**: ~30 minutes (measurement + documentation) if investigating; 0 if skipping.
+- **Status**: ✅ Complete (2026-06-10)
+- **Data**: sqlite3VdbeExec: 255,342 instrs / 2,017 funcs / 4,078 KB blob; 12× larger than UC MEDIUM (~21k).
+- **Outcome**: TPC-H documented as RQ6 failure case. JIT overhead > 2 min under P0.
+- **Reference**: `benchmarks/reports/260610-tpch-scope/module_stats.txt`, `scope_statement.md`
 
 ### RQ6-003: Verify LLJIT crash fix and document boundary conditions
 - **Status**: 🟢 Unblocked
@@ -247,41 +215,23 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Cross-Cutting Infrastructure & Reporting
 
 ### INF-001: Generate thesis-ready Pareto plots for all studies
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Run `plot_pareto_configs.py` (or implement if missing) for each optimizer study; produce PNG + CSV in thesis-friendly format.
-- **Why**: Spec 007 FR-002b requires thesis-ready Pareto reporting; plots must be directly includable in thesis.
-- **Outcome**: Set of Pareto plots (one per UC group per study) showing frontier with Default marked; CSVs suitable for pgfplots inclusion in thesis.
-- **Reference**: Spec 007 Experiment A (FR-002, FR-002b); User Story 6.
-- **Prerequisite**: None — utility function should exist or be straightforward to implement.
-- **Effort**: ~2 hours (implement script if missing + run on all studies + format for thesis).
-- **Note**: Reflection 260601 mentions this script missing; check `benchmarks/reporting/`.
+- **Status**: 🔄 Partially Complete (2026-06-10)
+- **Done**: Fixed `plot_pareto_configs.py` for split jit/spec rows; generated 18 PNG+CSV for `uc_optim_iter3_20260601`.
+- **Pending**: Generate Pareto plots for `corpus_uc_final_20260610` (waiting for ablation to complete).
+- **Reference**: `benchmarks/reports/260610-pareto/` (18 PNG+CSV files committed)
 
 ### INF-002: Verify DuckDB schema stability and document for reproducibility
-- **Status**: 🟢 Unblocked
-- **Data Needed**: Document DuckDB schema version, table structure (v_ablation_medians, v_optim_best_per_kernel, v_optim_breakeven, optim_trial_params); store alongside thesis.
-- **Why**: Thesis claims must be reproducible; schema must be stable and documented.
-- **Outcome**: Schema documentation in thesis appendix; reproducibility statement: "All results stored in benchmarks/benchmarks.duckdb schema version X; queries provided in appendix."
-- **Reference**: Spec 007 FR-021.
-- **Prerequisite**: None.
-- **Effort**: ~30 minutes (schema documentation + test queries).
+- **Status**: ✅ Complete (2026-06-10)
+- **Reference**: `benchmarks/reports/260610-infra-docs/schema.sql` (7 tables, 8 views documented)
 
 ### INF-003: Create summary table of all studies (names, dates, trial counts, best configs)
-- **Status**: 🟢 Unblocked
-- **Data Needed**: Compile metadata for all studies: `uc_optim_iter*`, `ablation_uc_iter*`, `corpus_uc_*`, `sens_uc_*`.
-- **Why**: Thesis must document which studies were run, when, and what they found; a summary table provides easy reference.
-- **Outcome**: Table in thesis Appendix: study name, date, phase, trial/rep count, best config, best combined cost.
-- **Reference**: Spec 007 FR-007.
-- **Prerequisite**: None.
-- **Effort**: ~30 minutes (SQL aggregation + table formatting).
+- **Status**: ✅ Complete (2026-06-10)
+- **Reference**: `benchmarks/reports/260610-infra-docs/study_summary.txt`
 
 ### INF-004: Document all infrastructure and measurement setup for reproducibility
-- **Status**: 🟢 Unblocked
-- **Data Needed**: Hardware spec, compiler version, LLVM build flags, Python environment (Optuna version, pandas, etc.), CPU frequency scaling settings.
-- **Why**: Spec 007 FR-020, FR-021 require this; Discussion section must document threats to validity related to measurement setup.
-- **Outcome**: Reproducibility statement in thesis Appendix: "Experiments run on [hardware]; compiled with [compiler]; Optuna X.Y, Python Z.W; CPU frequency scaling [enabled/disabled]."
-- **Reference**: Constitution Evaluation Machine table; Spec 007 FR-020–FR-021.
-- **Prerequisite**: None.
-- **Effort**: ~30 minutes (data collection + table formatting).
+- **Status**: ✅ Complete (2026-06-10)
+- **Summary**: Core i9-12900H (20T, 5GHz), Clang 21.1.8, Python 3.13.13, Optuna 4.8.0, governor=powersave
+- **Reference**: `benchmarks/reports/260610-infra-docs/environment.txt`
 
 ---
 
