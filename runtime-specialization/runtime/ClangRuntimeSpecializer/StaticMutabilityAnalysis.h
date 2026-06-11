@@ -20,7 +20,15 @@ struct FieldPath {
 
 class StaticMutabilityAnalysis {
 public:
-    static void inferReadOnlyFields(llvm::Function& F, llvm::AAResults& AA, llvm::MemorySSA* MSSA);
+    struct InferStats {
+        unsigned Examined = 0;       // loads whose pointer is derived from a tracked arg
+        unsigned BlockedEscaped = 0; // loads blocked solely by escaped ancestor (not mutated)
+        unsigned BlockedMutated = 0; // loads blocked by an actual store in this function
+        unsigned Annotated = 0;      // loads that received !invariant.load
+    };
+
+    static void inferReadOnlyFields(llvm::Function& F, llvm::AAResults& AA,
+                                    llvm::MemorySSA* MSSA, InferStats* Stats = nullptr);
 
     struct PointerInfo {
         llvm::Value* OriginArg;

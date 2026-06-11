@@ -180,10 +180,124 @@ For the thesis evaluation of specialization limits (RQ6):
 
 ---
 
+## Follow-up: Why IPSCCP Cannot Propagate the Constant Vdbe Pointer
+
+**Follow-up question**: The Vdbe pointer is a compile-time constant (a known address). Why
+does IPSCCP not propagate it into `sqlite3VdbeExec`'s callee functions and fold loads from
+invariant fields (like `p->aOp`, which is never written during query execution)?
+
+### Finding 1: sqlite3VdbeExec body is absent from the JIT module
+
+**The JIT module does not contain sqlite3VdbeExec's body at all.** The function appears only
+as an external declaration. Evidence from the new `ArgLattice` instrumentation:
+
+```
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec
+    in_module=1          ← function IS found in the JIT module
+    is_declaration=1     ← it is an EXTERNAL DECLARATION (no body)
+    arg0_lattice_constant=0  ← formal arg lattice: not tracked (declaration)
+    call_sites=1         ← one call site to sqlite3VdbeExec in the module
+    call_sites_with_const_arg0=1  ← that call passes a constant Vdbe* ✓
+```
+
+The constant Vdbe pointer IS visible at the call site (`call_sites_with_const_arg0=1`). But
+because `is_declaration=1`, IPSCCP has no body to optimize. There is no dispatch loop to
+fold, no fields to propagate into, nothing to inline. IPSCCP correctly handles external
+calls: it marks the return value as overdefined and moves on.
+
+### Finding 2: The wrong blob is used — a blob-registration collision
+
+The JIT module is constructed from the **`sqlite3_tpch_bench.cpp` blob** (blob 1), not from
+the **`sqlite3_with_accessor.c` blob** (blob 0). Both TUs register `"sqlite3VdbeExec"` in
+`FuncToBlobIdx`, but the last-registered wins (`it->second = i` in
+`ClangRuntimeSpecializer.cpp:646`).
+
+- **Blob 0** (`sqlite3_with_accessor.c`): contains sqlite3VdbeExec as a **definition** (full
+  body, 2234 functions, 6116 KB of IR). This is the intended blob.
+- **Blob 1** (`sqlite3_tpch_bench.cpp`): contains sqlite3VdbeExec as a **declaration** (only
+  an extern C signature, no body). This TU registers "sqlite3VdbeExec" because the
+  IRDumpingPass detects the `specializeOnly(sqlite3VdbeExec, ...)` call site.
+
+The init message confirms: `blobs=2  bitcode=6116 KB  functions=2235  instructions=270626`.
+The 6116 KB is the sqlite3 blob (blob 0). The 2235th function is the one registered by blob
+1 for "sqlite3VdbeExec". Since blob 1 is loaded last, `FuncToBlobIdx["sqlite3VdbeExec"]`
+points to blob 1, and the specializer builds the JIT module from blob 1 — where the function
+has no body.
+
+**Consequence**: The 21-function "JIT module" contains benchmark infrastructure
+(`RSSMemoryManager`, libc++ futures) plus `sqlite3VdbeExec` as a declaration. The wrapper
+pre-loads the constant Vdbe* into `%rdi` and calls the original binary's `sqlite3VdbeExec`
+via GOT (a PLT thunk). IPSCCP has nothing to work with inside the function.
+
+### Finding 3: Escape-analysis breakdown (would remain relevant if blob were fixed)
+
+The `StaticMutabilityAnalysis` breakdown (from new `examined/blocked_escaped/blocked_mutated`
+instrumentation) confirms that the 21 non-sqlite3 functions in the current JIT module have:
+
+| Function | examined | blocked_escaped | blocked_mutated | annotated |
+|----------|----------|-----------------|-----------------|-----------|
+| `RSSMemoryManager::Stop` | 1 | 0 | 0 | **1** |
+| `__shared_ptr_emplace::__on_zero_shared` | 1 | 0 | 1 | 0 |
+| `__assoc_state::__on_zero_shared` | 1 | 1 | 0 | 0 |
+| `promise::~promise` | 3 | 0 | 3 | 0 |
+| `__make_exception_ptr_explicit` | 1 | 1 | 0 | 0 |
+
+Total across these functions: 7 examined, 2 blocked by escape, 4 blocked by mutation, 1
+annotated. For the sqlite3 functions (absent from the module): 0 examined, 0 annotated.
+
+If the blob collision were fixed and the sqlite3 body were present:
+- `StaticMutabilityAnalysis` would run on sqlite3VdbeExec and its 20 callees
+- The `Vdbe*` argument `p` would be marked `Escaped = true` because `p` is passed to callees
+  without `doesNotCapture` attribute (e.g., `sqlite3VdbeSorterWrite(p, ...)`)
+- Once `p` is escaped, ALL loads from Vdbe fields have `FieldEscaped = true` and are skipped
+- Result: still 0 annotations in sqlite3 functions
+
+**The escape analysis is too conservative**: it blocks loads from `p->aOp` (which is never
+stored to during `sqlite3VdbeExec`) because `p` itself escapes to callees. A module-level
+field-mutation analysis that checked "is `p->aOp` stored anywhere in the 21-function module?"
+would find it is NOT stored and could annotate the load as invariant. The current
+per-function escape analysis cannot make this distinction.
+
+### Finding 4: Even with correct blob + fixed escape analysis, dispatch folding is impossible
+
+Even in the hypothetical where (a) the sqlite3 blob is used and (b) escape analysis is fixed
+to check mutation rather than escape:
+
+- `p->aOp` (pointer to opcode array) could be annotated as invariant ✓
+- IPSCCP Path B would fold `p->aOp` to the constant address of the query's opcode array ✓
+- Individual opcodes `aOp[i].opcode` for constant `i` could also be folded ✓
+- The dispatch loop uses `aOp[pc].opcode` where `pc` changes every iteration — **NOT
+  foldable** because `pc` is a dynamic loop variable ✗
+
+The index `pc` is incremented at each loop iteration and can jump non-linearly via branch
+opcodes. Folding `aOp[pc].opcode` to a constant requires knowing the full execution sequence
+of `pc` at JIT compile time — which is determined by both the opcode program AND the runtime
+data values. This is query-specific runtime-dependent behavior, not statically knowable.
+
+**Conclusion**: The dispatch switch optimization requires complete loop unrolling guided by
+the specific query's opcode sequence — equivalent to query-specific JIT compilation at the
+SQL level, not pointer specialization at the C level. This is RC-1 (see above), and it
+remains the fundamental barrier even after hypothetically fixing both the blob collision
+(Finding 2) and the escape analysis (Finding 3).
+
+### Summary of root causes (layered)
+
+| Layer | Cause | Fixable? | Speedup from fix alone? |
+|-------|-------|----------|------------------------|
+| Proximate | Wrong blob: sqlite3VdbeExec body absent from JIT module | Yes (fix blob collision) | No (escape analysis still blocks) |
+| Secondary | Escape analysis: `p` marked Escaped due to callee passing, not mutation | Yes (module-level mutation check) | No (RC-1 remains) |
+| Fundamental | Dynamic `pc` prevents dispatch switch from being constant-folded | No (requires query-level JIT) | — |
+
+The specialization mechanism (pointer specialization + IPSCCP) is fundamentally mismatched
+with `sqlite3VdbeExec`'s dispatch pattern. The function is not a good candidate for this
+optimization regardless of pipeline configuration.
+
+---
+
 ## Data Files
 
 - Pass trace (release, Q1): `benchmarks/reports/260611-1528-sqlite-analysis/pass_trace/`
 - Specialized ASM (Q1): `benchmarks/reports/260611-1528-sqlite-analysis/asm/sqlite3VdbeExec__specialized.asm`
 - Original ASM (Q1): `benchmarks/reports/260611-1528-sqlite-analysis/asm/sqlite3VdbeExec__original.asm`
-- Instrumentation logs: captured in `stderr.txt` in the same report dir; debug-build
-  stderr from `./TPCHBenchmark` execution with CRS_PASS_TRACE_DIR and CRS_CHROME_TRACE_DIR set.
+- Instrumentation logs: `stderr.txt` in same report dir; follow-up data in `/tmp/stat_err4.txt`
+  (debug build, Q1 jit_analysis, with escape/mutation breakdown and ArgLattice stats).

@@ -110,7 +110,8 @@ std::map<Value*, StaticMutabilityAnalysis::PointerInfo> StaticMutabilityAnalysis
     return PointerMap;
 }
 
-void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, MemorySSA* MSSA) {
+void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, MemorySSA* MSSA,
+                                                   InferStats* Stats) {
     if (F.isDeclaration()) return;
     std::map<Value*, PointerInfo> PointerMap = runCaptureAnalysis(F);
     
@@ -170,7 +171,12 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
                         if (Overlaps && Info.Mutated) FieldMutated = true;
                     }
 
-                    if (FieldEscaped) continue;
+                    if (Stats) ++Stats->Examined;
+
+                    if (FieldEscaped) {
+                        if (Stats) ++Stats->BlockedEscaped;
+                        continue;
+                    }
 
                     bool ActuallyMutated = FieldMutated;
                     if (!ActuallyMutated) {
@@ -202,6 +208,9 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
 
                     if (!ActuallyMutated) {
                         LI->setMetadata(LLVMContext::MD_invariant_load, MDNode::get(F.getContext(), {}));
+                        if (Stats) ++Stats->Annotated;
+                    } else {
+                        if (Stats) ++Stats->BlockedMutated;
                     }
                 }
             }
@@ -212,17 +221,14 @@ void StaticMutabilityAnalysis::inferReadOnlyFields(Function& F, AAResults& AA, M
 PreservedAnalyses StaticMutabilityAnalysis::StaticMutabilityAnalysisPass::run(Function &F, FunctionAnalysisManager &FAM) {
     auto &AA = FAM.getResult<AAManager>(F);
     auto &MSSA = FAM.getResult<MemorySSAAnalysis>(F).getMSSA();
-    inferReadOnlyFields(F, AA, &MSSA);
-    // Investigation: count !invariant.load annotations added to this function.
-    unsigned Annotated = 0;
-    for (auto &BB : F)
-        for (auto &I : BB)
-            if (auto *LI = dyn_cast<LoadInst>(&I))
-                if (LI->getMetadata(LLVMContext::MD_invariant_load))
-                    ++Annotated;
-    if (Annotated > 0)
+    InferStats Stats;
+    inferReadOnlyFields(F, AA, &MSSA, &Stats);
+    if (Stats.Examined > 0)
         llvm::errs() << "[CRS-STAT] StaticMutability: fn=" << F.getName()
-                     << " annotated_invariant_loads=" << Annotated << "\n";
+                     << " examined=" << Stats.Examined
+                     << " blocked_escaped=" << Stats.BlockedEscaped
+                     << " blocked_mutated=" << Stats.BlockedMutated
+                     << " annotated=" << Stats.Annotated << "\n";
     return PreservedAnalyses::all();
 }
 

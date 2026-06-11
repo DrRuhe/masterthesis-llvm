@@ -179,6 +179,80 @@ static bool runIPSCCP(
                  << " folded_to_constant=" << FoldedBySccp << "\n";
   }
 
+  // Investigation: check whether IPSCCP sees sqlite3VdbeExec in the module
+  // (as definition or declaration) and whether its call-site args are lattice constants.
+  {
+    Function *VdbeExecFn = M.getFunction("sqlite3VdbeExec");
+    if (VdbeExecFn) {
+      bool IsDecl = VdbeExecFn->isDeclaration();
+      // For definitions, check whether the formal arg is a lattice constant.
+      bool ArgIsConst = false;
+      if (!IsDecl && !VdbeExecFn->arg_empty()) {
+        Argument *A = &*VdbeExecFn->arg_begin();
+        // Use getConstantOrNull which is safe for any tracked/untracked value.
+        ArgIsConst = (Solver.getConstantOrNull(A) != nullptr);
+      }
+      // Count call sites and whether arg0 is a constant at each call site.
+      unsigned CallSites = 0, CallSitesWithConstArg0 = 0;
+      for (Function &F : M) {
+        if (F.isDeclaration()) continue;
+        for (auto &BB : F)
+          for (auto &I : BB)
+            if (auto *CB = dyn_cast<CallBase>(&I))
+              if (CB->getCalledFunction() == VdbeExecFn) {
+                ++CallSites;
+                if (!CB->arg_empty()) {
+                  Value *Arg0 = CB->getArgOperand(0);
+                  // Constant operands (inttoptr) are always "constant" — check directly.
+                  if (isa<Constant>(Arg0))
+                    ++CallSitesWithConstArg0;
+                  else if (Solver.getConstantOrNull(Arg0) != nullptr)
+                    ++CallSitesWithConstArg0;
+                }
+              }
+      }
+      llvm::errs() << "[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec"
+                   << " in_module=1 is_declaration=" << (IsDecl ? 1 : 0)
+                   << " arg0_lattice_constant=" << (ArgIsConst ? 1 : 0)
+                   << " call_sites=" << CallSites
+                   << " call_sites_with_const_arg0=" << CallSitesWithConstArg0 << "\n";
+    } else {
+      llvm::errs() << "[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0\n";
+    }
+  }
+
+  // Investigation: count stores vs loads to argument-derived pointers across the
+  // whole module. Shows whether arguments are actually mutated (stores) or only
+  // "escape" due to being passed to callees without nocapture attribute.
+  {
+    auto getRootArg = [](Value *V) -> Argument * {
+      // Trace up GEP/BitCast chain with depth limit to avoid pathological cases.
+      for (int depth = 0; depth < 16; ++depth) {
+        V = V->stripPointerCasts();
+        if (auto *GEP = dyn_cast<GetElementPtrInst>(V)) {
+          V = GEP->getPointerOperand();
+        } else {
+          break;
+        }
+      }
+      return dyn_cast<Argument>(V);
+    };
+
+    unsigned StoresFromArgs = 0, LoadsFromArgs = 0;
+    for (Function &F : M) {
+      if (F.isDeclaration()) continue;
+      for (auto &BB : F)
+        for (auto &I : BB) {
+          if (auto *SI = dyn_cast<StoreInst>(&I))
+            if (getRootArg(SI->getPointerOperand())) ++StoresFromArgs;
+          if (auto *LI = dyn_cast<LoadInst>(&I))
+            if (getRootArg(LI->getPointerOperand())) ++LoadsFromArgs;
+        }
+    }
+    llvm::errs() << "[CRS-STAT] ModuleStores: stores_to_arg_derived=" << StoresFromArgs
+                 << " loads_from_arg_derived=" << LoadsFromArgs << "\n";
+  }
+
   if (IsFuncSpecEnabled) {
     unsigned Iters = 0;
     while (Iters++ < FSOpts.FuncSpecMaxIters && Specializer.run());

@@ -39,3 +39,9 @@
 - [x] `details.md` contains numeric data for Q1 and `simple_scan`.
 - [x] `benchmarks/reports/260611-1528-sqlite-analysis/asm/` contains `sqlite3VdbeExec__specialized.asm` (513 lines) and `sqlite3VdbeExec__original.asm` (9187 lines).
 - [x] `report.md` answers all three sub-questions with cited evidence and states root cause conclusion.
+
+## Follow-up: IPSCCP constant propagation for Vdbe pointer
+- [x] Add `InferStats` struct and escape/mutation breakdown to `StaticMutabilityAnalysis`.
+- [x] Add `ArgLattice` (is sqlite3VdbeExec definition or declaration?) + `ModuleStores` to `JitIPSCCPPass`.
+- [x] Collect data: `ArgLattice: is_declaration=1, call_sites_with_const_arg0=1`.
+- [x] Extend `report.md` with follow-up section covering blob collision, escape analysis breakdown, and fundamental dispatch barrier (RC-1).
