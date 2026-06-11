@@ -1,8 +1,10 @@
 
 #include <benchmark/benchmark.h>
 #include "ClangRuntimeSpecializerBenchmark.h"
+#include <chrono>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 #include "ClangRuntimeSpecializer.h"
 #include "sqlite3.h"
@@ -14,6 +16,11 @@ namespace CRS = clangRuntimeSpecializer;
 // same pointer — the public API casts between them with no indirection.
 struct Vdbe;
 extern "C" int sqlite3VdbeExec(Vdbe* p);
+
+// Accessors into Vdbe internals defined in sqlite3_with_accessor.c (same TU as
+// sqlite3.c, so the full Vdbe struct definition is available there).
+extern "C" int crs_vdbe_nop(sqlite3_stmt* stmt);
+extern "C" int crs_vdbe_op_size(void);
 
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
@@ -51,6 +58,29 @@ static const std::string& getQuery(int q_num) {
         fclose(f);
     }
     return queries[idx];
+}
+
+// Named queries (e.g. "simple_scan") from the sqlite queries directory.
+static const std::string& getNamedQuery(const char* name) {
+    static std::unordered_map<std::string, std::string> cache;
+    auto& s = cache[name];
+    if (s.empty()) {
+        char path[512];
+        snprintf(path, sizeof(path), "%s/%s.sql", g_sqlite_queries_dir.c_str(), name);
+        FILE* f = fopen(path, "r");
+        if (!f) {
+            fprintf(stderr, "Cannot open query file: %s\n", path);
+            exit(1);
+        }
+        fseek(f, 0, SEEK_END);
+        long sz = ftell(f);
+        rewind(f);
+        s.resize((size_t)sz);
+        if (sz > 0)
+            (void)fread(&s[0], 1, (size_t)sz, f);
+        fclose(f);
+    }
+    return s;
 }
 
 // ── IR embedding trigger ──────────────────────────────────────────────────────
@@ -100,6 +130,10 @@ static sqlite3_stmt* prepareQuery(sqlite3* db, const char* sql) {
     return stmt;
 }
 
+// Tracks whether the most recent jit_overhead run timed out, so phaseSpecializedExec
+// can skip execution (same pattern as duckdb_tpch_bench.cpp).
+static bool g_last_jit_timed_out = false;
+
 // Phase 1: Unspecialized — normal sqlite3_step() execution.
 static void phaseUnspecialized(benchmark::State& state, const char* sql) {
     sqlite3* db = openDB();
@@ -113,25 +147,45 @@ static void phaseUnspecialized(benchmark::State& state, const char* sql) {
 }
 
 // Phase 2: JIT overhead — measures specialization (JIT compile) cost.
+// Uses Iterations(1)/UseManualTime(). Reports query_nops and query_bytecode_bytes
+// counters. Times out after 300 s and sets jit_timeout=1.
 static void phaseJITOverhead(benchmark::State& state, const char* sql) {
+    g_last_jit_timed_out = false;
+
     sqlite3* db = openDB();
     sqlite3_stmt* stmt = prepareQuery(db, sql);
     auto* vdbe = reinterpret_cast<Vdbe*>(stmt);
+
+    int nops    = crs_vdbe_nop(stmt);
+    int op_size = crs_vdbe_op_size();
 
     auto* RS = CRS::ClangRuntimeSpecializer::init();
     auto modStats = CRS::ClangRuntimeSpecializer::getModuleStats();
     auto Prev = CRS::ClangRuntimeSpecializer::getLogLevel();
     CRS::ClangRuntimeSpecializer::setLogLevel(CRS::ClangRuntimeSpecializer::LogLevel::None);
-    for (auto _ : state)
-        benchmark::DoNotOptimize(RS->specializeOnly<int>(sqlite3VdbeExec, vdbe));
+
+    auto opts = CRS::ClangRuntimeSpecializer::Options::Default().withJITTimeoutSeconds(300);
+    CRS::SpecializedFunction<int> specFn;
+    for (auto _ : state) {
+        auto t0 = std::chrono::steady_clock::now();
+        specFn = RS->specializeOnly<int>(sqlite3VdbeExec, opts, vdbe);
+        auto elapsed = std::chrono::steady_clock::now() - t0;
+        double elapsed_s = std::chrono::duration<double>(elapsed).count();
+        state.SetIterationTime(elapsed_s);
+    }
     CRS::ClangRuntimeSpecializer::setLogLevel(Prev);
+
+    g_last_jit_timed_out = !specFn;
     auto txStats = CRS::ClangRuntimeSpecializer::getLastTransformStats();
 
-    state.counters["jit_module_fns"]    = (double)modStats.FunctionCount;
-    state.counters["jit_module_instrs"] = (double)modStats.InstructionCount;
-    state.counters["jit_blob_kb"]       = (double)(modStats.BitcodeSizeBytes / 1024);
-    state.counters["jit_pruned_fns"]    = (double)txStats.FunctionCountAfterPrune;
-    state.counters["jit_pruned_instrs"] = (double)txStats.InstructionCountAfterPrune;
+    state.counters["jit_module_fns"]       = (double)modStats.FunctionCount;
+    state.counters["jit_module_instrs"]    = (double)modStats.InstructionCount;
+    state.counters["jit_blob_kb"]          = (double)(modStats.BitcodeSizeBytes / 1024);
+    state.counters["jit_pruned_fns"]       = (double)txStats.FunctionCountAfterPrune;
+    state.counters["jit_pruned_instrs"]    = (double)txStats.InstructionCountAfterPrune;
+    state.counters["jit_timeout"]          = g_last_jit_timed_out ? 1.0 : 0.0;
+    state.counters["query_nops"]           = (double)nops;
+    state.counters["query_bytecode_bytes"] = (double)(nops * op_size);
 
     sqlite3_finalize(stmt);
     sqlite3_close(db);
@@ -139,6 +193,8 @@ static void phaseJITOverhead(benchmark::State& state, const char* sql) {
 
 // Phase 3: Specialized exec — compile once outside loop, measure execution.
 static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
+    if (g_last_jit_timed_out) { state.SkipWithMessage("jit_timed_out"); return; }
+
     sqlite3* db = openDB();
     sqlite3_stmt* stmt = prepareQuery(db, sql);
     auto* vdbe = reinterpret_cast<Vdbe*>(stmt);
@@ -169,357 +225,85 @@ static void phaseJITAnalysis(benchmark::State& state, const char* sql) {
     sqlite3_close(db);
 }
 
-// ── Q1: Pricing Summary Report ────────────────────────────────────────────────
+// ── TPC-H Q1–Q22 ─────────────────────────────────────────────────────────────
 
-void BM_unspecialized_tpch_q1(benchmark::State& state) { phaseUnspecialized(state, getQuery(1).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q1)->Name("BM_g:db/sqlite3/tpch;n:tpch_q1;t:unspecialized;")->MinTime(1.0);
+#define DEFINE_TPCH_BM(N)                                                           \
+void BM_unspecialized_tpch_q##N(benchmark::State& s)  { phaseUnspecialized(s, getQuery(N).c_str()); }  \
+BENCHMARK(BM_unspecialized_tpch_q##N)->Name("BM_g:db/sqlite3/tpch;n:tpch_q" #N ";t:unspecialized;")->MinTime(1.0); \
+void BM_jit_overhead_tpch_q##N(benchmark::State& s)   { phaseJITOverhead(s, getQuery(N).c_str()); }   \
+BENCHMARK(BM_jit_overhead_tpch_q##N)->Name("BM_g:db/sqlite3/tpch;n:tpch_q" #N ";t:jit_overhead;")->Iterations(1)->UseManualTime(); \
+void BM_specialized_exec_tpch_q##N(benchmark::State& s){ phaseSpecializedExec(s, getQuery(N).c_str()); } \
+BENCHMARK(BM_specialized_exec_tpch_q##N)->Name("BM_g:db/sqlite3/tpch;n:tpch_q" #N ";t:specialized_exec;")->MinTime(1.0); \
+void BM_jit_analysis_tpch_q##N(benchmark::State& s)   { phaseJITAnalysis(s, getQuery(N).c_str()); }   \
+BENCHMARK(BM_jit_analysis_tpch_q##N)->Name("BM_g:db/sqlite3/tpch;n:tpch_q" #N ";t:jit_analysis;")->Iterations(1)->UseManualTime();
 
-void BM_jit_overhead_tpch_q1(benchmark::State& state) { phaseJITOverhead(state, getQuery(1).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q1)->Name("BM_g:db/sqlite3/tpch;n:tpch_q1;t:jit_overhead;")->Iterations(1)->UseManualTime();
+DEFINE_TPCH_BM(1)
+DEFINE_TPCH_BM(2)
+DEFINE_TPCH_BM(3)
+DEFINE_TPCH_BM(4)
+DEFINE_TPCH_BM(5)
+DEFINE_TPCH_BM(6)
+DEFINE_TPCH_BM(7)
+DEFINE_TPCH_BM(8)
+DEFINE_TPCH_BM(9)
+DEFINE_TPCH_BM(10)
+DEFINE_TPCH_BM(11)
+DEFINE_TPCH_BM(12)
+DEFINE_TPCH_BM(13)
+DEFINE_TPCH_BM(14)
+DEFINE_TPCH_BM(15)
+DEFINE_TPCH_BM(16)
+DEFINE_TPCH_BM(17)
+DEFINE_TPCH_BM(18)
+DEFINE_TPCH_BM(19)
+DEFINE_TPCH_BM(20)
+DEFINE_TPCH_BM(21)
+DEFINE_TPCH_BM(22)
 
-void BM_specialized_exec_tpch_q1(benchmark::State& state) { phaseSpecializedExec(state, getQuery(1).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q1)->Name("BM_g:db/sqlite3/tpch;n:tpch_q1;t:specialized_exec;")->MinTime(1.0);
+// ── Synthetic input-size benchmarks (spec 018) ───────────────────────────────
+// Group: db/sqlite3/input_size — covers trivial to TPC-H-level complexity.
+// Each query has four phases: unspecialized, jit_overhead, specialized_exec,
+// jit_analysis.
 
-void BM_jit_analysis_tpch_q1(benchmark::State& state) { phaseJITAnalysis(state, getQuery(1).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q1)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q1;t:jit_analysis;")
+#define DEFINE_INPUT_SIZE_BM(QUERY_NAME)                                              \
+void BM_unspecialized_##QUERY_NAME(benchmark::State& s) {                             \
+    phaseUnspecialized(s, getNamedQuery(#QUERY_NAME).c_str());                        \
+}                                                                                      \
+BENCHMARK(BM_unspecialized_##QUERY_NAME)                                              \
+    ->Name("BM_g:db/sqlite3/input_size;n:" #QUERY_NAME ";t:unspecialized;")          \
+    ->MinTime(1.0);                                                                    \
+void BM_jit_overhead_##QUERY_NAME(benchmark::State& s) {                              \
+    phaseJITOverhead(s, getNamedQuery(#QUERY_NAME).c_str());                          \
+}                                                                                      \
+BENCHMARK(BM_jit_overhead_##QUERY_NAME)                                               \
+    ->Name("BM_g:db/sqlite3/input_size;n:" #QUERY_NAME ";t:jit_overhead;")           \
+    ->Iterations(1)->UseManualTime();                                                  \
+void BM_specialized_exec_##QUERY_NAME(benchmark::State& s) {                          \
+    phaseSpecializedExec(s, getNamedQuery(#QUERY_NAME).c_str());                      \
+}                                                                                      \
+BENCHMARK(BM_specialized_exec_##QUERY_NAME)                                           \
+    ->Name("BM_g:db/sqlite3/input_size;n:" #QUERY_NAME ";t:specialized_exec;")       \
+    ->MinTime(1.0);                                                                    \
+void BM_jit_analysis_##QUERY_NAME(benchmark::State& s) {                              \
+    sqlite3* db = openDB();                                                            \
+    sqlite3_stmt* stmt = prepareQuery(db, getNamedQuery(#QUERY_NAME).c_str());        \
+    auto* vdbe = reinterpret_cast<Vdbe*>(stmt);                                       \
+    clangRuntimeSpecializer::benchmarkJITAnalysis(                                    \
+        s, sqlite3VdbeExec, std::make_tuple(vdbe));                                   \
+    sqlite3_finalize(stmt);                                                            \
+    sqlite3_close(db);                                                                 \
+}                                                                                      \
+BENCHMARK(BM_jit_analysis_##QUERY_NAME)                                               \
+    ->Name("BM_g:db/sqlite3/input_size;n:" #QUERY_NAME ";t:jit_analysis;")           \
     ->Iterations(1)->UseManualTime();
 
-// ── Q2: Minimum Cost Supplier ─────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q2(benchmark::State& state) { phaseUnspecialized(state, getQuery(2).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q2)->Name("BM_g:db/sqlite3/tpch;n:tpch_q2;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q2(benchmark::State& state) { phaseJITOverhead(state, getQuery(2).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q2)->Name("BM_g:db/sqlite3/tpch;n:tpch_q2;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q2(benchmark::State& state) { phaseSpecializedExec(state, getQuery(2).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q2)->Name("BM_g:db/sqlite3/tpch;n:tpch_q2;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q2(benchmark::State& state) { phaseJITAnalysis(state, getQuery(2).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q2)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q2;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q3: Shipping Priority ─────────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q3(benchmark::State& state) { phaseUnspecialized(state, getQuery(3).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q3)->Name("BM_g:db/sqlite3/tpch;n:tpch_q3;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q3(benchmark::State& state) { phaseJITOverhead(state, getQuery(3).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q3)->Name("BM_g:db/sqlite3/tpch;n:tpch_q3;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q3(benchmark::State& state) { phaseSpecializedExec(state, getQuery(3).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q3)->Name("BM_g:db/sqlite3/tpch;n:tpch_q3;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q3(benchmark::State& state) { phaseJITAnalysis(state, getQuery(3).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q3)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q3;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q4: Order Priority Checking ───────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q4(benchmark::State& state) { phaseUnspecialized(state, getQuery(4).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q4)->Name("BM_g:db/sqlite3/tpch;n:tpch_q4;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q4(benchmark::State& state) { phaseJITOverhead(state, getQuery(4).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q4)->Name("BM_g:db/sqlite3/tpch;n:tpch_q4;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q4(benchmark::State& state) { phaseSpecializedExec(state, getQuery(4).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q4)->Name("BM_g:db/sqlite3/tpch;n:tpch_q4;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q4(benchmark::State& state) { phaseJITAnalysis(state, getQuery(4).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q4)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q4;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q5: Local Supplier Volume ─────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q5(benchmark::State& state) { phaseUnspecialized(state, getQuery(5).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q5)->Name("BM_g:db/sqlite3/tpch;n:tpch_q5;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q5(benchmark::State& state) { phaseJITOverhead(state, getQuery(5).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q5)->Name("BM_g:db/sqlite3/tpch;n:tpch_q5;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q5(benchmark::State& state) { phaseSpecializedExec(state, getQuery(5).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q5)->Name("BM_g:db/sqlite3/tpch;n:tpch_q5;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q5(benchmark::State& state) { phaseJITAnalysis(state, getQuery(5).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q5)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q5;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q6: Forecasting Revenue Change ───────────────────────────────────────────
-
-void BM_unspecialized_tpch_q6(benchmark::State& state) { phaseUnspecialized(state, getQuery(6).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q6)->Name("BM_g:db/sqlite3/tpch;n:tpch_q6;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q6(benchmark::State& state) { phaseJITOverhead(state, getQuery(6).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q6)->Name("BM_g:db/sqlite3/tpch;n:tpch_q6;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q6(benchmark::State& state) { phaseSpecializedExec(state, getQuery(6).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q6)->Name("BM_g:db/sqlite3/tpch;n:tpch_q6;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q6(benchmark::State& state) { phaseJITAnalysis(state, getQuery(6).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q6)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q6;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q7: Volume Shipping ───────────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q7(benchmark::State& state) { phaseUnspecialized(state, getQuery(7).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q7)->Name("BM_g:db/sqlite3/tpch;n:tpch_q7;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q7(benchmark::State& state) { phaseJITOverhead(state, getQuery(7).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q7)->Name("BM_g:db/sqlite3/tpch;n:tpch_q7;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q7(benchmark::State& state) { phaseSpecializedExec(state, getQuery(7).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q7)->Name("BM_g:db/sqlite3/tpch;n:tpch_q7;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q7(benchmark::State& state) { phaseJITAnalysis(state, getQuery(7).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q7)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q7;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q8: National Market Share ─────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q8(benchmark::State& state) { phaseUnspecialized(state, getQuery(8).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q8)->Name("BM_g:db/sqlite3/tpch;n:tpch_q8;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q8(benchmark::State& state) { phaseJITOverhead(state, getQuery(8).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q8)->Name("BM_g:db/sqlite3/tpch;n:tpch_q8;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q8(benchmark::State& state) { phaseSpecializedExec(state, getQuery(8).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q8)->Name("BM_g:db/sqlite3/tpch;n:tpch_q8;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q8(benchmark::State& state) { phaseJITAnalysis(state, getQuery(8).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q8)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q8;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q9: Product Type Profit Measure ──────────────────────────────────────────
-
-void BM_unspecialized_tpch_q9(benchmark::State& state) { phaseUnspecialized(state, getQuery(9).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q9)->Name("BM_g:db/sqlite3/tpch;n:tpch_q9;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q9(benchmark::State& state) { phaseJITOverhead(state, getQuery(9).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q9)->Name("BM_g:db/sqlite3/tpch;n:tpch_q9;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q9(benchmark::State& state) { phaseSpecializedExec(state, getQuery(9).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q9)->Name("BM_g:db/sqlite3/tpch;n:tpch_q9;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q9(benchmark::State& state) { phaseJITAnalysis(state, getQuery(9).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q9)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q9;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q10: Returned Item Reporting ──────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q10(benchmark::State& state) { phaseUnspecialized(state, getQuery(10).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q10)->Name("BM_g:db/sqlite3/tpch;n:tpch_q10;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q10(benchmark::State& state) { phaseJITOverhead(state, getQuery(10).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q10)->Name("BM_g:db/sqlite3/tpch;n:tpch_q10;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q10(benchmark::State& state) { phaseSpecializedExec(state, getQuery(10).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q10)->Name("BM_g:db/sqlite3/tpch;n:tpch_q10;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q10(benchmark::State& state) { phaseJITAnalysis(state, getQuery(10).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q10)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q10;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q11: Important Stock Identification ───────────────────────────────────────
-
-void BM_unspecialized_tpch_q11(benchmark::State& state) { phaseUnspecialized(state, getQuery(11).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q11)->Name("BM_g:db/sqlite3/tpch;n:tpch_q11;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q11(benchmark::State& state) { phaseJITOverhead(state, getQuery(11).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q11)->Name("BM_g:db/sqlite3/tpch;n:tpch_q11;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q11(benchmark::State& state) { phaseSpecializedExec(state, getQuery(11).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q11)->Name("BM_g:db/sqlite3/tpch;n:tpch_q11;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q11(benchmark::State& state) { phaseJITAnalysis(state, getQuery(11).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q11)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q11;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q12: Shipping Modes and Order Priority ────────────────────────────────────
-
-void BM_unspecialized_tpch_q12(benchmark::State& state) { phaseUnspecialized(state, getQuery(12).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q12)->Name("BM_g:db/sqlite3/tpch;n:tpch_q12;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q12(benchmark::State& state) { phaseJITOverhead(state, getQuery(12).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q12)->Name("BM_g:db/sqlite3/tpch;n:tpch_q12;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q12(benchmark::State& state) { phaseSpecializedExec(state, getQuery(12).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q12)->Name("BM_g:db/sqlite3/tpch;n:tpch_q12;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q12(benchmark::State& state) { phaseJITAnalysis(state, getQuery(12).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q12)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q12;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q13: Customer Distribution ────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q13(benchmark::State& state) { phaseUnspecialized(state, getQuery(13).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q13)->Name("BM_g:db/sqlite3/tpch;n:tpch_q13;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q13(benchmark::State& state) { phaseJITOverhead(state, getQuery(13).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q13)->Name("BM_g:db/sqlite3/tpch;n:tpch_q13;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q13(benchmark::State& state) { phaseSpecializedExec(state, getQuery(13).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q13)->Name("BM_g:db/sqlite3/tpch;n:tpch_q13;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q13(benchmark::State& state) { phaseJITAnalysis(state, getQuery(13).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q13)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q13;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q14: Promotion Effect ─────────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q14(benchmark::State& state) { phaseUnspecialized(state, getQuery(14).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q14)->Name("BM_g:db/sqlite3/tpch;n:tpch_q14;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q14(benchmark::State& state) { phaseJITOverhead(state, getQuery(14).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q14)->Name("BM_g:db/sqlite3/tpch;n:tpch_q14;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q14(benchmark::State& state) { phaseSpecializedExec(state, getQuery(14).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q14)->Name("BM_g:db/sqlite3/tpch;n:tpch_q14;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q14(benchmark::State& state) { phaseJITAnalysis(state, getQuery(14).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q14)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q14;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q15: Top Supplier ─────────────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q15(benchmark::State& state) { phaseUnspecialized(state, getQuery(15).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q15)->Name("BM_g:db/sqlite3/tpch;n:tpch_q15;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q15(benchmark::State& state) { phaseJITOverhead(state, getQuery(15).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q15)->Name("BM_g:db/sqlite3/tpch;n:tpch_q15;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q15(benchmark::State& state) { phaseSpecializedExec(state, getQuery(15).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q15)->Name("BM_g:db/sqlite3/tpch;n:tpch_q15;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q15(benchmark::State& state) { phaseJITAnalysis(state, getQuery(15).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q15)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q15;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q16: Parts/Supplier Relationship ─────────────────────────────────────────
-
-void BM_unspecialized_tpch_q16(benchmark::State& state) { phaseUnspecialized(state, getQuery(16).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q16)->Name("BM_g:db/sqlite3/tpch;n:tpch_q16;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q16(benchmark::State& state) { phaseJITOverhead(state, getQuery(16).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q16)->Name("BM_g:db/sqlite3/tpch;n:tpch_q16;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q16(benchmark::State& state) { phaseSpecializedExec(state, getQuery(16).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q16)->Name("BM_g:db/sqlite3/tpch;n:tpch_q16;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q16(benchmark::State& state) { phaseJITAnalysis(state, getQuery(16).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q16)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q16;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q17: Small-Quantity Order Revenue ────────────────────────────────────────
-
-void BM_unspecialized_tpch_q17(benchmark::State& state) { phaseUnspecialized(state, getQuery(17).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q17)->Name("BM_g:db/sqlite3/tpch;n:tpch_q17;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q17(benchmark::State& state) { phaseJITOverhead(state, getQuery(17).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q17)->Name("BM_g:db/sqlite3/tpch;n:tpch_q17;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q17(benchmark::State& state) { phaseSpecializedExec(state, getQuery(17).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q17)->Name("BM_g:db/sqlite3/tpch;n:tpch_q17;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q17(benchmark::State& state) { phaseJITAnalysis(state, getQuery(17).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q17)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q17;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q18: Large Volume Customer ────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q18(benchmark::State& state) { phaseUnspecialized(state, getQuery(18).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q18)->Name("BM_g:db/sqlite3/tpch;n:tpch_q18;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q18(benchmark::State& state) { phaseJITOverhead(state, getQuery(18).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q18)->Name("BM_g:db/sqlite3/tpch;n:tpch_q18;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q18(benchmark::State& state) { phaseSpecializedExec(state, getQuery(18).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q18)->Name("BM_g:db/sqlite3/tpch;n:tpch_q18;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q18(benchmark::State& state) { phaseJITAnalysis(state, getQuery(18).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q18)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q18;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q19: Discounted Revenue ───────────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q19(benchmark::State& state) { phaseUnspecialized(state, getQuery(19).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q19)->Name("BM_g:db/sqlite3/tpch;n:tpch_q19;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q19(benchmark::State& state) { phaseJITOverhead(state, getQuery(19).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q19)->Name("BM_g:db/sqlite3/tpch;n:tpch_q19;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q19(benchmark::State& state) { phaseSpecializedExec(state, getQuery(19).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q19)->Name("BM_g:db/sqlite3/tpch;n:tpch_q19;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q19(benchmark::State& state) { phaseJITAnalysis(state, getQuery(19).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q19)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q19;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q20: Potential Part Promotion ─────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q20(benchmark::State& state) { phaseUnspecialized(state, getQuery(20).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q20)->Name("BM_g:db/sqlite3/tpch;n:tpch_q20;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q20(benchmark::State& state) { phaseJITOverhead(state, getQuery(20).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q20)->Name("BM_g:db/sqlite3/tpch;n:tpch_q20;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q20(benchmark::State& state) { phaseSpecializedExec(state, getQuery(20).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q20)->Name("BM_g:db/sqlite3/tpch;n:tpch_q20;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q20(benchmark::State& state) { phaseJITAnalysis(state, getQuery(20).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q20)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q20;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q21: Suppliers Who Kept Orders Waiting ────────────────────────────────────
-
-void BM_unspecialized_tpch_q21(benchmark::State& state) { phaseUnspecialized(state, getQuery(21).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q21)->Name("BM_g:db/sqlite3/tpch;n:tpch_q21;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q21(benchmark::State& state) { phaseJITOverhead(state, getQuery(21).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q21)->Name("BM_g:db/sqlite3/tpch;n:tpch_q21;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q21(benchmark::State& state) { phaseSpecializedExec(state, getQuery(21).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q21)->Name("BM_g:db/sqlite3/tpch;n:tpch_q21;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q21(benchmark::State& state) { phaseJITAnalysis(state, getQuery(21).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q21)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q21;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
-
-// ── Q22: Global Sales Opportunity ────────────────────────────────────────────
-
-void BM_unspecialized_tpch_q22(benchmark::State& state) { phaseUnspecialized(state, getQuery(22).c_str()); }
-BENCHMARK(BM_unspecialized_tpch_q22)->Name("BM_g:db/sqlite3/tpch;n:tpch_q22;t:unspecialized;")->MinTime(1.0);
-
-void BM_jit_overhead_tpch_q22(benchmark::State& state) { phaseJITOverhead(state, getQuery(22).c_str()); }
-BENCHMARK(BM_jit_overhead_tpch_q22)->Name("BM_g:db/sqlite3/tpch;n:tpch_q22;t:jit_overhead;")->Iterations(1)->UseManualTime();
-
-void BM_specialized_exec_tpch_q22(benchmark::State& state) { phaseSpecializedExec(state, getQuery(22).c_str()); }
-BENCHMARK(BM_specialized_exec_tpch_q22)->Name("BM_g:db/sqlite3/tpch;n:tpch_q22;t:specialized_exec;")->MinTime(1.0);
-
-void BM_jit_analysis_tpch_q22(benchmark::State& state) { phaseJITAnalysis(state, getQuery(22).c_str()); }
-BENCHMARK(BM_jit_analysis_tpch_q22)
-    ->Name("BM_g:db/sqlite3/tpch;n:tpch_q22;t:jit_analysis;")
-    ->Iterations(1)->UseManualTime();
+DEFINE_INPUT_SIZE_BM(simple_scan)
+DEFINE_INPUT_SIZE_BM(filter_small)
+DEFINE_INPUT_SIZE_BM(filter_large)
+DEFINE_INPUT_SIZE_BM(agg_simple)
+DEFINE_INPUT_SIZE_BM(agg_group)
+DEFINE_INPUT_SIZE_BM(join_simple)
+DEFINE_INPUT_SIZE_BM(join_agg)
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 

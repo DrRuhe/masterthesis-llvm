@@ -204,10 +204,11 @@ add_custom_command(
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
             -fexceptions -frtti
+            -fpass-plugin=${PLUGIN_LIB}
             -c ${TPCH_SRC_FILE}
             -o ${ALL_OBJ_TPCH}
-    DEPENDS ${TPCH_SRC_FILE} clang
-    COMMENT "Compiling sqlite3_tpch_bench.cpp for AllBenchmarks"
+    DEPENDS ${TPCH_SRC_FILE} LLVMRuntimeSpecializationComptimePlugin clang
+    COMMENT "Compiling sqlite3_tpch_bench.cpp for AllBenchmarks with IR-dumping plugin"
 )
 
 # ── AllBenchmarks DuckDB TPCH object ─────────────────────────────────────────

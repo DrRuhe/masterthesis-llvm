@@ -59,10 +59,12 @@ add_custom_command(
             -fvisibility=default
             -I${sqlite3_src_SOURCE_DIR}
             -fpass-plugin=${PLUGIN_LIB}
-            -c ${sqlite3_src_SOURCE_DIR}/sqlite3.c
+            -c ${CMAKE_CURRENT_SOURCE_DIR}/sqlite3_with_accessor.c
             -o ${SQLITE3_IR_OBJ}
-    DEPENDS ${sqlite3_src_SOURCE_DIR}/sqlite3.c LLVMRuntimeSpecializationComptimePlugin clang
-    COMMENT "Compiling sqlite3.c with IR-dumping plugin (embeds sqlite3VdbeExec IR)"
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/sqlite3_with_accessor.c
+            ${sqlite3_src_SOURCE_DIR}/sqlite3.c
+            LLVMRuntimeSpecializationComptimePlugin clang
+    COMMENT "Compiling sqlite3_with_accessor.c with IR-dumping plugin (embeds sqlite3VdbeExec IR + nOp accessors)"
 )
 
 # ── Compile sqlite3_tpch_bench.cpp with the IR-dumping pass ──────────────────
@@ -79,10 +81,11 @@ add_custom_command(
             -I${LLVM_BINARY_DIR}/include
             -I${LLVM_THIRD_PARTY_DIR}/benchmark/include
             -fexceptions -frtti
+            -fpass-plugin=${PLUGIN_LIB}
             -c ${CMAKE_CURRENT_SOURCE_DIR}/sqlite3_tpch_bench.cpp
             -o ${TPCH_OBJ}
-    DEPENDS sqlite3_tpch_bench.cpp clang
-    COMMENT "Compiling sqlite3_tpch_bench.cpp"
+    DEPENDS sqlite3_tpch_bench.cpp LLVMRuntimeSpecializationComptimePlugin clang
+    COMMENT "Compiling sqlite3_tpch_bench.cpp with IR-dumping plugin"
 )
 
 # IDE stub: empty .cpp so CMake has a compile group and CLion resolves includes.
