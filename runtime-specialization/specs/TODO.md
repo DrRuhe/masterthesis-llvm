@@ -1,6 +1,6 @@
 # LLVM Runtime Specializer: Thesis Completion Checklist
 
-**Last Updated**: 2026-06-10  
+**Last Updated**: 2026-06-11  
 **Status**: Active — tracks missing data, open questions, and completion blockers for thesis evaluation sections.
 
 This document is the authoritative reference for high-level tasks required to complete the thesis. It is organized by thesis chapter and mapped to research questions. Sessions that discover new open tasks MUST update this file with a link to the relevant spec or reflection document.
@@ -182,6 +182,14 @@ This document is the authoritative reference for high-level tasks required to co
 - **Data**: sqlite3VdbeExec: 255,342 instrs / 2,017 funcs / 4,078 KB blob; 12× larger than UC MEDIUM (~21k).
 - **Outcome**: TPC-H documented as RQ6 failure case. JIT overhead > 2 min under P0.
 - **Reference**: `benchmarks/reports/260610-tpch-scope/module_stats.txt`, `scope_statement.md`
+
+### RQ6-005: Input-size limits scatterplot (Spec 018)
+- **Status**: ✅ COMPLETE (2026-06-11)
+- **Outcome**: All 29 queries (7 synthetic + 22 TPC-H, nOps 9–230) pass in 103–117ms for both p0_optimal and p2_optimal configs. No timeout failures. Key finding: GlobalDCE prune reduces 2234-function sqlite3 module to 21 functions; nOp count does not affect JIT overhead.
+- **Scatterplot**: `benchmarks/reports/260611-sqlite3-input-size/input_size_limits.png` (47 data points)
+- **Script**: `benchmarks/reporting/plot_input_size_limits.py`
+- **Findings documented in**: `specs/018-input-size-limits/spec.md` Clarifications (CL-001 to CL-003)
+- **Reference**: `specs/018-input-size-limits/`
 
 ### RQ6-003: Verify LLJIT crash fix and document boundary conditions
 - **Status**: 🟢 Unblocked

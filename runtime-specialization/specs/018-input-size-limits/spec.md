@@ -136,4 +136,28 @@ in the spec's Clarifications section as a thesis-ready finding.
 
 ## Clarifications
 
-*To be appended as findings emerge during implementation.*
+### Session 2026-06-11
+
+**CL-001 — Lambda API not used for JIT compilation**
+
+The plan (Step 2) called for switching to `specializeLambda<int>(q)` where `q = [vdbe]() -> int { return sqlite3VdbeExec(vdbe); }`. This was not implemented as described because:
+- The lambda's `operator()` would be captured in the benchmark TU's blob, not the sqlite3 TU blob.
+- Without the sqlite3 TU's full IR in the JIT module, no constant propagation through `sqlite3VdbeExec` is possible.
+- This would defeat the experiment by making all queries trivially fast (JIT compiles a 1-instruction wrapper, not the 270k-instruction sqlite3 module).
+
+Instead, `specializeOnly<int>(sqlite3VdbeExec, opts, vdbe)` is used (function-pointer form), which uses the sqlite3 blob for JIT. The `-fpass-plugin` flag was added to the benchmark TU to rewrite the call-site function name (previously NULL → DumpedIRError).
+
+**CL-002 — GlobalDCE prune eliminates nOp correlation**
+
+Key finding: query bytecode size (nOps) does NOT correlate with JIT overhead for the sqlite3 amalgamation. The reason is the early GlobalDCE prune in the IRDumpingPass pipeline:
+- Raw module: 2234 functions, 270,622 instructions, 6116 KB blob
+- After prune: 21 functions, 178 instructions (static reachability from `sqlite3VdbeExec`)
+- JIT compiles the same 21-function pruned module for every query regardless of nOps
+- JIT time: 103–117ms consistently across all 29 queries (nOps 9–230)
+- All 47 benchmark data points: `jit_timeout = 0` (pass)
+
+**CL-003 — Effective input-size limit is module size, not query bytecode size**
+
+The "input size limit" for sqlite3 specialization is determined by the TU module size at compile time, not the runtime query complexity. With the default large-module threshold (≤3 instructions), the sqlite3 module is always classified as "large" and uses the simplified optimization path. Without this threshold (i.e., using full O3 optimization on the 270k-instruction module), the JIT would take minutes per query (as observed prior to the large-module optimization).
+
+Thesis finding: specialization overhead for interpreter-style functions (like VDBEs) is bounded by the STATIC module size after pruning, not the dynamic bytecode input. This makes specialization feasible for sqlite3 at ~100ms per query with the right configuration.
