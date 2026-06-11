@@ -201,8 +201,8 @@ _BASE_COLUMNS = {
 # KV name parsing
 # ---------------------------------------------------------------------------
 
-_KV_PREFIX_RE = re.compile(r'^BM_(?P<kvs>[^/]+?)(?:/(?P<params>.*))?$')
-_KV_PAIR_RE = re.compile(r'(\w+):([^;/]+);')
+_KV_PREFIX_RE = re.compile(r'^BM_(?P<kvs>(?:\w+:[^;]+;)+)(?:/(?P<params>.*))?$')
+_KV_PAIR_RE = re.compile(r'(\w+):([^;]+);')
 
 
 def _parse_bm_name(name: str) -> dict:
