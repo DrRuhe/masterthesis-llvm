@@ -15,3 +15,15 @@ int crs_vdbe_nop(sqlite3_stmt *stmt) {
 int crs_vdbe_op_size(void) {
     return (int)sizeof(VdbeOp);
 }
+
+/*
+ * Set Vdbe::pc so that a direct sqlite3VdbeExec(vdbe) call starts from the
+ * correct instruction. sqlite3_reset() leaves pc=-1; sqlite3Step() normally
+ * resets it to 0 before calling sqlite3VdbeExec. Call this with pc=0 after
+ * sqlite3_reset when invoking sqlite3VdbeExec directly (e.g. from a
+ * specialised wrapper that bypasses sqlite3Step).
+ */
+void crs_vdbe_set_pc(sqlite3_stmt *stmt, int pc) {
+    Vdbe *v = (Vdbe *)stmt;
+    v->pc = pc;
+}

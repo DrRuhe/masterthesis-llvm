@@ -19,8 +19,11 @@ extern "C" int sqlite3VdbeExec(Vdbe* p);
 
 // Accessors into Vdbe internals defined in sqlite3_with_accessor.c (same TU as
 // sqlite3.c, so the full Vdbe struct definition is available there).
-extern "C" int crs_vdbe_nop(sqlite3_stmt* stmt);
-extern "C" int crs_vdbe_op_size(void);
+extern "C" int  crs_vdbe_nop(sqlite3_stmt* stmt);
+extern "C" int  crs_vdbe_op_size(void);
+// sqlite3_reset() leaves Vdbe::pc=-1; sqlite3Step() sets it to 0 before
+// calling sqlite3VdbeExec. Set it explicitly when calling VdbeExec directly.
+extern "C" void crs_vdbe_set_pc(sqlite3_stmt* stmt, int pc);
 
 
 // ── Paths ─────────────────────────────────────────────────────────────────────
@@ -207,6 +210,7 @@ static void phaseSpecializedExec(benchmark::State& state, const char* sql) {
 
     for (auto _ : state) {
         sqlite3_reset(stmt);
+        crs_vdbe_set_pc(stmt, 0);  // sqlite3_reset leaves pc=-1; VdbeExec starts at aOp[pc]
         while (SpecFn() == SQLITE_ROW) {}
     }
 
