@@ -3,6 +3,7 @@
 #include "llvm/IR/Operator.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/Analysis/MemorySSA.h"
+#include "llvm/Support/raw_ostream.h"
 #include <queue>
 #include <algorithm>
 
@@ -212,6 +213,16 @@ PreservedAnalyses StaticMutabilityAnalysis::StaticMutabilityAnalysisPass::run(Fu
     auto &AA = FAM.getResult<AAManager>(F);
     auto &MSSA = FAM.getResult<MemorySSAAnalysis>(F).getMSSA();
     inferReadOnlyFields(F, AA, &MSSA);
+    // Investigation: count !invariant.load annotations added to this function.
+    unsigned Annotated = 0;
+    for (auto &BB : F)
+        for (auto &I : BB)
+            if (auto *LI = dyn_cast<LoadInst>(&I))
+                if (LI->getMetadata(LLVMContext::MD_invariant_load))
+                    ++Annotated;
+    if (Annotated > 0)
+        llvm::errs() << "[CRS-STAT] StaticMutability: fn=" << F.getName()
+                     << " annotated_invariant_loads=" << Annotated << "\n";
     return PreservedAnalyses::all();
 }
 

@@ -30,6 +30,7 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ModRef.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/Scalar/SCCP.h"
 #include "llvm/Transforms/Utils/Local.h"
@@ -158,6 +159,25 @@ static bool runIPSCCP(
 
   // Solve for constants.
   Solver.solveWhileResolvedUndefsIn(M);
+
+  // Investigation: count !invariant.load loads and how many were folded by SCCP.
+  {
+    unsigned TotalInvLoads = 0, FoldedBySccp = 0;
+    for (Function &F : M) {
+      if (F.isDeclaration()) continue;
+      for (auto &BB : F)
+        for (auto &I : BB)
+          if (auto *LI = dyn_cast<LoadInst>(&I))
+            if (LI->getMetadata(LLVMContext::MD_invariant_load)) {
+              ++TotalInvLoads;
+              if (JitSCCPSolver::isConstant(Solver.getLatticeValueFor(LI)))
+                ++FoldedBySccp;
+            }
+    }
+    llvm::errs() << "[CRS-STAT] SCCP: module=" << M.getName()
+                 << " invariant_load_total=" << TotalInvLoads
+                 << " folded_to_constant=" << FoldedBySccp << "\n";
+  }
 
   if (IsFuncSpecEnabled) {
     unsigned Iters = 0;

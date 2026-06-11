@@ -5,6 +5,7 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
 #include <atomic>
 #include <map>
 #include <vector>
@@ -86,6 +87,10 @@ ConstantArgFunctionSpecializationPass::run(llvm::Module &M,
         llvm::Function *F = Item.F;
         auto &Groups = Item.Groups;
         auto &UnspecializedSites = Item.UnspecializedSites;
+        // Investigation: report how many distinct constant-arg patterns exist.
+        llvm::errs() << "[CRS-STAT] ConstantArgSpec: fn=" << F->getName()
+                     << " specialization_groups=" << Groups.size()
+                     << " unspecialized_sites=" << UnspecializedSites.size() << "\n";
 
         if (Groups.size() == 1 && UnspecializedSites.empty()) {
             // (A) In-place specialization: replace each constant arg with its value

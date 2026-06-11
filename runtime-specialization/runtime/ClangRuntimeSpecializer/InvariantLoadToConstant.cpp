@@ -3,6 +3,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Support/raw_ostream.h"
 
 namespace clangRuntimeSpecializer {
 
@@ -19,14 +20,21 @@ PreservedAnalyses InvariantLoadToConstantPass::run(Function &F, FunctionAnalysis
                 if (LI->getMetadata(LLVMContext::MD_invariant_load))
                     ToReplace.push_back(LI);
 
+    unsigned Replaced = 0;
     for (auto *LI : ToReplace) {
         auto MaybeConst = resolveInvariantLoadToConstant(*LI, PageCache);
         if (MaybeConst.has_value() && *MaybeConst) {
             LI->replaceAllUsesWith(*MaybeConst);
             LI->eraseFromParent();
+            ++Replaced;
             Changed = true;
         }
     }
+    // Investigation: report how many invariant loads were converted to literals.
+    if (!ToReplace.empty())
+        llvm::errs() << "[CRS-STAT] InvariantLoadToConst: fn=" << F.getName()
+                     << " candidates=" << ToReplace.size()
+                     << " replaced=" << Replaced << "\n";
 
     if (Changed) {
         PreservedAnalyses PA;

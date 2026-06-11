@@ -1,0 +1,15 @@
+2026-06-11T15:28:05+02:00
+Running ./tools/runtime-specialization/benchmarks/tpch/TPCHBenchmark
+Run on (20 X 4900 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x10)
+  L1 Instruction 32 KiB (x10)
+  L2 Unified 1280 KiB (x10)
+  L3 Unified 24576 KiB (x1)
+Load Average: 0.31, 0.50, 0.77
+***WARNING*** CPU scaling is enabled, the benchmark real time measurements may be noisy and will incur extra overhead.
+***WARNING*** Library was built as DEBUG. Timings may be affected.
+[CRS-STAT] StaticMutability: fn=_ZN16RSSMemoryManager4StopERN9benchmark13MemoryManager6ResultE annotated_invariant_loads=1
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=1 folded_to_constant=0
+[CRS-STAT] StaticMutability: fn=_ZN16RSSMemoryManager4StopERN9benchmark13MemoryManager6ResultE annotated_invariant_loads=1
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=1 folded_to_constant=0
