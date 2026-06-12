@@ -11,6 +11,7 @@ Usage:
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,8 @@ import duckdb
 sys.path.insert(0, str(Path(__file__).parent))
 
 from record_benchmark import (
+    _pick_benchmark_cpus,
+    best_practice_env,
     open_db as _rb_open_db,
     resolve_db_path,
     get_git_sha,
@@ -83,25 +86,25 @@ def run_config_rep(
     benchmark_filter: str,
     timeout: float,
     env_base: dict,
+    benchmark_cpus: "list[int] | None" = None,
 ) -> "dict | None":
     """Run binary with config env vars injected; return parsed JSON or None."""
     env = {**env_base, **config["env"]}
     fd, out_json = tempfile.mkstemp(suffix=".json")
     os.close(fd)
+    cmd = [
+        binary,
+        "--benchmark_out_format=json",
+        f"--benchmark_out={out_json}",
+        f"--benchmark_filter={benchmark_filter}",
+        "--benchmark_repetitions=1",
+    ]
+    if benchmark_cpus:
+        taskset_bin = shutil.which("taskset") or "taskset"
+        cpu_list_str = ",".join(str(c) for c in benchmark_cpus)
+        cmd = [taskset_bin, "-c", cpu_list_str] + cmd
     try:
-        subprocess.run(
-            [
-                binary,
-                "--benchmark_out_format=json",
-                f"--benchmark_out={out_json}",
-                f"--benchmark_filter={benchmark_filter}",
-                "--benchmark_repetitions=1",
-            ],
-            env=env,
-            timeout=timeout,
-            check=True,
-            capture_output=True,
-        )
+        subprocess.run(cmd, env=env, timeout=timeout, check=True, capture_output=True)
         with open(out_json) as f:
             return json.load(f)
     except Exception as e:
@@ -176,6 +179,16 @@ def parse_args():
         "--timeout", type=float, default=300.0, metavar="SEC",
         help="Per-run timeout in seconds (default: 300).",
     )
+    parser.add_argument(
+        "--benchmarking-best-practice", action="store_true",
+        help="Apply thesis-grade best-practice benchmarking controls "
+             "(ASLR disable, Turbo disable, performance governor, SMT sibling off, taskset affinity).",
+    )
+    parser.add_argument(
+        "--benchmark-cpus", default=None, metavar="LIST",
+        help="CPU list for --benchmarking-best-practice, e.g. '2,4'. "
+             "Default: auto-pick dedicated benchmark CPUs.",
+    )
     return parser.parse_args()
 
 
@@ -226,91 +239,112 @@ def main():
     print()
 
     env_base = os.environ.copy()
+    benchmark_cpus = None
+    if args.benchmarking_best_practice:
+        requested_cpus = None
+        if args.benchmark_cpus is not None:
+            requested_cpus = [
+                int(part.strip()) for part in args.benchmark_cpus.split(",") if part.strip()
+            ]
+        benchmark_cpus = _pick_benchmark_cpus(requested_cpus)
     total_runs = len(configs) * args.reps
     completed = 0
     failed = 0
 
-    for config in configs:
-        config_name = config["name"]
-        config_failures = 0
-        print(f"Config [{config_name}]  (env: {config['env'] or 'default'})")
+    def run_all_configs(best_practice_full: bool) -> None:
+        nonlocal completed, failed
+        for config in configs:
+            config_name = config["name"]
+            config_failures = 0
+            print(f"Config [{config_name}]  (env: {config['env'] or 'default'})")
 
-        for rep in range(args.reps):
-            print(f"  [{config_name}] rep {rep + 1}/{args.reps}...", end=" ", flush=True)
+            for rep in range(args.reps):
+                print(f"  [{config_name}] rep {rep + 1}/{args.reps}...", end=" ", flush=True)
 
-            data = run_config_rep(
-                binary=binary,
-                config=config,
-                benchmark_filter=args.benchmark_filter,
-                timeout=args.timeout,
-                env_base=env_base,
-            )
+                data = run_config_rep(
+                    binary=binary,
+                    config=config,
+                    benchmark_filter=args.benchmark_filter,
+                    timeout=args.timeout,
+                    env_base=env_base,
+                    benchmark_cpus=benchmark_cpus if best_practice_full else None,
+                )
 
-            run_id = None
-            if data is not None:
-                try:
-                    con = duckdb.connect(str(db_path))
+                run_id = None
+                if data is not None:
                     try:
-                        con.begin()
-                        run_id = store_raw_benchmarks(con, data, git_sha)
-                        store_ablation_row(
-                            con, study_name, config_name, rep,
-                            json.dumps(config["env"]), run_id,
-                        )
-                        con.commit()
-                    finally:
-                        con.close()
-                    print("OK")
-                except Exception as e:
-                    print(f"DB error: {e}")
+                        con = duckdb.connect(str(db_path))
+                        try:
+                            con.begin()
+                            run_id = store_raw_benchmarks(
+                                con,
+                                data,
+                                git_sha,
+                                best_practice_full=best_practice_full,
+                            )
+                            store_ablation_row(
+                                con, study_name, config_name, rep,
+                                json.dumps(config["env"]), run_id,
+                            )
+                            con.commit()
+                        finally:
+                            con.close()
+                        print("OK")
+                    except Exception as e:
+                        print(f"DB error: {e}")
+                        config_failures += 1
+                        failed += 1
+                        run_id = None
+                else:
+                    # Store NULL run_id row so the study record is complete
+                    try:
+                        con = duckdb.connect(str(db_path))
+                        try:
+                            con.begin()
+                            store_ablation_row(
+                                con, study_name, config_name, rep,
+                                json.dumps(config["env"]), None,
+                            )
+                            con.commit()
+                        finally:
+                            con.close()
+                    except Exception as e:
+                        print(f"DB error (storing NULL row): {e}")
                     config_failures += 1
                     failed += 1
-                    run_id = None
-            else:
-                # Store NULL run_id row so the study record is complete
-                try:
-                    con = duckdb.connect(str(db_path))
-                    try:
-                        con.begin()
-                        store_ablation_row(
-                            con, study_name, config_name, rep,
-                            json.dumps(config["env"]), None,
-                        )
-                        con.commit()
-                    finally:
-                        con.close()
-                except Exception as e:
-                    print(f"DB error (storing NULL row): {e}")
-                config_failures += 1
-                failed += 1
 
-            completed += 1
+                completed += 1
 
-        # Per-config summary
-        ok_count = args.reps - config_failures
-        try:
-            con = duckdb.connect(str(db_path))
+            ok_count = args.reps - config_failures
             try:
-                jit_ms, spec_ms, unspec_ms = _query_config_summary(
-                    con, study_name, config_name
-                )
-            finally:
-                con.close()
-        except Exception:
-            jit_ms = spec_ms = unspec_ms = None
+                con = duckdb.connect(str(db_path))
+                try:
+                    jit_ms, spec_ms, unspec_ms = _query_config_summary(
+                        con, study_name, config_name
+                    )
+                finally:
+                    con.close()
+            except Exception:
+                jit_ms = spec_ms = unspec_ms = None
 
-        summary_parts = [f"  [{config_name:<14}]  {ok_count}/{args.reps} reps OK"]
-        if jit_ms is not None:
-            summary_parts.append(f"jit={jit_ms:.1f}ms")
-        if spec_ms is not None:
-            summary_parts.append(f"spec={spec_ms:.1f}ms")
-        if unspec_ms is not None:
-            summary_parts.append(f"unspec={unspec_ms:.1f}ms")
-        if spec_ms is not None and unspec_ms is not None and spec_ms > 0:
-            speedup = unspec_ms / spec_ms
-            summary_parts.append(f"speedup={speedup:.2f}x")
-        print("  ".join(summary_parts))
-        print()
+            summary_parts = [f"  [{config_name:<14}]  {ok_count}/{args.reps} reps OK"]
+            if jit_ms is not None:
+                summary_parts.append(f"jit={jit_ms:.1f}ms")
+            if spec_ms is not None:
+                summary_parts.append(f"spec={spec_ms:.1f}ms")
+            if unspec_ms is not None:
+                summary_parts.append(f"unspec={unspec_ms:.1f}ms")
+            if spec_ms is not None and unspec_ms is not None and spec_ms > 0:
+                speedup = unspec_ms / spec_ms
+                summary_parts.append(f"speedup={speedup:.2f}x")
+            print("  ".join(summary_parts))
+            print()
+
+    if args.benchmarking_best_practice:
+        with best_practice_env(benchmark_cpus) as setup_ok:
+            run_all_configs(best_practice_full=bool(setup_ok))
+    else:
+        run_all_configs(best_practice_full=False)
 
     print(f"Done. {completed} runs ({completed - failed} OK, {failed} failed).")
     print(f"Study '{study_name}' stored in {db_path}")

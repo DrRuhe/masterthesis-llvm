@@ -1,6 +1,6 @@
 # LLVM Runtime Specializer: Thesis Completion Checklist
 
-**Last Updated**: 2026-06-11  
+**Last Updated**: 2026-06-12  
 **Status**: Active — tracks missing data, open questions, and completion blockers for thesis evaluation sections.
 
 This document is the authoritative reference for high-level tasks required to complete the thesis. It is organized by thesis chapter and mapped to research questions. Sessions that discover new open tasks MUST update this file with a link to the relevant spec or reflection document.
@@ -234,6 +234,41 @@ This document is the authoritative reference for high-level tasks required to co
 - **Status**: ✅ Complete (2026-06-10)
 - **Summary**: Core i9-12900H (20T, 5GHz), Clang 21.1.8, Python 3.13.13, Optuna 4.8.0, governor=powersave
 - **Reference**: `benchmarks/reports/260610-infra-docs/environment.txt`
+
+### INF-005: Generate a Nix-derived devshell SBOM for the appendix
+- **Status**: ✅ Complete (2026-06-12)
+- **Data Needed**: Machine-generated package inventory for the thesis devshell, derived from `flake.nix` / the built devshell closure.
+- **Why**: The evaluation chapter must document software provenance at appendix level, not just mention a few top-level tool versions.
+- **Outcome**: Appendix-ready SBOM artifact plus a short pointer from `Hardware and Build Configuration`.
+- **Reference**: `benchmarks/reporting/generate_devshell_sbom.py`; `benchmarks/reports/thesis-appendix/`; `docs/assets/devshell-sbom/`; `docs/thesis.typ`.
+- **Effort**: ~30 minutes (generation script + artifact + appendix hook).
+
+### INF-006: Rerun the final UC corpus under thesis-grade best-practice controls
+- **Status**: 🟢 Unblocked
+- **Data Needed**: Fresh `default` / `p0_o3_optimal` / `uc_workload_optimal` / `no_o3_final` UC MEDIUM+low measurements collected with `best_practice_full=TRUE`.
+- **Why**: The thesis should cite a final dataset gathered under the benchmark best-practice protocol rather than exploratory runs.
+- **Outcome**: New ablation study with 5 reps per config, explicit DB provenance, and updated speedup/JIT numbers for the evaluation chapter.
+- **Reference**: `benchmarks/run_thesis_uc_final.sh`; `benchmarks/ablation_benchmarks.py`; evaluation rewrite notes 2026-06-12.
+- **Prerequisite**: Benchmark run must be executed with the required sudo-backed best-practice controls on the target machine.
+- **Effort**: ~1-2 hours wall clock for the benchmark run plus report refresh.
+
+### INF-007: Rewrite the evaluation chapter around reader-facing RQ framing
+- **Status**: 🟡 Partially Blocked
+- **Data Needed**: Final prose pass that gives each RQ motivation, RQ-specific measurement description, results, and conclusion.
+- **Why**: The current evaluation reads as a flat result dump and assumes implementation-internal context.
+- **Outcome**: Evaluation text that is thesis-reader-facing, avoids internal spec references, and clearly explains what each RQ allows the reader to infer.
+- **Reference**: `docs/thesis.typ` Evaluation section; evaluation review 2026-06-12.
+- **Prerequisite**: Final UC rerun numbers should be available before locking the cited absolute metrics.
+- **Effort**: ~2-3 hours (prose + figure/table caption pass).
+
+### INF-008: Rename the six presented UC benchmark families to reader-facing UC1-UC6
+- **Status**: 🟢 Unblocked
+- **Data Needed**: Consistent thesis-only numbering scheme and mapping from internal benchmark IDs (UC1, UC2, UC7, UC8, UC12, UC14).
+- **Why**: Sparse internal IDs are meaningful to the implementation but confusing to the thesis reader.
+- **Outcome**: Evaluation and implementation chapters refer to the six benchmark families as UC1-UC6, with the internal mapping explained once if needed.
+- **Reference**: `specs/008-use-case-benchmarks/spec.md`; `specs/011-uc-benchmark-abstraction-variants/spec.md`; evaluation review 2026-06-12.
+- **Prerequisite**: None.
+- **Effort**: ~30 minutes (terminology pass).
 
 ---
 

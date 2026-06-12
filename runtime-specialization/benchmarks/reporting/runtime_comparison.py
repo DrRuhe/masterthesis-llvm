@@ -131,7 +131,7 @@ def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
     df = query_df(con, """
         SELECT
             kernel,
-            raw_params,
+            norm_params AS raw_params,
             MAX(CASE WHEN phase = 'unspecialized'
                 THEN cpu_time * CASE time_unit
                     WHEN 'ns' THEN 1.0 WHEN 'us' THEN 1e3
@@ -152,7 +152,7 @@ def load_data(con: duckdb.DuckDBPyConnection, run_id: str,
             END) AS t_jit_ns
         FROM v_parsed
         WHERE run_id = ? AND phase != ''
-        GROUP BY kernel, raw_params
+        GROUP BY kernel, norm_params
         ORDER BY (t_spec_ns + t_jit_ns) / t_unspec_ns ASC NULLS LAST
         """,
         [run_id],

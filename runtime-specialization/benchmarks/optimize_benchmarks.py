@@ -270,7 +270,12 @@ def open_optim_db(db_path: Path) -> duckdb.DuckDBPyConnection:
     return con
 
 
-def store_raw_benchmarks(con: duckdb.DuckDBPyConnection, data: dict, git_sha: str) -> str:
+def store_raw_benchmarks(
+    con: duckdb.DuckDBPyConnection,
+    data: dict,
+    git_sha: str,
+    best_practice_full: bool = False,
+) -> str:
     """Insert context + benchmark rows from raw JSON; returns run_id."""
     ctx = data.get("context", {})
     benchmarks = data.get("benchmarks", [])
@@ -283,7 +288,7 @@ def store_raw_benchmarks(con: duckdb.DuckDBPyConnection, data: dict, git_sha: st
             ctx.get("date", ""), ctx.get("host_name", ""), ctx.get("executable", ""),
             ctx.get("num_cpus"), ctx.get("mhz_per_cpu"), ctx.get("cpu_scaling_enabled"),
             ctx.get("library_version", ""), ctx.get("library_build_type", ""),
-            False,  # best_practice_full — optimization trials are not best-practice runs
+            best_practice_full,
         ],
     )
     ensure_columns(con, benchmarks)

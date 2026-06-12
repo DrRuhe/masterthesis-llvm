@@ -77,7 +77,11 @@ SELECT
     b.kv_t          AS phase,
     b.kv_n          AS kernel,
     b.kv_g          AS "group",
-    b.kv_raw_params AS raw_params
+    b.kv_raw_params AS raw_params,
+    regexp_replace(regexp_replace(
+        COALESCE(b.kv_raw_params, ''),
+        '/min_time:[0-9]+\\.[0-9]+', ''
+    ), '/iterations:[0-9]+/manual_time', '') AS norm_params
 FROM benchmarks b
 JOIN context c USING (run_id);
 """
@@ -96,13 +100,15 @@ FROM v_parsed
 WHERE phase != '';
 """
 
-# Pivot phases per (run_id, kernel, raw_params, group) for ratio computation.
+# Pivot phases per (run_id, kernel, norm_params, group) for ratio computation.
+# norm_params strips benchmark timing modifiers (/min_time:…, /iterations:…/manual_time)
+# so that jit_overhead and exec phases with different raw_params land in the same row.
 _SCHEMA_V_RATIOS = """
 CREATE OR REPLACE VIEW v_ratios AS
 SELECT
     run_id,
     kernel,
-    raw_params,
+    norm_params AS raw_params,
     "group",
     git_sha,
     run_ts,
@@ -111,7 +117,7 @@ SELECT
     MAX(CASE WHEN phase = 'specialized_exec' THEN real_time_ns END) AS t_spec_ns,
     MAX(CASE WHEN phase = 'jit_overhead'     THEN real_time_ns END) AS t_jit_ns
 FROM v_ns
-GROUP BY run_id, kernel, raw_params, "group", git_sha, run_ts, host_name;
+GROUP BY run_id, kernel, norm_params, "group", git_sha, run_ts, host_name;
 """
 
 # JIT stats for jit_overhead rows (columns may not exist; view creation guarded).
