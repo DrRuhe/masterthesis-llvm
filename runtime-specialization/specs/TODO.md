@@ -94,12 +94,11 @@ This document is the authoritative reference for high-level tasks required to co
 - **Reference**: `benchmarks/reports/260610-binary-size/binary_size_table.txt`
 
 ### RQ2-002: Analyze binary-size vs. execution speedup tradeoff
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Scatter plot of binary-size overhead (x-axis) vs. execution speedup (y-axis), per UC kernel.
+- **Status**: ✅ Complete (2026-06-12)
+- **Data Collected**: Per-kernel low-abstraction UC translation-unit object sizes measured without/with the IR-dumping plugin using the release clang toolchain, joined with `corpus_uc_final_20260610` execution speedups.
 - **Why**: Thesis must address whether the binary overhead is justified by speedup gains.
-- **Outcome**: Scatterplot and summary statement: "Binary overhead is between X% and Y%; speedup ranges from A× to B×. Ratio of speedup benefit to binary cost is favorable for K/18 kernels."
-- **Prerequisite**: RQ2-001 must be complete.
-- **Effort**: ~30 minutes (DuckDB query + gnuplot).
+- **Outcome**: Scatterplot `benchmarks/reports/thesis-figures/rq2/rq2_binary_size_vs_speedup.png` plus measurement CSV `rq2_binary_size_measurements.csv`; the single-TU stacked breakdown figure lives at `rq2_binary_size_breakdown.png`.
+- **Reference**: `benchmarks/reporting/measure_uc_binary_size.py`, `plot_binary_size_vs_speedup.py`, `plot_binary_size_breakdown.py`; `benchmarks/reports/thesis-figures/rq2/`
 
 ---
 
@@ -112,7 +111,7 @@ This document is the authoritative reference for high-level tasks required to co
 - **Reference**: `benchmarks/reports/260610-polybench/polybench_speedup_default.txt`, `polybench_speedup_p2_optimal.txt`
 - **Prerequisite**: 
   - [x] RQ1-002 (fix polybench JIT bug)
-  - [ ] Binary must be rebuilt with bug fix
+  - [x] Benchmark rerun completed with the fixed dedicated `PolyBenchBenchmark` binary
 - **Effort**: ~1.5 hours (bug fix + recompile + run 60 trials: 30 kernels × 2 sizes × 1 rep baseline).
 
 ### RQ3-002: Evaluate TPC-H on CRS (if feasible)
@@ -244,20 +243,20 @@ This document is the authoritative reference for high-level tasks required to co
 - **Effort**: ~30 minutes (generation script + artifact + appendix hook).
 
 ### INF-006: Rerun the final UC corpus under thesis-grade best-practice controls
-- **Status**: 🟢 Unblocked
+- **Status**: 🔴 Blocked
 - **Data Needed**: Fresh `default` / `p0_o3_optimal` / `uc_workload_optimal` / `no_o3_final` UC MEDIUM+low measurements collected with `best_practice_full=TRUE`.
 - **Why**: The thesis should cite a final dataset gathered under the benchmark best-practice protocol rather than exploratory runs.
 - **Outcome**: New ablation study with 5 reps per config, explicit DB provenance, and updated speedup/JIT numbers for the evaluation chapter.
-- **Reference**: `benchmarks/run_thesis_uc_final.sh`; `benchmarks/ablation_benchmarks.py`; evaluation rewrite notes 2026-06-12.
-- **Prerequisite**: Benchmark run must be executed with the required sudo-backed best-practice controls on the target machine.
-- **Effort**: ~1-2 hours wall clock for the benchmark run plus report refresh.
+- **Reference**: `benchmarks/run_thesis_uc_final.sh`; `benchmarks/ablation_benchmarks.py`; `specs/PLAN.md`.
+- **Blocker**: Current environment cannot satisfy the required sudo-backed benchmark controls. Both sandboxed and escalated runs on 2026-06-12 failed to apply ASLR disable, Turbo disable, governor switch, and SMT sibling isolation, so resulting runs do not satisfy `best_practice_full=TRUE`.
+- **Next Step**: Re-run on the target machine with working sudo askpass or equivalent privileged access, then refresh the final UC report directory and chapter numbers.
 
 ### INF-007: Rewrite the evaluation chapter around reader-facing RQ framing
 - **Status**: 🟡 Partially Blocked
 - **Data Needed**: Final prose pass that gives each RQ motivation, RQ-specific measurement description, results, and conclusion.
 - **Why**: The current evaluation reads as a flat result dump and assumes implementation-internal context.
 - **Outcome**: Evaluation text that is thesis-reader-facing, avoids internal spec references, and clearly explains what each RQ allows the reader to infer.
-- **Reference**: `docs/thesis.typ` Evaluation section; evaluation review 2026-06-12.
+- **Reference**: `docs/thesis.typ` Evaluation section; evaluation review 2026-06-12; `specs/PLAN.md`; `benchmarks/reports/thesis-figures/`.
 - **Prerequisite**: Final UC rerun numbers should be available before locking the cited absolute metrics.
 - **Effort**: ~2-3 hours (prose + figure/table caption pass).
 
