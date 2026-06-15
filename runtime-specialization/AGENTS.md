@@ -1,5 +1,19 @@
 # LLVM Runtime Specializer
 
+This file defines workflow that is specific to
+`/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization`.
+Shared agent-harness behavior for the wider workspace belongs in
+`/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/AGENTS.md`. Documentation-only
+workflow belongs in `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/docs/AGENTS.md`.
+
+## Scope Routing
+
+- Put cross-workspace reflection, approval, and skill-improvement policy in the
+  root `AGENTS.md`, not here.
+- Put Typst/thesis-writing workflow in `docs/AGENTS.md`, not here.
+- Keep this file focused on runtime-specialization architecture, spec workflow,
+  tests, benchmarks, and thesis-evaluation tracking for this project.
+
 ## Before Starting Any Work
 
 1. **Constitution** (`.specify/memory/constitution.md`) — authoritative reference for architecture,
@@ -83,6 +97,14 @@ The workflow runs in one of two modes:
 Do not mix modes. Plan mode never executes tasks. Auto mode never edits
 `spec.md` / `plan.md` / `details.md` beyond ticking the plan's checkboxes as
 tasks complete.
+
+## Session Reflection
+
+For substantive sessions in this project, follow the shared reflection harness
+from `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/AGENTS.md` at the end of
+the session. Route runtime-specialization lessons here only when they are
+specific to this project; otherwise propose the change in the root `AGENTS.md`
+or `docs/AGENTS.md` as appropriate.
 
 ## Workflow steps
 
