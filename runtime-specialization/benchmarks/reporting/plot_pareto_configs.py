@@ -105,15 +105,25 @@ def pareto_mask(jit_arr: np.ndarray, spec_arr: np.ndarray) -> np.ndarray:
 
 
 def _has_kv_a_column(con: duckdb.DuckDBPyConnection) -> bool:
-    """Check whether kv_a exists as a column in v_ratios (added by spec 011)."""
+    """Check whether kv_a exists as a column in v_parsed (added by spec 011)."""
     try:
         cols = con.execute(
             "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'v_ratios' AND column_name = 'kv_a'"
+            "WHERE table_name = 'v_parsed' AND column_name = 'kv_a'"
         ).fetchall()
         return len(cols) > 0
     except Exception:
         return False
+
+
+_TIME_TO_NS = """
+CASE {alias}.time_unit
+    WHEN 'ns' THEN 1.0
+    WHEN 'us' THEN 1e3
+    WHEN 'ms' THEN 1e6
+    WHEN 's'  THEN 1e9
+END
+"""
 
 
 def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
@@ -125,72 +135,125 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
 
     Note: jit_overhead and specialized_exec benchmarks use different raw_params (the
     jit benchmark appends "/iterations:1/manual_time"), so they appear in separate
-    v_ratios rows. We reconstruct per-kernel (jit, spec) pairs by joining jit rows
-    with spec rows on (run_id, kernel).
+    raw rows. We reconstruct per-kernel (jit, spec) pairs from v_parsed and use
+    cpu_time for jit_overhead because those benchmarks report real_time=0.
     """
     has_kv_a = _has_kv_a_column(con)
-    kv_a_expr = "j.kv_a" if has_kv_a else "NULL"
+    kv_a_select = "p.kv_a," if has_kv_a else "NULL AS kv_a,"
+    kv_a_join = "AND spec.kv_a IS NOT DISTINCT FROM jit.kv_a"
+    phase_ns_expr = """
+        CASE
+            WHEN p.phase = 'jit_overhead'
+            THEN p.cpu_time * ({time_to_ns})
+            ELSE p.real_time * ({time_to_ns})
+        END
+    """.format(time_to_ns=_TIME_TO_NS.format(alias="p"))
 
     out = []
     optim_rows = con.execute(
         f"""
-        WITH jit AS (
-            SELECT otp.trial_id, otp.params_json, r."group", r.kernel,
-                   r.t_jit_ns{"," + "r.kv_a" if has_kv_a else ""}
+        WITH phase_rows AS (
+            SELECT
+                otp.trial_id,
+                otp.params_json,
+                p."group",
+                p.kernel,
+                {kv_a_select}
+                p.phase,
+                {phase_ns_expr} AS phase_ns
             FROM optim_trial_params otp
-            JOIN v_ratios r ON r.run_id = otp.run_id
+            JOIN v_parsed p ON p.run_id = otp.run_id
             WHERE otp.study_name = ?
               AND NOT otp.used_timeout_fallback
-              AND r.t_jit_ns IS NOT NULL
+              AND p.run_type = 'iteration'
+              AND p.phase IN ('jit_overhead', 'specialized_exec')
+        ),
+        jit AS (
+            SELECT
+                trial_id, params_json, "group", kernel, kv_a,
+                MAX(phase_ns) AS t_jit_ns
+            FROM phase_rows
+            WHERE phase = 'jit_overhead'
+            GROUP BY trial_id, params_json, "group", kernel, kv_a
         ),
         spec AS (
-            SELECT otp.trial_id, r.kernel, r.t_spec_ns
-            FROM optim_trial_params otp
-            JOIN v_ratios r ON r.run_id = otp.run_id
-            WHERE otp.study_name = ?
-              AND NOT otp.used_timeout_fallback
-              AND r.t_spec_ns IS NOT NULL
+            SELECT
+                trial_id, "group", kernel, kv_a,
+                MAX(phase_ns) AS t_spec_ns
+            FROM phase_rows
+            WHERE phase = 'specialized_exec'
+            GROUP BY trial_id, "group", kernel, kv_a
         )
-        SELECT 'trial_' || CAST(j.trial_id AS VARCHAR) AS config_label,
-               j.params_json,
-               j."group", j.kernel,
-               j.t_jit_ns / 1e6 AS jit_ms,
-               s.t_spec_ns / 1e6 AS spec_ms,
-               {kv_a_expr} AS kv_a
-        FROM jit j
-        JOIN spec s ON s.trial_id = j.trial_id AND s.kernel = j.kernel
+        SELECT
+            'trial_' || CAST(jit.trial_id AS VARCHAR) AS config_label,
+            jit.params_json,
+            jit."group", jit.kernel,
+            jit.t_jit_ns / 1e6 AS jit_ms,
+            spec.t_spec_ns / 1e6 AS spec_ms,
+            jit.kv_a
+        FROM jit
+        JOIN spec
+          ON spec.trial_id = jit.trial_id
+         AND spec."group" = jit."group"
+         AND spec.kernel = jit.kernel
+         {kv_a_join}
+        WHERE jit.t_jit_ns IS NOT NULL
+          AND spec.t_spec_ns IS NOT NULL
         """,
-        [study_name, study_name],
+        [study_name],
     ).fetchall()
     out.extend(optim_rows)
 
     abl_rows = con.execute(
         f"""
-        WITH jit AS (
-            SELECT a.config_name, a.params_json, r."group", r.kernel, r.t_jit_ns
-                   {", r.kv_a" if has_kv_a else ""}
+        WITH phase_rows AS (
+            SELECT
+                a.config_name,
+                a.params_json,
+                p."group",
+                p.kernel,
+                {kv_a_select}
+                p.phase,
+                {phase_ns_expr} AS phase_ns
             FROM ablation_studies a
-            JOIN v_ratios r ON r.run_id = a.run_id
+            JOIN v_parsed p ON p.run_id = a.run_id
             WHERE a.study_name = ?
-              AND r.t_jit_ns IS NOT NULL
+              AND p.run_type = 'iteration'
+              AND p.phase IN ('jit_overhead', 'specialized_exec')
+        ),
+        jit AS (
+            SELECT
+                config_name, params_json, "group", kernel, kv_a,
+                MAX(phase_ns) AS t_jit_ns
+            FROM phase_rows
+            WHERE phase = 'jit_overhead'
+            GROUP BY config_name, params_json, "group", kernel, kv_a
         ),
         spec AS (
-            SELECT a.config_name, r.kernel, r.t_spec_ns
-            FROM ablation_studies a
-            JOIN v_ratios r ON r.run_id = a.run_id
-            WHERE a.study_name = ?
-              AND r.t_spec_ns IS NOT NULL
+            SELECT
+                config_name, "group", kernel, kv_a,
+                MAX(phase_ns) AS t_spec_ns
+            FROM phase_rows
+            WHERE phase = 'specialized_exec'
+            GROUP BY config_name, "group", kernel, kv_a
         )
-        SELECT j.config_name AS config_label,
-               j.params_json,
-               j."group", j.kernel,
-               j.t_jit_ns / 1e6 AS jit_ms,
-               s.t_spec_ns / 1e6 AS spec_ms,
-               {kv_a_expr.replace("j.", "j.")} AS kv_a
-        FROM jit j
-        JOIN spec s ON s.config_name = j.config_name AND s.kernel = j.kernel
+        SELECT
+            jit.config_name AS config_label,
+            jit.params_json,
+            jit."group", jit.kernel,
+            jit.t_jit_ns / 1e6 AS jit_ms,
+            spec.t_spec_ns / 1e6 AS spec_ms,
+            jit.kv_a
+        FROM jit
+        JOIN spec
+          ON spec.config_name = jit.config_name
+         AND spec."group" = jit."group"
+         AND spec.kernel = jit.kernel
+         {kv_a_join}
+        WHERE jit.t_jit_ns IS NOT NULL
+          AND spec.t_spec_ns IS NOT NULL
         """,
-        [study_name, study_name],
+        [study_name],
     ).fetchall()
     out.extend(abl_rows)
     return out
@@ -277,7 +340,7 @@ def _write_csv(output_path_csv: Path, rows, default_flags, pareto_per_row):
 
 
 def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: Path,
-                  title: str):
+                  title: str | None):
     """Render one (group, kernel) plot and CSV.
 
     If kv_a values are present, colors dots and Pareto frontiers by abstraction level
@@ -366,7 +429,8 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
 
     ax.set_xlabel("JIT overhead (ms)  — lower is better")
     ax.set_ylabel("Specialized exec (ms)  — lower is better")
-    ax.set_title(title)
+    if title:
+        ax.set_title(title)
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
 
@@ -376,7 +440,8 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
     print(f"  Saved: {output_path_csv}")
 
 
-def render(rows, default_flags, output_path_png: Path, output_path_csv: Path, title: str):
+def render(rows, default_flags, output_path_png: Path, output_path_csv: Path,
+           title: str | None):
     """Render a combined plot (all groups/kernels together). is_pareto_optimal in CSV
     is computed per-kernel via groupby, then merged back."""
     if not rows:
@@ -422,7 +487,8 @@ def render(rows, default_flags, output_path_png: Path, output_path_csv: Path, ti
 
     ax.set_xlabel("JIT overhead (ms)  — lower is better")
     ax.set_ylabel("Specialized exec (ms)  — lower is better")
-    ax.set_title(title)
+    if title:
+        ax.set_title(title)
     ax.legend(loc="best")
     ax.grid(True, alpha=0.3)
     fig.savefig(output_path_png, dpi=150, bbox_inches="tight")
@@ -440,6 +506,8 @@ def main():
     parser.add_argument("--output-dir", default=None)
     parser.add_argument("--per-group", action="store_true",
                         help="Emit one PNG+CSV per (group, kernel) pair (methodologically correct).")
+    parser.add_argument("--no-title", action="store_true",
+                        help="Suppress plot titles so the images can be embedded in thesis figures.")
     args = parser.parse_args()
 
     db_path = resolve_db_path(args.db)
@@ -457,6 +525,9 @@ def main():
     else:
         output_dir = make_report_dir(__file__, parser, args)
 
+    per_plot_title = None if args.no_title else "Pareto — {group} / {kernel}\n(study: {study})"
+    combined_title = None if args.no_title else "Pareto front — all groups\n(study: {study})"
+
     if args.per_group:
         by_group_kernel = defaultdict(list)
         for r in rows:
@@ -467,7 +538,9 @@ def main():
                 grows, default_flags,
                 output_dir / f"pareto_{args.study_name}_{group}_{kernel}.png",
                 output_dir / f"pareto_{args.study_name}_{group}_{kernel}.csv",
-                title=f"Pareto — {group} / {kernel}\n(study: {args.study_name})",
+                title=None if per_plot_title is None else per_plot_title.format(
+                    group=group, kernel=kernel, study=args.study_name,
+                ),
             )
     else:
         default_flags = _flag_default(rows)
@@ -475,7 +548,9 @@ def main():
             rows, default_flags,
             output_dir / f"pareto_{args.study_name}.png",
             output_dir / f"pareto_{args.study_name}.csv",
-            title=f"Pareto front — all groups\n(study: {args.study_name})",
+            title=None if combined_title is None else combined_title.format(
+                study=args.study_name,
+            ),
         )
 
 
