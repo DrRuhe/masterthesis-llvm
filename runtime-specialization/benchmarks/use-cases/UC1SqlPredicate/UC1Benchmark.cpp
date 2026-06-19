@@ -18,7 +18,8 @@ static std::vector<uint8_t> g_rows;
 // Output buffer for column_scan variants (indices written here).
 static std::vector<int32_t> g_out_indices;
 
-static void setup_uc1(const benchmark::State&) {
+static void setup_uc1(const benchmark::State& state) {
+    clangRuntimeSpecializer::detail::applyUCPipelineOptionsForBenchmark(state.name());
     if (!g_rows.empty()) return;
     g_rows.resize(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
     std::mt19937_64 rng(42);
@@ -32,6 +33,7 @@ static void setup_uc1(const benchmark::State&) {
     g_out_indices.resize(N_ROWS_MAX);
 }
 static void teardown_uc1(const benchmark::State&) {
+    clangRuntimeSpecializer::detail::resetUCPipelineOptionsAfterBenchmark();
     // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 

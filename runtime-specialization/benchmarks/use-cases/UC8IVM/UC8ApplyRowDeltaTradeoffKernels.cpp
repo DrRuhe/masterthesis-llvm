@@ -24,11 +24,13 @@ struct IVMUpdater {
 
 ApplyRowDeltaBatchTradeoffSpecialized create_apply_row_delta_batch_tradeoff_specialized(
         int64_t n_rows, int n_buckets, int group_col_offset, int value_col_offset, int row_stride) {
-    IVMUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};
-    auto lam = [n_rows, updater](const uint8_t* rows, double* buckets) {
-        int rs = updater.row_stride;
+    auto lam = [n_rows, n_buckets, group_col_offset, value_col_offset, row_stride](
+                       const uint8_t* rows, double* buckets) {
+        // Reconstruct the updater inside the lambda so specialized code does
+        // not depend on a factory-frame closure object lifetime.
+        IVMUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};
         for (int64_t i = 0; i < n_rows; ++i)
-            updater.update(rows + static_cast<size_t>(i) * rs, buckets);
+            updater.update(rows + static_cast<size_t>(i) * row_stride, buckets);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);
 }
@@ -71,8 +73,11 @@ void apply_row_delta_batch_tradeoff_unspecialized(const uint8_t* rows, int64_t n
 
 ApplyRowDeltaTradeoffSpecialized create_apply_row_delta_tradeoff_specialized(
         int n_buckets, int group_col_offset, int value_col_offset, int row_stride) {
-    IVMUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};
-    auto lam = [updater](const uint8_t* row, double* buckets) {
+    auto lam = [n_buckets, group_col_offset, value_col_offset, row_stride](
+                       const uint8_t* row, double* buckets) {
+        // Reconstruct the updater inside the lambda so specialized code does
+        // not depend on a factory-frame closure object lifetime.
+        IVMUpdater updater{n_buckets, group_col_offset, value_col_offset, row_stride};
         updater.update(row, buckets);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

@@ -24,9 +24,11 @@ struct ProjectingScanner {
 
 ColumnScanTradeoffSpecialized create_column_scan_tradeoff_specialized(
         int row_stride, int col_offset, double threshold) {
-    ProjectingScanner scanner{col_offset};
-    auto lam = [scanner, row_stride, threshold](
+    auto lam = [row_stride, col_offset, threshold](
                     const uint8_t* rows, int64_t n, int32_t* out) -> int64_t {
+        // Reconstruct the scanner inside the lambda so specialized code does
+        // not depend on a factory-frame closure object lifetime.
+        ProjectingScanner scanner{col_offset};
         return scanner.scan_to(rows, n, row_stride, threshold, out);
     };
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);

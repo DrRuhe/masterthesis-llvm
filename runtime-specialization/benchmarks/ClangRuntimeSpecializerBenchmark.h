@@ -9,8 +9,16 @@
 #include <fstream>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <unordered_set>
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/JSON.h"
+#include "llvm/Support/MemoryBuffer.h"
 
 // Tracks process RSS growth across each benchmark run using Google Benchmark's
 // MemoryManager API. Register once in main() with:
@@ -41,6 +49,242 @@ public:
 };
 
 namespace clangRuntimeSpecializer {
+
+namespace detail {
+
+inline llvm::StringRef trimBenchmarkSuffix(llvm::StringRef BenchmarkName) {
+    size_t Slash = BenchmarkName.find('/');
+    return Slash == llvm::StringRef::npos ? BenchmarkName
+                                          : BenchmarkName.take_front(Slash);
+}
+
+inline std::optional<std::string> extractBenchmarkTag(
+    llvm::StringRef BenchmarkName,
+    llvm::StringRef Prefix) {
+    llvm::StringRef Trimmed = trimBenchmarkSuffix(BenchmarkName);
+    size_t Start = Trimmed.find(Prefix);
+    if (Start == llvm::StringRef::npos)
+        return std::nullopt;
+    Start += Prefix.size();
+    size_t End = Trimmed.find(';', Start);
+    if (End == llvm::StringRef::npos || End <= Start)
+        return std::nullopt;
+    return Trimmed.slice(Start, End).str();
+}
+
+inline bool isUCBenchmarkGroup(llvm::StringRef BenchmarkName) {
+    auto Group = extractBenchmarkTag(BenchmarkName, "BM_g:");
+    return Group && llvm::StringRef(*Group).starts_with("uc");
+}
+
+inline const std::unordered_set<std::string>& expectedUCKernels() {
+    static const std::unordered_set<std::string> Kernels = {
+        "apply_row_delta",
+        "batch_delta",
+        "box_filter",
+        "column_scan",
+        "count_matching_rows",
+        "edge_detection",
+        "email_match",
+        "generic_sort",
+        "grouped_count",
+        "grouped_minmax",
+        "grouped_sum",
+        "multi_agg_delta",
+        "multi_key_sort",
+        "multi_pattern_match",
+        "multi_predicate",
+        "separable_gaussian",
+        "struct_sort",
+        "url_match",
+    };
+    return Kernels;
+}
+
+struct UCPipelineConfigData {
+    llvm::StringMap<ClangRuntimeSpecializer::Options> ByKernel;
+};
+
+inline int64_t requireInt(const llvm::json::Object& Obj, llvm::StringRef Key) {
+    if (std::optional<int64_t> V = Obj.getInteger(Key))
+        return *V;
+    throw std::runtime_error("UC pipeline JSON: missing integer field '" +
+                             Key.str() + "'");
+}
+
+inline double requireNumber(const llvm::json::Object& Obj, llvm::StringRef Key) {
+    if (std::optional<double> V = Obj.getNumber(Key))
+        return *V;
+    throw std::runtime_error("UC pipeline JSON: missing numeric field '" +
+                             Key.str() + "'");
+}
+
+inline bool requireBool(const llvm::json::Object& Obj, llvm::StringRef Key) {
+    if (std::optional<bool> V = Obj.getBoolean(Key))
+        return *V;
+    throw std::runtime_error("UC pipeline JSON: missing boolean field '" +
+                             Key.str() + "'");
+}
+
+inline const UCPipelineConfigData* getUCPipelineConfigIfEnabled() {
+    static std::once_flag Once;
+    static std::unique_ptr<UCPipelineConfigData> Data;
+    static std::string InitError;
+    static bool Enabled = false;
+
+    std::call_once(Once, [] {
+        const char* Path = std::getenv("CRS_UC_PIPELINE_CONFIG_JSON");
+        if (!Path || Path[0] == '\0')
+            return;
+        Enabled = true;
+        auto BufferOrErr = llvm::MemoryBuffer::getFile(Path);
+        if (!BufferOrErr) {
+            InitError = "failed to read " + std::string(Path);
+            return;
+        }
+        llvm::Expected<llvm::json::Value> Parsed =
+            llvm::json::parse(BufferOrErr.get()->getBuffer());
+        if (!Parsed) {
+            InitError = "failed to parse JSON in " + std::string(Path);
+            llvm::consumeError(Parsed.takeError());
+            return;
+        }
+        auto* RootObj = Parsed->getAsObject();
+        if (!RootObj) {
+            InitError = "top-level JSON must be an object";
+            return;
+        }
+        auto* Entries = RootObj->getArray("entries");
+        if (!Entries) {
+            InitError = "top-level JSON is missing the 'entries' array";
+            return;
+        }
+
+        auto ParsedData = std::make_unique<UCPipelineConfigData>();
+        for (const llvm::json::Value& EntryValue : *Entries) {
+            const auto* EntryObj = EntryValue.getAsObject();
+            if (!EntryObj) {
+                InitError = "each entry must be a JSON object";
+                return;
+            }
+            auto Kernel = EntryObj->getString("kernel");
+            if (!Kernel) {
+                InitError = "entry is missing the 'kernel' field";
+                return;
+            }
+            if (!expectedUCKernels().count(Kernel->str())) {
+                InitError = "unexpected UC kernel in JSON: " + Kernel->str();
+                return;
+            }
+            const auto* OptionsObj = EntryObj->getObject("options");
+            if (!OptionsObj) {
+                InitError = "entry '" + Kernel->str() +
+                            "' is missing the 'options' object";
+                return;
+            }
+            if (ParsedData->ByKernel.count(*Kernel)) {
+                InitError = "duplicate UC kernel in JSON: " + Kernel->str();
+                return;
+            }
+
+            ClangRuntimeSpecializer::Options Opts =
+                ClangRuntimeSpecializer::Options::Default();
+            Opts.withOptimizationPipeline(
+                static_cast<int>(requireInt(*OptionsObj, "optimization_pipeline")));
+            Opts.withMaxFixpointIterations(
+                static_cast<int>(requireInt(*OptionsObj, "max_fixpoint_iterations")));
+            Opts.withLoopUnrollCount(
+                static_cast<int>(requireInt(*OptionsObj, "loop_unroll_count")));
+            const size_t LargeModuleThreshold = static_cast<size_t>(
+                requireInt(*OptionsObj, "large_module_instr_threshold"));
+            switch (Opts.OptimizationPipelineToUse) {
+            case 0:
+                Opts.withP0LargeModuleThreshold(LargeModuleThreshold);
+                break;
+            case 1:
+                Opts.withP1LargeModuleThreshold(LargeModuleThreshold);
+                break;
+            case 2:
+                Opts.withP2LargeModuleThreshold(LargeModuleThreshold);
+                break;
+            default:
+                InitError = "invalid pipeline id for kernel: " + Kernel->str();
+                return;
+            }
+            Opts.withEarlyPrune(requireBool(*OptionsObj, "enable_early_prune"));
+            Opts.withO3Final(requireBool(*OptionsObj, "enable_o3_final"));
+
+            if (Opts.OptimizationPipelineToUse == 1) {
+                Opts.withP1InlineThreshold(static_cast<int>(
+                    requireInt(*OptionsObj, "p1_inline_threshold")));
+                Opts.withP1MaxModuleGrowth(
+                    requireNumber(*OptionsObj, "p1_max_module_growth"));
+            }
+            if (Opts.OptimizationPipelineToUse == 2) {
+                Opts.withP2MinFuncSize(static_cast<unsigned>(
+                    requireInt(*OptionsObj, "p2_min_func_size")));
+                Opts.withP2MaxClones(static_cast<unsigned>(
+                    requireInt(*OptionsObj, "p2_max_clones")));
+                Opts.withP2FuncSpecIters(static_cast<unsigned>(
+                    requireInt(*OptionsObj, "p2_func_spec_iters")));
+                Opts.withP2ForceSpec(requireBool(*OptionsObj, "p2_force_spec"));
+                Opts.withP2SpecOnAddr(requireBool(*OptionsObj, "p2_spec_on_addr"));
+                Opts.withP2SpecLiteral(requireBool(*OptionsObj, "p2_spec_literal"));
+            }
+            ParsedData->ByKernel[Kernel->str()] = Opts;
+        }
+
+        for (const std::string& Kernel : expectedUCKernels()) {
+            if (!ParsedData->ByKernel.count(Kernel)) {
+                InitError = "UC pipeline JSON is missing kernel '" + Kernel + "'";
+                return;
+            }
+        }
+        Data = std::move(ParsedData);
+    });
+
+    if (!Enabled)
+        return nullptr;
+    if (!InitError.empty())
+        throw std::runtime_error("CRS_UC_PIPELINE_CONFIG_JSON: " + InitError);
+    return Data.get();
+}
+
+inline ClangRuntimeSpecializer::Options resolveUCPipelineOptions(
+    llvm::StringRef BenchmarkName,
+    const ClangRuntimeSpecializer::Options& Fallback) {
+    const UCPipelineConfigData* Data = getUCPipelineConfigIfEnabled();
+    if (!Data || !isUCBenchmarkGroup(BenchmarkName))
+        return Fallback;
+    auto Kernel = extractBenchmarkTag(BenchmarkName, ";n:");
+    if (!Kernel) {
+        throw std::runtime_error("UC benchmark name is missing ';n:' tag: " +
+                                 BenchmarkName.str());
+    }
+    auto It = Data->ByKernel.find(*Kernel);
+    if (It == Data->ByKernel.end()) {
+        throw std::runtime_error("UC pipeline JSON has no entry for kernel '" +
+                                 *Kernel + "'");
+    }
+    return It->second;
+}
+
+inline void applyUCPipelineOptionsForBenchmark(llvm::StringRef BenchmarkName) {
+    const UCPipelineConfigData* Data = getUCPipelineConfigIfEnabled();
+    if (!Data || !isUCBenchmarkGroup(BenchmarkName))
+        return;
+    auto* RS = ClangRuntimeSpecializer::init();
+    RS->setOptions(resolveUCPipelineOptions(
+        BenchmarkName, ClangRuntimeSpecializer::Options::Default()));
+}
+
+inline void resetUCPipelineOptionsAfterBenchmark() {
+    if (getUCPipelineConfigIfEnabled())
+        ClangRuntimeSpecializer::init()->setOptions(
+            ClangRuntimeSpecializer::Options::Default());
+}
+
+} // namespace detail
 
 template <class R, class Fn, class Tuple, size_t... I>
 __attribute__((always_inline))
@@ -121,6 +365,7 @@ void benchmarkJITOverhead(
     ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
 
     auto InvokeNormal = [&](auto&&... a) {
         return std::invoke(F, std::forward<decltype(a)>(a)...);
@@ -159,6 +404,7 @@ void benchmarkJITOverhead(
     ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
 
     auto InvokeNormal = [&](auto&&... a) {
         return std::invoke(F, std::forward<decltype(a)>(a)...);
@@ -195,6 +441,7 @@ void benchmarkSpecializedExec(
     ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
 
     auto InvokeNormal = [&](auto&&... a) {
         return std::invoke(F, std::forward<decltype(a)>(a)...);
@@ -223,6 +470,7 @@ void benchmarkSpecializedExec(
     ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
 
     auto InvokeNormal = [&](auto&&... a) {
         return std::invoke(F, std::forward<decltype(a)>(a)...);
@@ -297,6 +545,7 @@ void benchmarkJITAnalysis(
     ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
 
     auto InvokeNormal = [&](auto&&... a) {
         return std::invoke(F, std::forward<decltype(a)>(a)...);
@@ -341,6 +590,7 @@ void benchmarkJITAnalysis(
     ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
 
     auto InvokeNormal = [&](auto&&... a) {
         return std::invoke(F, std::forward<decltype(a)>(a)...);
@@ -387,6 +637,7 @@ void benchmarkLambdaJITAnalysis(
     ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
 {
     auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
 
     const char* ChromeDir = std::getenv("CRS_CHROME_TRACE_DIR");
     if (!ChromeDir) {

@@ -81,7 +81,7 @@ void multi_key_sort(void* data, int64_t n_elements, int element_size,
 MultiKeySortLowSpecialized create_multi_key_sort_low_specialized(int element_size,
                                                                   int key1_offset,
                                                                   int key2_offset) {
-    auto lam = [element_size, key1_offset, key2_offset](void* data, int64_t n_elements) {
+    auto lam = [=](void* data, int64_t n_elements) {
         multi_key_sort(data, n_elements, element_size, key1_offset, key2_offset);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

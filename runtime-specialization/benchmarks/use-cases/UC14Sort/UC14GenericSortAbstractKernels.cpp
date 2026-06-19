@@ -92,9 +92,7 @@ void generic_sort_abstract_unspecialized(void* data, int64_t n_elements, int ele
 }
 
 GenericSortAbstractSpecialized create_generic_sort_abstract_specialized(int element_size) {
-    // Reconstruct object inside the lambda so its this-pointer is a local variable
-    // (not a stale factory-frame stack address).
-    auto lam = [element_size](void* data, int64_t n_elements) {
+    auto lam = [=](void* data, int64_t n_elements) {
         Sorter sorter{};
         sorter.sort(data, n_elements, element_size);
     };

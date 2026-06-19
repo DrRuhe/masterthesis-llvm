@@ -47,7 +47,8 @@ static std::vector<SortRecord> g_struct_reference;
 
 static std::vector<SortRecord> g_struct_data;
 
-static void setup_uc14(const benchmark::State&) {
+static void setup_uc14(const benchmark::State& state) {
+    clangRuntimeSpecializer::detail::applyUCPipelineOptionsForBenchmark(state.name());
     if (!g_reference_data.empty()) return;
     g_reference_data.resize(N_SORT_MAX);
     std::iota(g_reference_data.begin(), g_reference_data.end(), int64_t{0});
@@ -65,6 +66,7 @@ static void setup_uc14(const benchmark::State&) {
     g_struct_data = g_struct_reference;
 }
 static void teardown_uc14(const benchmark::State&) {
+    clangRuntimeSpecializer::detail::resetUCPipelineOptionsAfterBenchmark();
     // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 

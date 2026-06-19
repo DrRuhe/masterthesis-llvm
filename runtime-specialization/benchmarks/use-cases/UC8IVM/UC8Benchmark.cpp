@@ -21,7 +21,8 @@ static std::vector<uint8_t> g_deltas;
 static std::vector<double> g_buckets(N_BUCKETS, 0.0);
 static std::vector<double> g_count_buckets(N_BUCKETS, 0.0);
 
-static void setup_uc8(const benchmark::State&) {
+static void setup_uc8(const benchmark::State& state) {
+    clangRuntimeSpecializer::detail::applyUCPipelineOptionsForBenchmark(state.name());
     if (!g_deltas.empty()) return;
     g_deltas.resize(static_cast<size_t>(N_ROWS_MAX) * ROW_STRIDE, 0);
     std::mt19937 rng(42);
@@ -41,6 +42,7 @@ static void setup_uc8(const benchmark::State&) {
     }
 }
 static void teardown_uc8(const benchmark::State&) {
+    clangRuntimeSpecializer::detail::resetUCPipelineOptionsAfterBenchmark();
     // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 

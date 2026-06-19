@@ -28,8 +28,11 @@ struct BinaryPredicateScanner {
 MultiPredicateTradeoffSpecialized create_multi_predicate_tradeoff_specialized(
         int row_stride, int col_offset_a, int col_offset_b,
         double threshold_a, double threshold_b) {
-    BinaryPredicateScanner scanner{col_offset_a, col_offset_b, threshold_a, threshold_b};
-    auto lam = [scanner, row_stride](const uint8_t* rows, int64_t n) -> int64_t {
+    auto lam = [row_stride, col_offset_a, col_offset_b, threshold_a, threshold_b](
+                       const uint8_t* rows, int64_t n) -> int64_t {
+        // Reconstruct the scanner inside the lambda so specialized code does
+        // not depend on a factory-frame closure object lifetime.
+        BinaryPredicateScanner scanner{col_offset_a, col_offset_b, threshold_a, threshold_b};
         return scanner.scan(rows, n, row_stride);
     };
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);

@@ -52,12 +52,34 @@ void separable_gaussian_tradeoff_unspecialized(const float* src, float* dst,
 SeparableGaussianTradeoffSpecialized create_separable_gaussian_tradeoff_specialized(
         int width, int height, const float* coeffs, int ksize) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    SeparableFilter sf{};
-    sf.ksize = ksize;
-    for (int i = 0; i < ksize; ++i)
-        sf.coeffs[i] = coeffs[i];
-
-    auto lam = [sf, width, height](const float* src, float* dst) {
+    const float c0 = ksize > 0 ? coeffs[0] : 0.0f;
+    const float c1 = ksize > 1 ? coeffs[1] : 0.0f;
+    const float c2 = ksize > 2 ? coeffs[2] : 0.0f;
+    const float c3 = ksize > 3 ? coeffs[3] : 0.0f;
+    const float c4 = ksize > 4 ? coeffs[4] : 0.0f;
+    const float c5 = ksize > 5 ? coeffs[5] : 0.0f;
+    const float c6 = ksize > 6 ? coeffs[6] : 0.0f;
+    const float c7 = ksize > 7 ? coeffs[7] : 0.0f;
+    const float c8 = ksize > 8 ? coeffs[8] : 0.0f;
+    const float c9 = ksize > 9 ? coeffs[9] : 0.0f;
+    const float c10 = ksize > 10 ? coeffs[10] : 0.0f;
+    const float c11 = ksize > 11 ? coeffs[11] : 0.0f;
+    const float c12 = ksize > 12 ? coeffs[12] : 0.0f;
+    const float c13 = ksize > 13 ? coeffs[13] : 0.0f;
+    const float c14 = ksize > 14 ? coeffs[14] : 0.0f;
+    const float c15 = ksize > 15 ? coeffs[15] : 0.0f;
+    auto lam = [width, height, ksize, c0, c1, c2, c3, c4, c5, c6, c7,
+                c8, c9, c10, c11, c12, c13, c14, c15](const float* src, float* dst) {
+        // Reconstruct the filter inside the lambda so the specialized code
+        // does not depend on factory-frame or caller-frame coefficient storage.
+        const float coeff_storage[SeparableFilter::kMaxKsize] = {
+            c0, c1, c2, c3, c4, c5, c6, c7,
+            c8, c9, c10, c11, c12, c13, c14, c15
+        };
+        SeparableFilter sf{};
+        sf.ksize = ksize;
+        for (int i = 0; i < ksize; ++i)
+            sf.coeffs[i] = coeff_storage[i];
         sf.apply(src, dst, width, height);
     };
     return RS->specializeLambda<void>(lam);

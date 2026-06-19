@@ -58,6 +58,12 @@ int main(int argc, char** argv) {
         if (a.rfind("--benchmark_filter", 0) == 0) {
             has_filter = true;
             new_argv.push_back(argv[i]);
+        } else if (a.rfind("--uc-pipeline-config=", 0) == 0) {
+            std::string path(a.substr(21));
+            if (setenv("CRS_UC_PIPELINE_CONFIG_JSON", path.c_str(), 1) != 0) {
+                std::perror("setenv(CRS_UC_PIPELINE_CONFIG_JSON)");
+                return 1;
+            }
         } else if (a.rfind("--db=", 0) == 0) {
             tpch_set_db_path(std::string(a.substr(5)).c_str());
         } else if (a.rfind("--duckdb-db=", 0) == 0) {

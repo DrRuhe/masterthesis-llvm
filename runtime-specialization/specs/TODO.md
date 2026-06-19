@@ -190,6 +190,14 @@ This document is the authoritative reference for high-level tasks required to co
 - **Findings documented in**: `specs/018-input-size-limits/spec.md` Clarifications (CL-001 to CL-003)
 - **Reference**: `specs/018-input-size-limits/`
 
+### RQ6-006: Fix `specializeLambda` closure-lifetime crash in UC2 tradeoff edge detection
+- **Status**: ✅ Complete (2026-06-19)
+- **Data Collected**: `specializeLambda` now heap-owns a decayed closure inside the returned `SpecializedLambda` handle and JITs against that owned object, so serialized closure pointers no longer refer to factory-stack storage. Added focused smoke regression coverage for factory-returned lambdas, helper-struct captures, zero-arg lambdas, and moved lambdas.
+- **Why**: `AllBenchmarks` reproducibly segfaults on `BM_g:uc2_conv;n:edge_detection;a:tradeoff;s:SMALL;t:specialized_exec`. Investigation on 2026-06-18 showed `specializeLambdaImpl` serializes the lambda closure with `serializeArgumentToIR(Builder, lambda)`, and `serializeArgumentToIR` lowers class types to `inttoptr(&value)`, i.e. the address of the live C++ closure object on the factory stack. The UC2 tradeoff kernel captures `SobelFilter sf` by value, so the specialized code ends up dereferencing stale factory-frame state after `create_edge_detection_tradeoff_specialized()` returns.
+- **Outcome**: The original UC2 crash is fixed by owning the closure in the returned handle; the affected benchmark repros run without segfaults, and UC14 no longer needs the temporary `std::function`/`specializeOnly` workaround. Manual verification covered `uc2_conv/edge_detection`, `uc14_sort/struct_sort`, and representative tradeoff specialized-exec kernels from UC1, UC8, and UC12.
+- **Reference**: `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.h`, `test/smoke/specialized-lambda-factory-lifetime.cpp`, `benchmarks/use-cases/UC14Sort/UC14Kernels.h`
+- **Effort**: ~2-4 hours (runtime fix + regression tests + UC rerun).
+
 ### RQ6-003: Verify LLJIT crash fix and document boundary conditions
 - **Status**: 🟢 Unblocked
 - **Data Needed**: Document the `TrapUnreachable=true` fix and `setMutableContent` assertion that motivated it.
@@ -234,7 +242,16 @@ This document is the authoritative reference for high-level tasks required to co
 - **Summary**: Core i9-12900H (20T, 5GHz), Clang 21.1.8, Python 3.13.13, Optuna 4.8.0, governor=powersave
 - **Reference**: `benchmarks/reports/260610-infra-docs/environment.txt`
 
-### INF-005: Generate a Nix-derived devshell SBOM for the appendix
+### INF-005: Build a no-assertions benchmark toolchain for thesis timing runs
+- **Status**: 🟡 Partially Blocked
+- **Data Needed**: A benchmark build tree where `ClangRuntimeSpecializer` and the linked `libLLVM.so` are compiled in true release mode for measurement.
+- **Why**: Investigation on 2026-06-18 showed the current `llvm/build/release` tree is configured with `CMAKE_BUILD_TYPE=Release` but `LLVM_ENABLE_ASSERTIONS=ON`; the resulting `ClangRuntimeSpecializer.cpp` compile command includes `-DNDEBUG ... -UNDEBUG -D_DEBUG`, and benchmark binaries report `***WARNING*** Library was built as DEBUG. Timings may be affected.` This means the thesis timing runs are currently using debug-only CRS code paths and assertion-enabled LLVM internals.
+- **Outcome**: Benchmark binaries report `library_build_type=release`, no debug warning is printed at startup, and timing studies are run from that tree.
+- **Reference**: `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/compile_commands.json` entry for `runtime/ClangRuntimeSpecializer/ClangRuntimeSpecializer.cpp`; `/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/CMakeCache.txt` (`CMAKE_BUILD_TYPE=Release`, `LLVM_ENABLE_ASSERTIONS=ON`).
+- **Prerequisite**: Provision a separate LLVM build directory with `-DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_ASSERTIONS=OFF` for benchmarking, or explicitly override the CRS/benchmark targets to restore `NDEBUG` and document the remaining assertion overhead in libLLVM.
+- **Effort**: ~1-2 hours to configure + rebuild benchmark-relevant targets, longer for a full clean rebuild.
+
+### INF-006: Generate a Nix-derived devshell SBOM for the appendix
 - **Status**: ✅ Complete (2026-06-12)
 - **Data Needed**: Machine-generated package inventory for the thesis devshell, derived from `flake.nix` / the built devshell closure.
 - **Why**: The evaluation chapter must document software provenance at appendix level, not just mention a few top-level tool versions.
@@ -242,7 +259,7 @@ This document is the authoritative reference for high-level tasks required to co
 - **Reference**: `benchmarks/reporting/generate_devshell_sbom.py`; `benchmarks/reports/thesis-appendix/`; `docs/assets/devshell-sbom/`; `docs/thesis.typ`.
 - **Effort**: ~30 minutes (generation script + artifact + appendix hook).
 
-### INF-006: Rerun the final UC corpus under thesis-grade best-practice controls
+### INF-007: Rerun the final UC corpus under thesis-grade best-practice controls
 - **Status**: 🔴 Blocked
 - **Data Needed**: Fresh `default` / `p0_o3_optimal` / `uc_workload_optimal` / `no_o3_final` UC MEDIUM+low measurements collected with `best_practice_full=TRUE`.
 - **Why**: The thesis should cite a final dataset gathered under the benchmark best-practice protocol rather than exploratory runs.
@@ -251,7 +268,7 @@ This document is the authoritative reference for high-level tasks required to co
 - **Blocker**: Current environment cannot satisfy the required sudo-backed benchmark controls. Both sandboxed and escalated runs on 2026-06-12 failed to apply ASLR disable, Turbo disable, governor switch, and SMT sibling isolation, so resulting runs do not satisfy `best_practice_full=TRUE`.
 - **Next Step**: Re-run on the target machine with working sudo askpass or equivalent privileged access, then refresh the final UC report directory and chapter numbers.
 
-### INF-007: Rewrite the evaluation chapter around reader-facing RQ framing
+### INF-009: Rewrite the evaluation chapter around reader-facing RQ framing
 - **Status**: 🟡 Partially Blocked
 - **Data Needed**: Final prose pass that gives each RQ motivation, RQ-specific measurement description, results, and conclusion.
 - **Why**: The current evaluation reads as a flat result dump and assumes implementation-internal context.

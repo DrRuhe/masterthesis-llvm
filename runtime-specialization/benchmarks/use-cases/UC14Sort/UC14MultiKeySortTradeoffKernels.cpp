@@ -97,8 +97,8 @@ void multi_key_sort_tradeoff_unspecialized(void* data, int64_t n_elements,
 MultiKeySortTradeoffSpecialized create_multi_key_sort_tradeoff_specialized(int element_size,
                                                                             int key1_offset,
                                                                             int key2_offset) {
-    MultiKeySorter sorter{element_size, MultiKeyComparator{key1_offset, key2_offset}};
-    auto lam = [sorter](void* data, int64_t n_elements) {
+    auto lam = [=](void* data, int64_t n_elements) {
+        MultiKeySorter sorter{element_size, MultiKeyComparator{key1_offset, key2_offset}};
         sorter.sort(data, n_elements);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

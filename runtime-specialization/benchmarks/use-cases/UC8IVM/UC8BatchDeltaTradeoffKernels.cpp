@@ -38,8 +38,11 @@ void batch_delta_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
 BatchDeltaTradeoffSpecialized create_batch_delta_tradeoff_specialized(
         int64_t n_rows, int n_buckets, int group_col_offset,
         int value_col_offset, int row_stride) {
-    BatchIVMUpdater updater{n_rows, n_buckets, group_col_offset, value_col_offset, row_stride};
-    auto lam = [updater](const uint8_t* rows, double* sum_buckets) {
+    auto lam = [n_rows, n_buckets, group_col_offset, value_col_offset, row_stride](
+                       const uint8_t* rows, double* sum_buckets) {
+        // Reconstruct the updater inside the lambda so specialized code does
+        // not depend on a factory-frame closure object lifetime.
+        BatchIVMUpdater updater{n_rows, n_buckets, group_col_offset, value_col_offset, row_stride};
         updater.process(rows, sum_buckets);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

@@ -22,8 +22,10 @@ struct RowScanner {
 
 CountMatchingRowsTradeoffSpecialized create_count_matching_rows_tradeoff_specialized(
         int col_offset, int row_stride, double threshold) {
-    RowScanner scanner{col_offset, row_stride};
-    auto lam = [scanner, threshold](const uint8_t* rows, int64_t n) -> int64_t {
+    auto lam = [col_offset, row_stride, threshold](const uint8_t* rows, int64_t n) -> int64_t {
+        // Reconstruct the scanner inside the lambda so specialized code does
+        // not depend on a factory-frame closure object lifetime.
+        RowScanner scanner{col_offset, row_stride};
         return scanner.scan(rows, n, threshold);
     };
     return clangRuntimeSpecializer::specializeLambda<int64_t>(lam);

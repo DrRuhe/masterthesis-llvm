@@ -104,9 +104,7 @@ void struct_sort_abstract_unspecialized(void* data, int64_t n_elements,
 
 StructSortAbstractSpecialized create_struct_sort_abstract_specialized(int element_size,
                                                                        int field_offset) {
-    // Reconstruct object inside the lambda so its this-pointer is a local variable
-    // (not a stale factory-frame stack address).
-    auto lam = [element_size, field_offset](void* data, int64_t n_elements) {
+    auto lam = [=](void* data, int64_t n_elements) {
         FieldComparatorAdapter adapter{ByteOffsetExtractor{field_offset}, element_size};
         adapter.sort_struct(data, n_elements);
     };

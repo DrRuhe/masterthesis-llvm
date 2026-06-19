@@ -35,8 +35,10 @@ void box_filter_tradeoff_unspecialized(const float* src, float* dst,
 BoxFilterTradeoffSpecialized create_box_filter_tradeoff_specialized(
         int width, int height, int radius) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    BoxFilter bf{radius};
-    auto lam = [bf, width, height](const float* src, float* dst) {
+    auto lam = [radius, width, height](const float* src, float* dst) {
+        // Reconstruct the filter inside the lambda so the specialized code
+        // does not depend on a factory-frame closure object lifetime.
+        BoxFilter bf{radius};
         bf.apply(src, dst, width, height);
     };
     return RS->specializeLambda<void>(lam);

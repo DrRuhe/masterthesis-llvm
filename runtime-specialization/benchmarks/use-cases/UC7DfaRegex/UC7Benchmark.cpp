@@ -52,11 +52,13 @@ static constexpr int64_t CORPUS_MAX = 1000LL * 1024 * 1024;   // 1 GB buffer
 
 static std::vector<char> g_corpus;
 
-static void setup_uc7(const benchmark::State&) {
+static void setup_uc7(const benchmark::State& state) {
+    clangRuntimeSpecializer::detail::applyUCPipelineOptionsForBenchmark(state.name());
     if (!g_corpus.empty()) return;
     g_corpus = make_corpus(CORPUS_MAX);
 }
 static void teardown_uc7(const benchmark::State&) {
+    clangRuntimeSpecializer::detail::resetUCPipelineOptionsAfterBenchmark();
     // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 

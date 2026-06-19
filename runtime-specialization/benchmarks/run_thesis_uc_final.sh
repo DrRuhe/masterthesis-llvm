@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
-# Run the thesis-cited UC corpus comparison under the best-practice benchmark setup.
+# Run the thesis-cited UC corpus comparison under the best-practice benchmark
+# setup.
+#
+# Per thesis.typ §RQ1, this final absolute UC run compares exactly two pipeline
+# modes on the thesis corpus filter:
+#   1. the library default pipeline
+#   2. the best amortized-speedup pipeline per UC kernel from the RQ4 export
 #
 # This keeps the exploratory optimization workflow untouched and gives the thesis
 # writeup a single, explicit collection path for final absolute numbers.
@@ -20,41 +26,20 @@ DATE="$(date +%Y%m%d)"
 STUDY="corpus_uc_final_thesis_${DATE}"
 REPORT_DIR="reports/${DATE}-thesis-uc-final"
 CONFIG_JSON="$REPORT_DIR/configs.json"
+BEST_UC_PIPELINES_JSON="$SCRIPT_DIR/reports/thesis-figures/rq4/best_uc_pipelines.json"
+
+if [[ ! -f "$BEST_UC_PIPELINES_JSON" ]]; then
+    echo "Error: missing UC pipeline config JSON: $BEST_UC_PIPELINES_JSON" >&2
+    echo "Generate it first, e.g. via benchmarks/reporting/export_best_uc_pipelines.py." >&2
+    exit 1
+fi
 
 mkdir -p "$REPORT_DIR"
 
-cat > "$CONFIG_JSON" <<'JSON'
+cat > "$CONFIG_JSON" <<JSON
 [
   {"name": "default", "env": {}},
-  {"name": "no_o3_final", "env": {"CRS_DEFAULT_O3_FINAL": "0"}},
-  {
-    "name": "p0_o3_optimal",
-    "env": {
-      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "16",
-      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "62",
-      "CRS_DEFAULT_P0_LARGE_MODULE_INSTR_THRESHOLD": "3",
-      "CRS_DEFAULT_EARLY_PRUNE": "1",
-      "CRS_DEFAULT_O3_FINAL": "1",
-      "CRS_DEFAULT_PIPELINE": "0"
-    }
-  },
-  {
-    "name": "uc_workload_optimal",
-    "env": {
-      "CRS_DEFAULT_MAX_FIXPOINT_ITERATIONS": "22",
-      "CRS_DEFAULT_LOOP_UNROLL_COUNT": "5",
-      "CRS_DEFAULT_P2_LARGE_MODULE_INSTR_THRESHOLD": "1",
-      "CRS_DEFAULT_EARLY_PRUNE": "1",
-      "CRS_DEFAULT_O3_FINAL": "1",
-      "CRS_DEFAULT_PIPELINE": "2",
-      "CRS_P2_MIN_FUNC_SIZE": "34",
-      "CRS_P2_MAX_CLONES": "16",
-      "CRS_P2_FUNC_SPEC_ITERS": "4",
-      "CRS_P2_FORCE_SPEC": "1",
-      "CRS_P2_SPEC_ON_ADDR": "1",
-      "CRS_P2_SPEC_LITERAL": "1"
-    }
-  }
+  {"name": "per_uc_best", "env": {"CRS_UC_PIPELINE_CONFIG_JSON": "$BEST_UC_PIPELINES_JSON"}}
 ]
 JSON
 

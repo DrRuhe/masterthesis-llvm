@@ -72,7 +72,7 @@ void struct_sort(void* data, int64_t n_elements, int element_size, int field_off
 }
 
 StructSortLowSpecialized create_struct_sort_low_specialized(int element_size, int field_offset) {
-    auto lam = [element_size, field_offset](void* data, int64_t n_elements) {
+    auto lam = [=](void* data, int64_t n_elements) {
         struct_sort(data, n_elements, element_size, field_offset);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

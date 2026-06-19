@@ -36,8 +36,11 @@ void grouped_sum_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
 
 GroupedSumTradeoffSpecialized create_grouped_sum_tradeoff_specialized(
         int row_stride, int key_offset, int value_offset, int n_buckets) {
-    GroupedAggregator agg{row_stride, key_offset, value_offset, n_buckets};
-    auto lam = [agg](const uint8_t* rows, int64_t n_rows, double* out) {
+    auto lam = [row_stride, key_offset, value_offset, n_buckets](
+                       const uint8_t* rows, int64_t n_rows, double* out) {
+        // Reconstruct the aggregator inside the lambda so specialized code
+        // does not depend on a factory-frame closure object lifetime.
+        GroupedAggregator agg{row_stride, key_offset, value_offset, n_buckets};
         agg.aggregate(rows, n_rows, out);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

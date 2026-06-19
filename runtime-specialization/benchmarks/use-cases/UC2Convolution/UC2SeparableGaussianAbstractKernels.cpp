@@ -77,16 +77,17 @@ SeparableGaussianAbstractSpecialized create_separable_gaussian_abstract_speciali
         int width, int height, const float* coeffs, int ksize) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
     int radius = ksize / 2;
-    // Copy coefficients into a non-polymorphic POD struct for lambda capture.
-    // Reconstruct polymorphic objects inside the lambda so their this-pointers
-    // are local variables (not stale factory-frame stack addresses).
-    struct CoeffStore { float c[2 * GaussianKernel::kMaxR + 1]; int r; };
-    CoeffStore cs{};
-    cs.r = radius;
-    int ksz = 2 * radius + 1;
-    for (int i = 0; i < ksz; ++i) cs.c[i] = coeffs[i];
-    auto lam = [cs, width, height](const float* src, float* dst) {
-        GaussianKernel gk(cs.c, cs.r);
+    const int ksz = 2 * radius + 1;
+    const float c0 = ksz > 0 ? coeffs[0] : 0.0f;
+    const float c1 = ksz > 1 ? coeffs[1] : 0.0f;
+    const float c2 = ksz > 2 ? coeffs[2] : 0.0f;
+    const float c3 = ksz > 3 ? coeffs[3] : 0.0f;
+    const float c4 = ksz > 4 ? coeffs[4] : 0.0f;
+    auto lam = [width, height, radius, c0, c1, c2, c3, c4](const float* src, float* dst) {
+        // Reconstruct polymorphic objects inside the lambda so their
+        // this-pointers and coefficient storage are local to execution.
+        const float coeff_storage[2 * GaussianKernel::kMaxR + 1] = {c0, c1, c2, c3, c4};
+        GaussianKernel gk(coeff_storage, radius);
         Convolver conv{gk};
         conv.convolve(src, dst, width, height);
     };

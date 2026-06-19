@@ -115,7 +115,12 @@ SELECT
     host_name,
     MAX(CASE WHEN phase = 'unspecialized'    THEN real_time_ns END) AS t_unspec_ns,
     MAX(CASE WHEN phase = 'specialized_exec' THEN real_time_ns END) AS t_spec_ns,
-    MAX(CASE WHEN phase = 'jit_overhead'     THEN real_time_ns END) AS t_jit_ns
+    MAX(CASE WHEN phase = 'jit_overhead'     THEN cpu_time * CASE time_unit
+        WHEN 'ns' THEN 1.0
+        WHEN 'us' THEN 1e3
+        WHEN 'ms' THEN 1e6
+        WHEN 's'  THEN 1e9
+    END END) AS t_jit_ns
 FROM v_ns
 GROUP BY run_id, kernel, norm_params, "group", git_sha, run_ts, host_name;
 """

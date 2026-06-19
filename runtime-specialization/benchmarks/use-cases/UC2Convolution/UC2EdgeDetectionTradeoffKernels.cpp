@@ -50,8 +50,10 @@ void edge_detection_tradeoff_unspecialized(const float* src, float* dst,
 EdgeDetectionTradeoffSpecialized create_edge_detection_tradeoff_specialized(
         int width, int height) {
     auto* RS = clangRuntimeSpecializer::ClangRuntimeSpecializer::init();
-    SobelFilter sf{};
-    auto lam = [sf, width, height](const float* src, float* dst) {
+    auto lam = [width, height](const float* src, float* dst) {
+        // Reconstruct the filter inside the lambda so the specialized code
+        // does not depend on a factory-frame closure object lifetime.
+        SobelFilter sf{};
         sf.detect(src, dst, width, height);
     };
     return RS->specializeLambda<void>(lam);

@@ -32,8 +32,11 @@ void grouped_count_tradeoff_unspecialized(const uint8_t* rows, int64_t n_rows,
 
 GroupedCountTradeoffSpecialized create_grouped_count_tradeoff_specialized(
         int row_stride, int key_offset, int n_buckets) {
-    GroupCounter counter{row_stride, key_offset, n_buckets};
-    auto lam = [counter](const uint8_t* rows, int64_t n_rows, int64_t* out) {
+    auto lam = [row_stride, key_offset, n_buckets](
+                       const uint8_t* rows, int64_t n_rows, int64_t* out) {
+        // Reconstruct the counter inside the lambda so specialized code does
+        // not depend on a factory-frame closure object lifetime.
+        GroupCounter counter{row_stride, key_offset, n_buckets};
         counter.count(rows, n_rows, out);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);

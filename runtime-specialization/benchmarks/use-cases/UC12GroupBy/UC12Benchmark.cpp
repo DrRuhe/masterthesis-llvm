@@ -24,7 +24,8 @@ static std::vector<int64_t> g_count_buckets(N_BUCKETS12, 0);
 static std::vector<double>  g_min_buckets(N_BUCKETS12, 0.0);
 static std::vector<double>  g_max_buckets(N_BUCKETS12, 0.0);
 
-static void setup_uc12(const benchmark::State&) {
+static void setup_uc12(const benchmark::State& state) {
+    clangRuntimeSpecializer::detail::applyUCPipelineOptionsForBenchmark(state.name());
     if (!g_rows12.empty()) return;
     g_rows12.resize(N_ROWS_MAX12 * ROW_STRIDE12, 0);
     std::mt19937_64 rng(42);
@@ -39,6 +40,7 @@ static void setup_uc12(const benchmark::State&) {
     }
 }
 static void teardown_uc12(const benchmark::State&) {
+    clangRuntimeSpecializer::detail::resetUCPipelineOptionsAfterBenchmark();
     // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 

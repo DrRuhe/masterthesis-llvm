@@ -86,10 +86,9 @@ void generic_sort_tradeoff_unspecialized(void* data, int64_t n_elements, int ele
 }
 
 GenericSortTradeoffSpecialized create_generic_sort_tradeoff_specialized(int element_size) {
-    GenericSorterT sorter{element_size};
-    int (*cmp)(const void*, const void*) = &int64_asc_cmp_tradeoff;
-    auto lam = [sorter, cmp](void* data, int64_t n_elements) {
-        sorter.sort(data, n_elements, cmp);
+    auto lam = [=](void* data, int64_t n_elements) {
+        GenericSorterT sorter{element_size};
+        sorter.sort(data, n_elements, &int64_asc_cmp_tradeoff);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);
 }

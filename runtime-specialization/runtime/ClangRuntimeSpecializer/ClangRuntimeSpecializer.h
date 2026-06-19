@@ -203,20 +203,23 @@ namespace clangRuntimeSpecializer {
     friend class ClangRuntimeSpecializer;
 
     SpecializedLambda(R(*fp)(Args...), llvm::orc::JITDylib& dylib,
-                      llvm::orc::ExecutionSession& es) noexcept
-        : FnPtr(fp), Dylib(&dylib), ES(&es) {}
+                      llvm::orc::ExecutionSession& es,
+                      std::shared_ptr<void> closureOwner = {}) noexcept
+        : FnPtr(fp), Dylib(&dylib), ES(&es), ClosureOwner(std::move(closureOwner)) {}
 
   public:
     SpecializedLambda() noexcept = default;
 
     SpecializedLambda(SpecializedLambda&& o) noexcept
-        : FnPtr(o.FnPtr), Dylib(o.Dylib), ES(o.ES)
+        : FnPtr(o.FnPtr), Dylib(o.Dylib), ES(o.ES),
+          ClosureOwner(std::move(o.ClosureOwner))
     { o.FnPtr = nullptr; o.Dylib = nullptr; o.ES = nullptr; }
 
     SpecializedLambda& operator=(SpecializedLambda&& o) noexcept {
         if (this != &o) {
             cleanup();
             FnPtr = o.FnPtr; Dylib = o.Dylib; ES = o.ES;
+            ClosureOwner = std::move(o.ClosureOwner);
             o.FnPtr = nullptr; o.Dylib = nullptr; o.ES = nullptr;
         }
         return *this;
@@ -240,12 +243,14 @@ namespace clangRuntimeSpecializer {
     void cleanup() noexcept {
         if (Dylib && ES)
             detail::removeJITDylibNoexcept(ES, Dylib);
+        ClosureOwner.reset();
         FnPtr = nullptr; Dylib = nullptr; ES = nullptr;
     }
 
     R(*FnPtr)(Args...)             = nullptr;
     llvm::orc::JITDylib*          Dylib = nullptr;
     llvm::orc::ExecutionSession*  ES    = nullptr;
+    std::shared_ptr<void>         ClosureOwner;
   };
 
   /// Cost-model knobs for the Pipeline 2 JIT-IPSCCP function specializer.
@@ -566,20 +571,20 @@ namespace clangRuntimeSpecializer {
     // The nullptr passed here forces template instantiation of specializeLambdaResolved
     // so the pass can find the function definition in the module.
     template <class R, class Lambda,
-              std::enable_if_t<FirstArgIsNotOptions<Lambda>::value, int> = 0>
+              std::enable_if_t<FirstArgIsNotOptions<std::decay_t<Lambda>>::value, int> = 0>
     __attribute__((noinline))
-    auto specializeLambda(Lambda& lambda) {
+    auto specializeLambda(Lambda&& lambda) {
       detail::forceLambdaOpEmit<R>(lambda,
-          static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
-      return specializeLambdaResolved<R>(nullptr, lambda);
+          static_cast<detail::LambdaExplicitArgs<std::decay_t<Lambda>>*>(nullptr));
+      return specializeLambdaResolved<R>(nullptr, std::forward<Lambda>(lambda));
     }
 
     template <class R, class Lambda>
     __attribute__((noinline))
-    auto specializeLambda(Lambda& lambda, const Options& opts) {
+    auto specializeLambda(Lambda&& lambda, const Options& opts) {
       detail::forceLambdaOpEmit<R>(lambda,
-          static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
-      return specializeLambdaResolved<R>(nullptr, lambda, opts);
+          static_cast<detail::LambdaExplicitArgs<std::decay_t<Lambda>>*>(nullptr));
+      return specializeLambdaResolved<R>(nullptr, std::forward<Lambda>(lambda), opts);
     }
 
     ~ClangRuntimeSpecializer();
@@ -862,18 +867,24 @@ namespace clangRuntimeSpecializer {
 
     // Unpack ArgTuple into SpecializedLambda<R, Args...> using tag dispatch.
     template <class R, class... Args>
-    SpecializedLambda<R, Args...> makeSpecLambda(JITResult Res, std::tuple<Args...>*) {
+    SpecializedLambda<R, Args...> makeSpecLambda(JITResult Res, std::tuple<Args...>*,
+                                                 std::shared_ptr<void> ClosureOwner = {}) {
       if (Res.TimedOut || !Res.Addr) return {};
       using FP = R(*)(Args...);
       return SpecializedLambda<R, Args...>(
-          reinterpret_cast<FP>(Res.Addr), *Res.Dylib, JIT->getExecutionSession());
+          reinterpret_cast<FP>(Res.Addr), *Res.Dylib, JIT->getExecutionSession(),
+          std::move(ClosureOwner));
     }
 
     template <class R, class Lambda>
-    auto specializeLambdaWithOpts(const char* funcName, Lambda& lambda, const Options& opts) {
-      using ArgTuple = detail::LambdaExplicitArgs<Lambda>;
-      auto Res = specializeLambdaImpl<Lambda>(funcName, lambda, opts);
-      return makeSpecLambda<R>(Res, static_cast<ArgTuple*>(nullptr));
+    auto specializeLambdaWithOpts(const char* funcName, Lambda&& lambda, const Options& opts) {
+      using OwnedLambda = std::decay_t<Lambda>;
+      using ArgTuple = detail::LambdaExplicitArgs<OwnedLambda>;
+      auto ClosureOwner =
+          std::make_shared<OwnedLambda>(std::forward<Lambda>(lambda));
+      auto Res = specializeLambdaImpl<OwnedLambda>(funcName, *ClosureOwner, opts);
+      return makeSpecLambda<R>(Res, static_cast<ArgTuple*>(nullptr),
+                               std::move(ClosureOwner));
     }
 
   public:
@@ -883,20 +894,23 @@ namespace clangRuntimeSpecializer {
 
     template <class R, class Lambda>
     __attribute__((noinline))
-    auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda) {
+    auto specializeLambdaResolved(const char* resolvedName, Lambda&& lambda) {
       if (!resolvedName)
         throw ClangRuntimeSpecializerDumpedIRError(
             "specializeLambda: TU was not compiled with the IRDumpingPass plugin");
-      return specializeLambdaWithOpts<R>(resolvedName, lambda, CurrentOptions);
+      return specializeLambdaWithOpts<R>(resolvedName, std::forward<Lambda>(lambda),
+                                         CurrentOptions);
     }
 
     template <class R, class Lambda>
     __attribute__((noinline))
-    auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda, const Options& opts) {
+    auto specializeLambdaResolved(const char* resolvedName, Lambda&& lambda,
+                                  const Options& opts) {
       if (!resolvedName)
         throw ClangRuntimeSpecializerDumpedIRError(
             "specializeLambda: TU was not compiled with the IRDumpingPass plugin");
-      return specializeLambdaWithOpts<R>(resolvedName, lambda, opts);
+      return specializeLambdaWithOpts<R>(resolvedName, std::forward<Lambda>(lambda),
+                                         opts);
     }
 
     template <class R, class F, class... ARGS,
@@ -1191,17 +1205,19 @@ namespace clangRuntimeSpecializer {
   // specializeLambda wrapper at -O3, which would hide the call from the plugin.
   template <class R, class Lambda>
   __attribute__((noinline))
-  auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda) {
+  auto specializeLambdaResolved(const char* resolvedName, Lambda&& lambda) {
     auto* RS = ClangRuntimeSpecializer::init();
-    return RS->specializeLambdaResolved<R>(resolvedName, lambda);
+    return RS->specializeLambdaResolved<R>(resolvedName,
+                                           std::forward<Lambda>(lambda));
   }
 
   template <class R, class Lambda>
   __attribute__((noinline))
-  auto specializeLambdaResolved(const char* resolvedName, Lambda& lambda,
+  auto specializeLambdaResolved(const char* resolvedName, Lambda&& lambda,
                                 const ClangRuntimeSpecializer::Options& opts) {
     auto* RS = ClangRuntimeSpecializer::init();
-    return RS->specializeLambdaResolved<R>(resolvedName, lambda, opts);
+    return RS->specializeLambdaResolved<R>(resolvedName,
+                                           std::forward<Lambda>(lambda), opts);
   }
 
   // Specialize a lambda using the IRDumpingPass-resolved operator() name.
@@ -1210,19 +1226,19 @@ namespace clangRuntimeSpecializer {
   // so the pass can find the resolved function definition in the module.
   template <class R, class Lambda>
   __attribute__((noinline))
-  auto specializeLambda(Lambda& lambda) {
+  auto specializeLambda(Lambda&& lambda) {
     detail::forceLambdaOpEmit<R>(lambda,
-        static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
-    return specializeLambdaResolved<R>(nullptr, lambda);
+        static_cast<detail::LambdaExplicitArgs<std::decay_t<Lambda>>*>(nullptr));
+    return specializeLambdaResolved<R>(nullptr, std::forward<Lambda>(lambda));
   }
 
   template <class R, class Lambda>
   __attribute__((noinline))
-  auto specializeLambda(Lambda& lambda,
+  auto specializeLambda(Lambda&& lambda,
                         const ClangRuntimeSpecializer::Options& opts) {
     detail::forceLambdaOpEmit<R>(lambda,
-        static_cast<detail::LambdaExplicitArgs<Lambda>*>(nullptr));
-    return specializeLambdaResolved<R>(nullptr, lambda, opts);
+        static_cast<detail::LambdaExplicitArgs<std::decay_t<Lambda>>*>(nullptr));
+    return specializeLambdaResolved<R>(nullptr, std::forward<Lambda>(lambda), opts);
   }
 
   // Internal resolved variants for specializeOnly — free-function wrappers

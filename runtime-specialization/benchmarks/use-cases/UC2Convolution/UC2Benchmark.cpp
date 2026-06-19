@@ -12,7 +12,8 @@ static constexpr int TILE_H = 3840;
 static std::vector<float> g_src;
 static std::vector<float> g_dst;
 
-static void setup_uc2(const benchmark::State&) {
+static void setup_uc2(const benchmark::State& state) {
+    clangRuntimeSpecializer::detail::applyUCPipelineOptionsForBenchmark(state.name());
     if (!g_src.empty()) return;
     g_src.resize(TILE_W * TILE_H, 0.0f);
     g_dst.resize(TILE_W * TILE_H, 0.0f);
@@ -21,6 +22,7 @@ static void setup_uc2(const benchmark::State&) {
     for (auto& v : g_src) v = dist(rng);
 }
 static void teardown_uc2(const benchmark::State&) {
+    clangRuntimeSpecializer::detail::resetUCPipelineOptionsAfterBenchmark();
     // Buffer stays allocated for process lifetime; freed by OS on exit.
 }
 

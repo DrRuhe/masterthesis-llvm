@@ -89,7 +89,7 @@ void generic_sort(void* data, int64_t n_elements, int element_size,
 // module clone contains both, enabling full inlining of the comparator call.
 SortSpecialized create_sort_specialized(int (*comparator)(const void*, const void*),
                                          int element_size) {
-    auto lam = [comparator, element_size](void* data, int64_t n_elements) {
+    auto lam = [=](void* data, int64_t n_elements) {
         generic_sort(data, n_elements, element_size, comparator);
     };
     return clangRuntimeSpecializer::specializeLambda<void>(lam);
