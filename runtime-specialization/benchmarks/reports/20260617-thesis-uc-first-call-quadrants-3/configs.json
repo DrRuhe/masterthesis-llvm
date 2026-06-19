@@ -1,0 +1,4 @@
+[
+  {"name": "default", "env": {}},
+  {"name": "per_uc_best", "env": {"CRS_UC_PIPELINE_CONFIG_JSON": "/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization/benchmarks/reports/thesis-figures/rq4/best_uc_pipelines.json"}}
+]
