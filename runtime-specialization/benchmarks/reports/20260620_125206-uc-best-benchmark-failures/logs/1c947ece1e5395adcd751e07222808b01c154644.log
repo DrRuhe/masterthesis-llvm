@@ -1,0 +1,28 @@
+2026-06-20T13:21:38+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 441.002 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 5.16, 5.22, 5.98
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ40create_generic_sort_tradeoff_specializediE3$_0JPvlEEET_PT0_DpT1_ examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108267904_lambda candidates=1 replaced=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ40create_generic_sort_tradeoff_specializediE3$_0JPvlEEET_PT0_DpT1_ examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_1_93825108267904_lambda candidates=1 replaced=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS init] blobs=66  bitcode=59525 KB  functions=4541  instructions=447338
+------------------------------------------------------------------------------------------------------------------------
+Benchmark                                                                              Time             CPU   Iterations
+------------------------------------------------------------------------------------------------------------------------
+BM_g:uc14_sort;n:generic_sort;a:tradeoff;s:LARGE;t:specialized_exec;/70000000       8949 ms         8948 ms            1

@@ -1,0 +1,32 @@
+2026-06-20T13:03:06+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 1786.61 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 4.90, 6.55, 7.85
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ37create_url_match_abstract_specializedvE3$_0JPKclEEET_PT0_DpT1_ examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ37create_url_match_abstract_specializedvE3$_0JPKclEEET_PT0_DpT1_ examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ37create_url_match_abstract_specializedvE3$_0JPKclEEET_PT0_DpT1_ candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108032272_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108032272_lambda candidates=1 replaced=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ37create_url_match_abstract_specializedvE3$_0JPKclEEET_PT0_DpT1_ examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ37create_url_match_abstract_specializedvE3$_0JPKclEEET_PT0_DpT1_ examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ37create_url_match_abstract_specializedvE3$_0JPKclEEET_PT0_DpT1_ candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_1_93825108032272_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_1_93825108032272_lambda candidates=1 replaced=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS init] blobs=66  bitcode=59525 KB  functions=4541  instructions=447338
+-----------------------------------------------------------------------------------------------------------------------------------------
+Benchmark                                                                                               Time             CPU   Iterations
+-----------------------------------------------------------------------------------------------------------------------------------------
+BM_g:uc7_dfa;n:url_match;a:abstract;s:MEDIUM;t:jit_overhead;/52428800/iterations:1/manual_time      0.000 ms         65.0 ms            1

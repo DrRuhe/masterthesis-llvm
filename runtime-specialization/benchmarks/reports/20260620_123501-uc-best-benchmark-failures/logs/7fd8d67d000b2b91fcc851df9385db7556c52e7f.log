@@ -1,0 +1,11 @@
+2026-06-20T12:35:13+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 2500 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 7.09, 3.06, 2.11
+terminate called after throwing an instance of 'clangRuntimeSpecializer::ClangRuntimeSpecializerDumpedIRError'
+timeout: the monitored command dumped core

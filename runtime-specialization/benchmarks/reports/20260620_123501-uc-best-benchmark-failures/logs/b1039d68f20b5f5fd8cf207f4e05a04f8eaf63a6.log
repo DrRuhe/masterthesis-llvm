@@ -1,0 +1,114 @@
+2026-06-20T12:35:21+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 2500 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 9.13, 3.64, 2.31
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS-STAT] StaticMutability: fn=execute_query examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=CyclicScan::next examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=Filter::next examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__113__assoc_stateIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEE16__on_zero_sharedEv examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__17promiseIN23clangRuntimeSpecializer23ClangRuntimeSpecializer9JITResultEED2Ev examined=3 blocked_escaped=0 blocked_mutated=3 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZZSt29__make_exception_ptr_explicitB8ne210108INSt3__112future_errorEESt13exception_ptrRT_ENUlPvE_8__invokeES5_ examined=1 blocked_escaped=1 blocked_mutated=0 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=4 folded_to_constant=0
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=8 loads_from_arg_derived=12
+[CRS init] blobs=66  bitcode=59525 KB  functions=4541  instructions=447338
+------------------------------------------------------------------------------------------------
+Benchmark                                                      Time             CPU   Iterations
+------------------------------------------------------------------------------------------------
+BM_g:db_operators;n:single_filter;t:specialized_exec;       7.37 ns         7.37 ns     94557492

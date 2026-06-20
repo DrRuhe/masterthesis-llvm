@@ -1,0 +1,44 @@
+2026-06-20T13:53:45+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 2088.18 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 5.86, 5.21, 5.16
+[CRS-STAT] StaticMutability: fn=_ZNK19CompositeComparator4sortEPvl examined=11 blocked_escaped=0 blocked_mutated=0 annotated=11
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ42create_multi_key_sort_abstract_specializediiiE3$_0JPvlEEET_PT0_DpT1_ examined=2 blocked_escaped=0 blocked_mutated=0 annotated=2
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19CompositeComparator4sortEPvl candidates=11 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108044752_lambda candidates=2 replaced=1
+[CRS-STAT] StaticMutability: fn=_ZNK19CompositeComparator4sortEPvl examined=11 blocked_escaped=0 blocked_mutated=0 annotated=11
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108044752_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19CompositeComparator4sortEPvl candidates=11 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108044752_lambda candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK19CompositeComparator4sortEPvl examined=8 blocked_escaped=0 blocked_mutated=0 annotated=8
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19CompositeComparator4sortEPvl candidates=8 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108044752_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108044752_lambda candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK19CompositeComparator4sortEPvl examined=9 blocked_escaped=0 blocked_mutated=0 annotated=9
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108044752_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19CompositeComparator4sortEPvl candidates=9 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108044752_lambda candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK19CompositeComparator4sortEPvl examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19CompositeComparator4sortEPvl candidates=3 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108044752_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108044752_lambda candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK19CompositeComparator4sortEPvl examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108044752_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19CompositeComparator4sortEPvl candidates=3 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108044752_lambda candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK19CompositeComparator4sortEPvl examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19CompositeComparator4sortEPvl candidates=3 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108044752_lambda examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108044752_lambda candidates=1 replaced=0

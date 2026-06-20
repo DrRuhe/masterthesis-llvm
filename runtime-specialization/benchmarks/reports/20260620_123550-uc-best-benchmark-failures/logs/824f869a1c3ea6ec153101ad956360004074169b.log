@@ -1,0 +1,24 @@
+2026-06-20T12:38:05+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 2500 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 11.91, 7.18, 3.87
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ33create_box_filter_low_specializediiiE3$_0JPKfPfEEET_PT0_DpT1_ examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=3 folded_to_constant=3
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=7 loads_from_arg_derived=7
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ33create_box_filter_low_specializediiiE3$_0JPKfPfEEET_PT0_DpT1_ examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] SCCP: module=RuntimeSpecializeableIR invariant_load_total=3 folded_to_constant=3
+[CRS-STAT] ArgLattice: fn=sqlite3VdbeExec in_module=0
+[CRS-STAT] ModuleStores: stores_to_arg_derived=7 loads_from_arg_derived=7
+[CRS init] blobs=66  bitcode=59525 KB  functions=4541  instructions=447338
+------------------------------------------------------------------------------------------------------------------------------------
+Benchmark                                                                                          Time             CPU   Iterations
+------------------------------------------------------------------------------------------------------------------------------------
+BM_g:uc2_conv;n:box_filter;a:low;s:EXTRALARGE;t:jit_overhead;/58/iterations:1/manual_time      0.000 ns     75361900 ns            1

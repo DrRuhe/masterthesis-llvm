@@ -1,0 +1,60 @@
+2026-06-20T13:38:46+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 2076.09 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 5.08, 5.03, 5.33
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ39create_struct_sort_abstract_specializediiE3$_0JPvlEEET_PT0_DpT1_ examined=2 blocked_escaped=0 blocked_mutated=0 annotated=2
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ39create_struct_sort_abstract_specializediiE3$_0JPvlEEET_PT0_DpT1_ examined=2 blocked_escaped=0 blocked_mutated=0 annotated=2
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl candidates=6 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19ByteOffsetExtractor7extractEPKv candidates=1 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ39create_struct_sort_abstract_specializediiE3$_0JPvlEEET_PT0_DpT1_ candidates=2 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108042480_lambda examined=2 blocked_escaped=0 blocked_mutated=0 annotated=2
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl candidates=6 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19ByteOffsetExtractor7extractEPKv candidates=1 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108042480_lambda candidates=2 replaced=2
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl candidates=6 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19ByteOffsetExtractor7extractEPKv candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ39create_struct_sort_abstract_specializediiE3$_0JPvlEEET_PT0_DpT1_ examined=2 blocked_escaped=0 blocked_mutated=0 annotated=2
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ39create_struct_sort_abstract_specializediiE3$_0JPvlEEET_PT0_DpT1_ examined=2 blocked_escaped=0 blocked_mutated=0 annotated=2
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl candidates=6 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19ByteOffsetExtractor7extractEPKv candidates=1 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIvZ39create_struct_sort_abstract_specializediiE3$_0JPvlEEET_PT0_DpT1_ candidates=2 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_1_93825108042480_lambda examined=2 blocked_escaped=0 blocked_mutated=0 annotated=2
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl candidates=6 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19ByteOffsetExtractor7extractEPKv candidates=1 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_1_93825108042480_lambda candidates=2 replaced=2
+[CRS-STAT] StaticMutability: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl examined=6 blocked_escaped=0 blocked_mutated=0 annotated=6
+[CRS-STAT] StaticMutability: fn=_ZNK19ByteOffsetExtractor7extractEPKv examined=1 blocked_escaped=0 blocked_mutated=0 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK22FieldComparatorAdapter11sort_structEPvl candidates=6 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZNK19ByteOffsetExtractor7extractEPKv candidates=1 replaced=0
+[CRS init] blobs=66  bitcode=59525 KB  functions=4541  instructions=447338
+--------------------------------------------------------------------------------------------------------------------------------------------------
+Benchmark                                                                                                        Time             CPU   Iterations
+--------------------------------------------------------------------------------------------------------------------------------------------------
+BM_g:uc14_sort;n:struct_sort;a:abstract;s:EXTRALARGE;t:jit_overhead;/250000000/iterations:1/manual_time      0.000 ms         83.7 ms            1

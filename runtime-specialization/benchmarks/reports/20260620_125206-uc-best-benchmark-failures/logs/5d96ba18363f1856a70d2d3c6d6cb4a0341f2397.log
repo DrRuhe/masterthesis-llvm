@@ -1,0 +1,14 @@
+2026-06-20T12:54:55+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 2499.77 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 6.87, 11.89, 9.56
+[CRS init] blobs=66  bitcode=59525 KB  functions=4541  instructions=447338
+--------------------------------------------------------------------------------------------------------------
+Benchmark                                                                    Time             CPU   Iterations
+--------------------------------------------------------------------------------------------------------------
+BM_g:uc2_conv;n:separable_gaussian;a:low;s:SMALL;t:unspecialized;/1  165992505 ns    165989479 ns            4

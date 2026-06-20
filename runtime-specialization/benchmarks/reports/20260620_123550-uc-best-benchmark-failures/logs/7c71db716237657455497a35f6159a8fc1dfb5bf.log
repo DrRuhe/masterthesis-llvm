@@ -1,0 +1,46 @@
+2026-06-20T12:37:33+02:00
+Running /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/tools/runtime-specialization/benchmarks/AllBenchmarks
+Run on (16 X 477.234 MHz CPU s)
+CPU Caches:
+  L1 Data 48 KiB (x8)
+  L1 Instruction 32 KiB (x8)
+  L2 Unified 1280 KiB (x8)
+  L3 Unified 24576 KiB (x1)
+Load Average: 12.48, 6.79, 3.64
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ39create_column_scan_abstract_specializediidE3$_0JPKhlPiEEET_PT0_DpT1_ examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ39create_column_scan_abstract_specializediidE3$_0JPKhlPiEEET_PT0_DpT1_ examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ39create_column_scan_abstract_specializediidE3$_0JPKhlPiEEET_PT0_DpT1_ candidates=3 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZN15BufferCollector4emitEl candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_0_93825108032176_lambda examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] InvariantLoadToConst: fn=_ZN15BufferCollector4emitEl candidates=1 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_0_93825108032176_lambda candidates=3 replaced=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=_ZN15BufferCollector4emitEl candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ39create_column_scan_abstract_specializediidE3$_0JPKhlPiEEET_PT0_DpT1_ examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ39create_column_scan_abstract_specializediidE3$_0JPKhlPiEEET_PT0_DpT1_ examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=_ZN23clangRuntimeSpecializer6detail21__crs_lambda_op_proxyIlZ39create_column_scan_abstract_specializediidE3$_0JPKhlPiEEET_PT0_DpT1_ candidates=3 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=_ZN15BufferCollector4emitEl candidates=1 replaced=0
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] StaticMutability: fn=specialized_wrapper_1_93825108032176_lambda examined=3 blocked_escaped=0 blocked_mutated=0 annotated=3
+[CRS-STAT] InvariantLoadToConst: fn=_ZN15BufferCollector4emitEl candidates=1 replaced=0
+[CRS-STAT] InvariantLoadToConst: fn=specialized_wrapper_1_93825108032176_lambda candidates=3 replaced=3
+[CRS-STAT] StaticMutability: fn=_ZNSt3__120__shared_ptr_emplaceIN4llvm3orc17ThreadSafeContext5StateENS_9allocatorIS4_EEE16__on_zero_sharedEv examined=1 blocked_escaped=0 blocked_mutated=1 annotated=0
+[CRS-STAT] StaticMutability: fn=_ZN15BufferCollector4emitEl examined=2 blocked_escaped=0 blocked_mutated=1 annotated=1
+[CRS-STAT] InvariantLoadToConst: fn=_ZN15BufferCollector4emitEl candidates=1 replaced=0
+[CRS init] blobs=66  bitcode=59525 KB  functions=4541  instructions=447338
+-----------------------------------------------------------------------------------------------------------------------------------------
+Benchmark                                                                                               Time             CPU   Iterations
+-----------------------------------------------------------------------------------------------------------------------------------------
+BM_g:uc1_sql;n:column_scan;a:abstract;s:SMALL;t:jit_overhead;/1000000/iterations:1/manual_time      0.000 ms          112 ms            1
