@@ -49,3 +49,86 @@
 - `Abstract Result Collectors` was folded into `Vtable Devirtualization` plus `Flat Batch Kernels...`.
 - `Schema-Specialized Aggregation` was folded into `Flat Batch Kernels...`.
 - No new `open` heading survived this pass; the current list is already broad enough for the thesis subsection without inventing poorly evidenced categories.
+
+## Task 7 — Collect support evidence for a flat-batch kernel pattern where scalar thresholds, row-layout metadata, or fixed bucket/layout parameters become JIT constants inside one large loop body.
+
+- UC1 low kernels provide the clearest minimal code evidence:
+  `count_matching_rows`, `multi_predicate`, and `column_scan` all capture fixed
+  layout/threshold parameters and run one batch loop over `rows`.
+- The stronger corpus-level evidence is in `benchmarks/reports/260610-corpus-final/speedup_summary.txt`
+  and `benchmarks/reports/260610-breakeven/breakeven_table.txt`, where grouped
+  aggregation and IVM kernels are strong positive examples of the same
+  architecture.
+
+## Task 8 — Collect support evidence for immutable lookup-table / coefficient-array patterns from convolution or DFA benchmarks where a fixed table pointer or coefficient set is captured as specialization state.
+
+- UC2 and UC7 give direct local evidence:
+  - `UC2Kernels.h` declares `g_kernel_coeffs` as specialization state.
+  - `UC2EdgeDetectionTradeoffKernels.cpp` uses immutable Sobel coefficient arrays.
+  - `UC7EmailMatchTradeoffKernels.cpp` captures `g_dfa_table`.
+  - `UC7MultiPatternMatchTradeoffKernels.cpp` captures `g_multi_dfa_table_tradeoff`.
+
+## Task 9 — Collect support evidence for a nested-helper/inlining style pattern from specs, smoke tests, benchmark kernels, or pass traces.
+
+- `specs/003-jit-specialization-core/spec.md` provides the implementation-level
+  claim that specialization works by cloning one blob and forcing inlining of
+  the target call.
+- The strongest observed evidence is in the pass traces for
+  `edge_detection` and `generic_sort`, where `ModuleInlinerPass` reduces
+  function count from `8` to `7`.
+
+## Task 10 — Collect support evidence for a constant function-pointer or callback-style pattern from `generic_sort`/forwarded-function-pointer artifacts.
+
+- The benchmark evidence is `UC14GenericSortLowKernels.cpp` and
+  `UC14GenericSortTradeoffKernels.cpp`, both of which make the comparator a
+  specialization constant and keep it in the same TU for inlining.
+- The regression-test evidence is the trio of smoke tests covering direct,
+  helper-forwarded, and tuple-forwarded function-pointer specialization.
+
+## Task 11 — Collect support evidence for a vtable-devirtualization pattern from smoke tests, UC abstract kernels, and pipeline specs.
+
+- `test/smoke/virtual-methods.cpp` is the strongest minimal artifact: it checks
+  that the specialized IR no longer contains a vtable load.
+- `specs/015-pipeline2-jit-ipsccp/spec.md` and
+  `runtime/ClangRuntimeSpecializer/DevirtualizeConstantVtableCalls.cpp`
+  establish that this is an intentional first-class mechanism rather than an
+  accidental optimization.
+- UC abstract kernels (`UC1*AbstractKernels.cpp`, `UC8ApplyRowDeltaAbstractKernels.cpp`)
+  provide workload-level examples of the same pattern.
+
+## Task 12 — Collect support evidence for by-value captured helper objects or policy structs whose fields become JIT constants without requiring virtual dispatch.
+
+- `BinaryPredicateScanner`, `SobelFilter`, and `MultiKeySorter` are the three
+  best local examples.
+- These are useful because they separate “helper object capture” from the
+  stronger devirtualization/function-pointer headings, making the taxonomy less
+  dependent on abstract dispatch examples alone.
+
+## Task 13 — Collect unsupported-pattern evidence for the SQLite/TPC-H shared mutable state object threaded through an interpreter-style dispatch loop.
+
+- `specs/019-sqlite-specialization-analysis/report.md` explicitly identifies the
+  escaped `Vdbe*` state object as the primary immediate cause of failure.
+- `details.md` for spec 019 adds the concrete mechanism: zero sqlite3 loads are
+  annotated `!invariant.load` because the state object escapes through the call
+  graph.
+
+## Task 14 — Collect unsupported-pattern evidence for the dynamic opcode-stream / interpreter-dispatch aspect of `sqlite3VdbeExec` and decide whether it should be a separate taxonomy entry or folded into the shared-state entry.
+
+- The dynamic opcode-stream reasoning is independently strong enough to keep as
+  a separate unsupported entry.
+- The key fact is `p->aOp[pc].opcode`: even with a fixed `Vdbe*`, the changing
+  `pc` means the optimizer still cannot collapse execution to one fixed path.
+- This is distinct from the escaped-state problem, so the taxonomy should keep
+  both reasons visible.
+
+## Task 15 — Consider open/brainstormed unsupported-pattern candidates such as opaque external callees, cross-blob boundaries, or dynamic state hidden behind escaping pointers; keep only those with concrete local evidence.
+
+- `Opaque External Callees / Cross-Blob Boundaries` survives as a secondary
+  unsupported entry because spec 005 contains a direct design decision based on
+  this limitation.
+- `Dynamic state hidden behind escaping pointers` does not survive as its own
+  reader-facing taxonomy heading; it is better treated as the mechanism inside
+  the SQLite shared-state failure case.
+- No broader unsupported heading for “opaque external callees” was kept beyond
+  the cross-blob formulation because the local evidence is architectural rather
+  than benchmark-facing.

@@ -4,15 +4,15 @@
 - [x] Build the candidate taxonomy heading list in `details.md` and mark each entry as `supported`, `unsupported`, or `open` based only on inspected local evidence.
 - [x] Verify that each proposed heading has at least one repository artifact that can serve as evidence; remove or weaken any heading whose evidence is not local and concrete.
 - [x] Brainstorm additional architectural-pattern headings from benchmark families, smoke tests, and pipeline specs, then record them in `details.md` as `supported`, `unsupported`, or `open`.
-- [ ] Collect support evidence for a flat-batch kernel pattern where scalar thresholds, row-layout metadata, or fixed bucket/layout parameters become JIT constants inside one large loop body.
-- [ ] Collect support evidence for immutable lookup-table / coefficient-array patterns from convolution or DFA benchmarks where a fixed table pointer or coefficient set is captured as specialization state.
-- [ ] Collect support evidence for a nested-helper/inlining style pattern from specs, smoke tests, benchmark kernels, or pass traces.
-- [ ] Collect support evidence for a constant function-pointer or callback-style pattern from `generic_sort`/forwarded-function-pointer artifacts.
-- [ ] Collect support evidence for a vtable-devirtualization pattern from smoke tests, UC abstract kernels, and pipeline specs.
-- [ ] Collect support evidence for by-value captured helper objects or policy structs whose fields become JIT constants without requiring virtual dispatch.
-- [ ] Collect unsupported-pattern evidence for the SQLite/TPC-H shared mutable state object threaded through an interpreter-style dispatch loop.
-- [ ] Collect unsupported-pattern evidence for the dynamic opcode-stream / interpreter-dispatch aspect of `sqlite3VdbeExec` and decide whether it should be a separate taxonomy entry or folded into the shared-state entry.
-- [ ] Consider open/brainstormed unsupported-pattern candidates such as opaque external callees, cross-blob boundaries, or dynamic state hidden behind escaping pointers; keep only those with concrete local evidence.
+- [x] Collect support evidence for a flat-batch kernel pattern where scalar thresholds, row-layout metadata, or fixed bucket/layout parameters become JIT constants inside one large loop body.
+- [x] Collect support evidence for immutable lookup-table / coefficient-array patterns from convolution or DFA benchmarks where a fixed table pointer or coefficient set is captured as specialization state.
+- [x] Collect support evidence for a nested-helper/inlining style pattern from specs, smoke tests, benchmark kernels, or pass traces.
+- [x] Collect support evidence for a constant function-pointer or callback-style pattern from `generic_sort`/forwarded-function-pointer artifacts.
+- [x] Collect support evidence for a vtable-devirtualization pattern from smoke tests, UC abstract kernels, and pipeline specs.
+- [x] Collect support evidence for by-value captured helper objects or policy structs whose fields become JIT constants without requiring virtual dispatch.
+- [x] Collect unsupported-pattern evidence for the SQLite/TPC-H shared mutable state object threaded through an interpreter-style dispatch loop.
+- [x] Collect unsupported-pattern evidence for the dynamic opcode-stream / interpreter-dispatch aspect of `sqlite3VdbeExec` and decide whether it should be a separate taxonomy entry or folded into the shared-state entry.
+- [x] Consider open/brainstormed unsupported-pattern candidates such as opaque external callees, cross-blob boundaries, or dynamic state hidden behind escaping pointers; keep only those with concrete local evidence.
 - [ ] Inspect the UC1 outlier kernels `count_matching_rows`, `multi_predicate`, and `column_scan` in the benchmark sources and note which architectural pattern each actually exhibits.
 - [ ] Analyze `count_matching_rows` deliberately across low/tradeoff/abstract variants: identify which supported or unsupported taxonomy pattern it instantiates, which specialization mechanism is actually available to CRS, and whether the thesis should present it as a simple-supported-pattern case rather than an unsupported one.
 - [ ] Analyze `multi_predicate` deliberately across low/tradeoff/abstract variants: identify whether it is best explained by flat layout constants, helper-object capture, abstract predicate devirtualization, or another taxonomy entry, and record the strongest evidence path.

@@ -154,6 +154,149 @@ pass.
   - `benchmarks/reports/260531-2115-Review/methodology.md`
   - `benchmarks/reports/260610-corpus-final/unroll_impact.txt`
 
+## Collected Pattern Evidence
+
+### Flat Batch Kernels with Fixed Layout or Threshold Parameters
+
+- **Definition**: A large loop body processes a batch of rows/elements while
+  row stride, field offsets, thresholds, bucket counts, or element sizes are
+  fixed for the specialization session.
+- **Concrete evidence**
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1CountMatchingRowsLowKernels.cpp`
+    captures `row_stride`, `col_offset`, and `threshold` into a lambda that
+    calls one counted loop.
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1MultiPredicateLowKernels.cpp`
+    extends the same pattern to two offsets and two thresholds.
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1ColumnScanLowKernels.cpp`
+    uses the same layout-specialized loop but adds output-buffer writes.
+  - `benchmarks/reports/260610-corpus-final/speedup_summary.txt` and
+    `benchmarks/reports/260610-breakeven/breakeven_table.txt` show that several
+    batch kernels of this class (`grouped_sum`, `grouped_count`,
+    `apply_row_delta`, `multi_agg_delta`, `batch_delta`) are strong positive
+    examples, while the UC1 outliers are only weakly profitable instances of
+    the same supported architecture.
+
+### Immutable Lookup Tables or Coefficient Arrays
+
+- **Definition**: The specialized state includes a stable pointer to a
+  coefficient array or transition table that is read repeatedly but not mutated
+  within the hot loop.
+- **Concrete evidence**
+  - `benchmarks/use-cases/UC2Convolution/UC2Kernels.h` declares
+    `g_kernel_coeffs` and documents `kernel_coeffs`, `ksize`, `width`, and
+    `height` as specialization constants for `convolve2d`.
+  - `benchmarks/use-cases/UC2Convolution/UC2EdgeDetectionTradeoffKernels.cpp`
+    reconstructs `SobelFilter` inside the specialized lambda; the hot loop then
+    repeatedly reads hardcoded `GX`/`GY` coefficient arrays.
+  - `benchmarks/use-cases/UC7DfaRegex/UC7EmailMatchTradeoffKernels.cpp`
+    captures `g_dfa_table` into `DFAMatcher`.
+  - `benchmarks/use-cases/UC7DfaRegex/UC7MultiPatternMatchTradeoffKernels.cpp`
+    captures `g_multi_dfa_table_tradeoff` and fixed accept-state arrays into
+    `MultiPatternMatcher`.
+
+### Nested Function Calls
+
+- **Definition**: Specialization remains inside one cloned blob so helper calls
+  in the specialized path can be inlined and simplified transitively.
+- **Concrete evidence**
+  - `specs/003-jit-specialization-core/spec.md` requires cloning one blob,
+    constructing a wrapper, and marking the target call `AlwaysInline`.
+  - `benchmarks/use-cases/UC14Sort/UC14GenericSortLowKernels.cpp` explicitly
+    states that `generic_sort` and its comparator must live in the same TU so
+    the cloned JIT module can inline the comparator call.
+  - `benchmarks/reports/260523-173549-analysis/BM_g_uc2_conv_n_edge_detection_a_tradeoff_s_MEDIUM_t_jit_analysis__6_iterations_1_manual_time/BM_g_uc2_conv_n_edge_detection_a_tradeoff_s_MEDIUM_t_jit_analysis__pass_trace.json`
+    shows `ModuleInlinerPass` reducing functions from `8 -> 7`.
+  - `benchmarks/reports/260523-173549-analysis/BM_g_uc14_sort_n_generic_sort_a_tradeoff_s_MEDIUM_t_jit_analysis__8000000_iterations_1_manual_time/BM_g_uc14_sort_n_generic_sort_a_tradeoff_s_MEDIUM_t_jit_analysis__pass_trace.json`
+    shows the same `ModuleInlinerPass` effect (`8 -> 7`) for the sort callback
+    path.
+
+### Function-Pointer Callbacks
+
+- **Definition**: A callback/comparator function pointer is fixed at
+  specialization time and becomes a constant direct call target inside the
+  optimized path.
+- **Concrete evidence**
+  - `test/smoke/call-specialized-forwarded-funcptr.cpp`,
+    `test/smoke/speconly-forwarded-funcptr.cpp`, and
+    `test/smoke/speconly-std-apply-funcptr.cpp` are dedicated regression tests
+    for forwarded function-pointer specialization.
+  - `benchmarks/use-cases/UC14Sort/UC14GenericSortLowKernels.cpp` makes the
+    comparator a specialization constant and keeps it in the same TU for
+    inlining.
+  - `benchmarks/use-cases/UC14Sort/UC14GenericSortTradeoffKernels.cpp` repeats
+    the same mechanism through `GenericSorterT::sort`.
+
+### Vtable Devirtualization
+
+- **Definition**: The specialized path captures a concrete object type, making
+  the vtable pointer constant enough for the runtime devirtualization pipeline
+  to replace indirect virtual calls.
+- **Concrete evidence**
+  - `test/smoke/virtual-methods.cpp` asserts that the specialized output should
+    contain no `load ptr, ptr %vtable`.
+  - `specs/015-pipeline2-jit-ipsccp/spec.md` names virtual dispatch
+    elimination as a primary P2 user story and success criterion.
+  - `runtime/ClangRuntimeSpecializer/DevirtualizeConstantVtableCalls.cpp`
+    contains the dedicated pass implementation.
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1CountMatchingRowsAbstractKernels.cpp`
+    (`Predicate` / `ThresholdPredicate`) and
+    `benchmarks/use-cases/UC8IVM/UC8ApplyRowDeltaAbstractKernels.cpp`
+    (`Aggregator` / `SumAggregator`) provide benchmark-level abstract-tier
+    examples.
+
+### By-Value Captured Helper Objects / Policy Structs
+
+- **Definition**: A tradeoff-tier kernel reconstructs a small helper object
+  inside the specialized lambda, so its fields become constants without
+  requiring function-pointer or vtable reasoning.
+- **Concrete evidence**
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1MultiPredicateTradeoffKernels.cpp`
+    uses `BinaryPredicateScanner`.
+  - `benchmarks/use-cases/UC2Convolution/UC2EdgeDetectionTradeoffKernels.cpp`
+    uses `SobelFilter`.
+  - `benchmarks/use-cases/UC14Sort/UC14MultiKeySortTradeoffKernels.cpp`
+    uses `MultiKeySorter` and `MultiKeyComparator`.
+
+### Unsupported: Shared Mutable State Object Threaded Through the Call Graph
+
+- **Definition**: A single mutable execution context is threaded through many
+  helper calls, so the current analysis cannot expose enough invariant field
+  loads to specialize the execution path.
+- **Concrete evidence**
+  - `specs/019-sqlite-specialization-analysis/report.md` identifies this as the
+    primary immediate cause: `StaticMutabilityAnalysis` annotates zero sqlite3
+    loads because the `Vdbe*` context escapes through the call graph.
+  - `specs/019-sqlite-specialization-analysis/details.md` explains the same
+    failure in terms of escaped pointer state and conservative mutability.
+  - `test/smoke/static-mutability-analysis.ll` is the smallest local artifact
+    showing the underlying rule: once a pointer escapes to a modifying call,
+    relevant loads stop receiving `!invariant.load`.
+
+### Unsupported: Interpreter Dispatch Loop over a Dynamic Program Counter
+
+- **Definition**: Even with a fixed context pointer, the actual executed path
+  is selected by a runtime-changing instruction/program counter, so the JIT
+  cannot collapse the loop to one fixed specialized trace.
+- **Concrete evidence**
+  - `specs/019-sqlite-specialization-analysis/details.md` explains the core
+    barrier as `p->aOp[pc].opcode`, where `pc` is dynamic every iteration.
+  - `specs/019-sqlite-specialization-analysis/report.md` confirms that the
+    specialized result is only a thin trampoline to the original
+    `sqlite3VdbeExec`, not a collapsed opcode path.
+
+### Secondary Unsupported Entry: Opaque External Callees / Cross-Blob Boundaries
+
+- **Definition**: The current specializer only clones one blob at a time, so a
+  wrapper cannot inline or reason through bodies that live in another blob or
+  remain external.
+- **Concrete evidence**
+  - `specs/005-tpch-duckdb-benchmarks/research.md` explicitly rejects a thin
+    wrapper because the wrapper and `duckdb_execute_prepared` body would live in
+    different blobs, preventing inlining.
+  - `specs/004-ir-dump-preprocessing/research.md` makes the same architectural
+    constraint explicit by restricting specialization targets to functions
+    available in the preprocessed blob.
+
 ## Initial Outlier-Kernel Classification Hypotheses
 
 These are hypotheses to test during collection, not conclusions.
