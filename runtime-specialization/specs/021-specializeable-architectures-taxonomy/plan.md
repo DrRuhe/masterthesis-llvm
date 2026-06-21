@@ -19,9 +19,9 @@
 - [x] Analyze `column_scan` deliberately across low/tradeoff/abstract variants: identify how the output-buffer write path affects its taxonomy classification, whether any collector/result-abstraction pattern belongs in the taxonomy, and which entry should own the kernel family in the thesis discussion.
 - [x] Cross-check the outlier-kernel classifications against the reflection/report evidence in `benchmarks/reports/260531-2115-Review/`, `specs/008-use-case-benchmarks/spec.md`, and any final thesis text that already references them.
 - [x] Decide whether each outlier kernel can be defended as an instance of an unsupported pattern; if not, weaken the intended claim in `details.md` so the later thesis draft does not overstate the evidence.
-- [ ] For each supported taxonomy entry, record one minimal code snippet candidate path and one stronger supporting artifact path in `details.md`.
-- [ ] For each unsupported taxonomy entry, record one root-cause artifact path and one thesis-cross-reference path in `details.md`.
-- [ ] Draft the per-entry evidence ledger in `details.md` with: heading, classification, one-sentence definition, primary evidence, secondary evidence, and affected kernels.
-- [ ] Verify FR-001 through FR-010 are covered by at least one concrete collection task in this plan.
-- [ ] Verify SC-001 through SC-005 by checking that every taxonomy entry, the SQLite case, the three UC1 outliers, and the two user-requested example headings (`Nested Function Calls`, `Vtable Devirtualization`) have explicit evidence or an explicit weakening decision.
-- [ ] Report any remaining evidence gaps or over-strong planned claims to the user before any drafting pass edits `docs/thesis.typ`.
+- [x] For each supported taxonomy entry, record one minimal code snippet candidate path and one stronger supporting artifact path in `details.md`.
+- [x] For each unsupported taxonomy entry, record one root-cause artifact path and one thesis-cross-reference path in `details.md`.
+- [x] Draft the per-entry evidence ledger in `details.md` with: heading, classification, one-sentence definition, primary evidence, secondary evidence, and affected kernels.
+- [x] Verify FR-001 through FR-010 are covered by at least one concrete collection task in this plan.
+- [x] Verify SC-001 through SC-005 by checking that every taxonomy entry, the SQLite case, the three UC1 outliers, and the two user-requested example headings (`Nested Function Calls`, `Vtable Devirtualization`) have explicit evidence or an explicit weakening decision.
+- [x] Report any remaining evidence gaps or over-strong planned claims to the user before any drafting pass edits `docs/thesis.typ`.

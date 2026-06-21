@@ -397,6 +397,57 @@ These are hypotheses to test during collection, not conclusions.
   specialization opportunities, but the spec never promised that every such
   kernel would be highly profitable.
 
+## Drafting Ledger
+
+| Heading | Classification | One-sentence definition | Minimal code snippet candidate | Stronger supporting artifact | Affected kernels |
+|---|---|---|---|---|---|
+| `Flat Batch Kernels with Fixed Layout or Threshold Parameters` | supported | A batch loop runs over many rows/elements while layout values and thresholds stay fixed for one specialization session. | `benchmarks/use-cases/UC1SqlPredicate/UC1CountMatchingRowsLowKernels.cpp` | `benchmarks/reports/260610-corpus-final/speedup_summary.txt`, `benchmarks/reports/260610-breakeven/breakeven_table.txt` | `count_matching_rows`, `multi_predicate`, `column_scan`, `grouped_sum`, `grouped_count`, `grouped_minmax`, `apply_row_delta`, `multi_agg_delta`, `batch_delta` |
+| `Immutable Lookup Tables or Coefficient Arrays` | supported | The specialized state includes a stable table/coefficient pointer that the hot loop reads repeatedly without mutation. | `benchmarks/use-cases/UC7DfaRegex/UC7EmailMatchTradeoffKernels.cpp` | `benchmarks/use-cases/UC2Convolution/UC2Kernels.h`, `benchmarks/use-cases/UC7DfaRegex/UC7MultiPatternMatchTradeoffKernels.cpp` | `email_match`, `url_match`, `multi_pattern_match`, `separable_gaussian`, `edge_detection` |
+| `Nested Function Calls` | supported | CRS can inline helper-call chains when the callee bodies live in the same cloned blob as the specialization target. | `benchmarks/use-cases/UC14Sort/UC14GenericSortLowKernels.cpp` | `benchmarks/reports/260523-173549-analysis/BM_g_uc2_conv_n_edge_detection_a_tradeoff_s_MEDIUM_t_jit_analysis__6_iterations_1_manual_time/BM_g_uc2_conv_n_edge_detection_a_tradeoff_s_MEDIUM_t_jit_analysis__pass_trace.json`, `benchmarks/reports/260523-173549-analysis/BM_g_uc14_sort_n_generic_sort_a_tradeoff_s_MEDIUM_t_jit_analysis__8000000_iterations_1_manual_time/BM_g_uc14_sort_n_generic_sort_a_tradeoff_s_MEDIUM_t_jit_analysis__pass_trace.json` | `generic_sort`, `edge_detection`, other same-TU helper-based kernels |
+| `Function-Pointer Callbacks` | supported | A callback/comparator is fixed at specialization time and becomes a direct, optimizable call target. | `test/smoke/call-specialized-forwarded-funcptr.cpp` | `test/smoke/speconly-forwarded-funcptr.cpp`, `test/smoke/speconly-std-apply-funcptr.cpp`, `benchmarks/use-cases/UC14Sort/UC14GenericSortLowKernels.cpp` | `generic_sort`, forwarded funcptr regression cases |
+| `By-Value Captured Helper Objects / Policy Structs` | supported | A small helper object is reconstructed inside the specialized lambda so its fields become constants without runtime polymorphism. | `benchmarks/use-cases/UC1SqlPredicate/UC1MultiPredicateTradeoffKernels.cpp` | `benchmarks/use-cases/UC2Convolution/UC2EdgeDetectionTradeoffKernels.cpp`, `benchmarks/use-cases/UC14Sort/UC14MultiKeySortTradeoffKernels.cpp` | `multi_predicate`, `edge_detection`, `multi_key_sort`, other tradeoff-tier kernels |
+| `Vtable Devirtualization` | supported | The specialized path captures a concrete dynamic type, enabling replacement of indirect virtual calls with direct targets. | `test/smoke/virtual-methods.cpp` | `runtime/ClangRuntimeSpecializer/DevirtualizeConstantVtableCalls.cpp`, `specs/015-pipeline2-jit-ipsccp/spec.md`, `benchmarks/use-cases/UC8IVM/UC8ApplyRowDeltaAbstractKernels.cpp` | abstract UC kernels such as `count_matching_rows`, `multi_predicate`, `column_scan`, `apply_row_delta` |
+| `Shared Mutable State Object Threaded Through the Call Graph` | unsupported | A single mutable execution context escapes through many helper calls, so the current analysis cannot expose stable field values as specialization constants. | `test/smoke/static-mutability-analysis.ll` | `specs/019-sqlite-specialization-analysis/report.md`, `specs/019-sqlite-specialization-analysis/details.md` | `sqlite3VdbeExec` / SQLite TPC-H |
+| `Interpreter Dispatch Loop over a Dynamic Program Counter` | unsupported | Even with a fixed context pointer, the executed opcode path still depends on a runtime-changing instruction counter, so the loop cannot collapse to one specialized trace. | `specs/019-sqlite-specialization-analysis/details.md` | `specs/019-sqlite-specialization-analysis/report.md`, `docs/thesis.typ` `@rq-limits` source material | `sqlite3VdbeExec` / SQLite TPC-H |
+| `Opaque External Callees / Cross-Blob Boundaries` | unsupported but secondary | The current specializer only reasons within one cloned blob, so work that lives behind another blob or an external callee cannot be inlined through. | `specs/005-tpch-duckdb-benchmarks/research.md` | `specs/004-ir-dump-preprocessing/research.md` | wrapper/body split designs such as the rejected thin DuckDB wrapper |
+
+## Coverage Check
+
+### FR Coverage
+
+| Requirement | Coverage status | Where it is satisfied |
+|---|---|---|
+| FR-001 | covered | The drafting ledger is organized as architectural headings rather than anecdotal kernels. |
+| FR-002 | covered | Each heading in the drafting ledger has a one-sentence definition ready to become the opening sentence of the subsection. |
+| FR-003 | covered | Every heading has an explicit `supported` / `unsupported` classification. |
+| FR-004 | covered | All supported headings list concrete local benchmark/test/spec artifacts. |
+| FR-005 | covered | All unsupported headings list concrete local failure-analysis/design artifacts. |
+| FR-006 / FR-006a | covered | Two SQLite/TPC-H-specific unsupported headings are present, and the canonical-section decision routes `@rq-limits` back to this taxonomy. |
+| FR-007 | covered | `count_matching_rows`, `multi_predicate`, and `column_scan` all have explicit primary and secondary classifications. |
+| FR-008 | covered | The outlier writeups explicitly describe them as supported-but-low-payoff rather than unsupported. |
+| FR-009 | covered | The drafting ledger records exact source paths for code, reports, and thesis cross-reference material. |
+| FR-010 | covered | Weakened/secondary claims are explicitly marked, especially for `Opaque External Callees / Cross-Blob Boundaries`. |
+
+### SC Coverage
+
+| Success criterion | Coverage status | Where it is satisfied |
+|---|---|---|
+| SC-001 | covered | The drafting ledger is a finite heading list with classifications and evidence paths. |
+| SC-002 / SC-002a | covered | SQLite/TPC-H has dedicated unsupported entries and the canonical-section migration decision is explicit. |
+| SC-003 | covered | The three UC1 outliers are mapped to taxonomy entries with explicit rationale. |
+| SC-004 | covered | `Nested Function Calls` and `Vtable Devirtualization` both have concrete evidence paths. |
+| SC-005 | covered | The ledger is now specific enough to draft directly without reopening scope questions. |
+
+## Remaining Draft-Time Cautions
+
+- Keep `Opaque External Callees / Cross-Blob Boundaries` clearly secondary.
+  It is true, but the evidence is architectural-design evidence rather than a
+  thesis-central measured failure case.
+- Do not phrase the UC1 outliers as unsupported architectures.
+  The evidence only supports “supported but marginal/economic failure.”
+- When drafting, prefer one or two representative code snippets total.
+  The ledger contains many paths; the subsection itself should stay compact.
+
 ## Decision Rules for the Later Draft
 
 - Prefer headings that correspond to mechanisms the implementation or tests name

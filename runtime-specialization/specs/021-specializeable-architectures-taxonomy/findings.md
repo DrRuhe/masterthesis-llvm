@@ -188,3 +188,48 @@
   - unsupported structural failure cases: SQLite/TPC-H
   - supported but low-payoff cases: `count_matching_rows`, `multi_predicate`,
     `column_scan`
+
+## Task 22 — For each supported taxonomy entry, record one minimal code snippet candidate path and one stronger supporting artifact path in `details.md`.
+
+- `details.md` now contains a drafting ledger with both a minimal code snippet
+  path and a stronger artifact path for each supported heading.
+- The strongest supported snippet candidates are:
+  - `UC1CountMatchingRowsLowKernels.cpp` for flat batch kernels
+  - `UC7EmailMatchTradeoffKernels.cpp` for immutable tables
+  - `call-specialized-forwarded-funcptr.cpp` for callback specialization
+  - `virtual-methods.cpp` for devirtualization
+
+## Task 23 — For each unsupported taxonomy entry, record one root-cause artifact path and one thesis-cross-reference path in `details.md`.
+
+- The unsupported headings now each have:
+  - a root-cause artifact path in spec 019 or spec 005/004
+  - a thesis-facing cross-reference path or source-material pointer
+- SQLite/TPC-H is now ready to be migrated into the taxonomy section without
+  losing the later `@rq-limits` consequence discussion.
+
+## Task 24 — Draft the per-entry evidence ledger in `details.md` with: heading, classification, one-sentence definition, primary evidence, secondary evidence, and affected kernels.
+
+- The drafting ledger is now present in `details.md` and uses exactly that
+  structure, with the addition of a minimal snippet candidate column.
+- This should be enough for a direct thesis drafting pass.
+
+## Task 25 — Verify FR-001 through FR-010 are covered by at least one concrete collection task in this plan.
+
+- All FRs are now explicitly checked in the `Coverage Check` section of
+  `details.md`.
+- No FR remains without a concrete artifact or decision path.
+
+## Task 26 — Verify SC-001 through SC-005 by checking that every taxonomy entry, the SQLite case, the three UC1 outliers, and the two user-requested example headings (`Nested Function Calls`, `Vtable Devirtualization`) have explicit evidence or an explicit weakening decision.
+
+- All SCs are now explicitly checked in `details.md`.
+- The user-requested headings `Nested Function Calls` and
+  `Vtable Devirtualization` both have concrete evidence.
+- The one weakened claim is the secondary unsupported cross-blob heading, and
+  that weakening is called out directly.
+
+## Task 27 — Report any remaining evidence gaps or over-strong planned claims to the user before any drafting pass edits `docs/thesis.typ`.
+
+- No critical evidence gaps remain for the main subsection.
+- The main draft-time caution is to keep `Opaque External Callees / Cross-Blob Boundaries`
+  secondary and to avoid calling the UC1 outliers unsupported.
+- With those cautions, the materials are ready for a thesis-writing pass.
