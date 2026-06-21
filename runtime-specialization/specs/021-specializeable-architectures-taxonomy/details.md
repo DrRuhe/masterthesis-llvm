@@ -307,6 +307,96 @@ These are hypotheses to test during collection, not conclusions.
 | `multi_predicate` | appears to be another flat batch/layout-constant kernel, but with more specialized constants and a richer predicate condition | Need to inspect tradeoff/abstract variants before deciding whether it belongs under a helper-object or vtable heading instead |
 | `column_scan` | low-level variant appears to be a flat batch/layout-constant kernel plus output-buffer writes; abstract variant may additionally exercise vtable-based collector patterns | One kernel family may touch different headings at different abstraction tiers, so the later thesis draft may need to classify the family by its dominant pattern and mention secondary ones |
 
+## Outlier Classification Results
+
+| Kernel family | Primary taxonomy entry | Secondary taxonomy entry | What the inspected variants actually show | Thesis-safe claim |
+|---|---|---|---|---|
+| `count_matching_rows` | `Flat Batch Kernels with Fixed Layout or Threshold Parameters` | `By-Value Captured Helper Objects` (tradeoff), `Vtable Devirtualization` (abstract) | Low tier is the minimal fixed-threshold scan; tradeoff wraps the same loop in `RowScanner`; abstract adds `Predicate`/`ThresholdPredicate` virtual dispatch. | This is a technically supported architecture with only a small optimizer-visible simplification opportunity. Do **not** call it unsupported. |
+| `multi_predicate` | `Flat Batch Kernels with Fixed Layout or Threshold Parameters` | `By-Value Captured Helper Objects` (tradeoff), `Vtable Devirtualization` (abstract) | Low tier is still one batch loop, just with two field loads and two thresholds; tradeoff uses `BinaryPredicateScanner`; abstract uses `AndPredicate` over two `ThresholdPredicate` objects. | This is another supported architecture whose poor payoff comes from limited remaining work removal, not a missing specialization mechanism. |
+| `column_scan` | `Flat Batch Kernels with Fixed Layout or Threshold Parameters` | `By-Value Captured Helper Objects` (tradeoff), `Vtable Devirtualization` (abstract result collector) | All three tiers still specialize row layout and threshold constants, but the kernel must also materialize matching row indices into an output buffer. | Treat this as a supported batch-scan architecture with an output-materialization-heavy hot path. No separate unsupported “collector” heading is needed. |
+
+### `count_matching_rows`
+
+- **Low tier**
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1CountMatchingRowsLowKernels.cpp`
+    is the purest flat-batch example in the corpus: one threshold, one
+    `col_offset`, one `row_stride`, one counted loop.
+- **Tradeoff / abstract tiers**
+  - `UC1CountMatchingRowsTradeoffKernels.cpp` keeps the same loop inside
+    `RowScanner`.
+  - `UC1CountMatchingRowsAbstractKernels.cpp` adds `Predicate` /
+    `ThresholdPredicate`, so the abstract version is also evidence for
+    devirtualization.
+- **Observed consequence**
+  - `benchmarks/reports/260610-breakeven/breakeven_table.txt` shows
+    `exec_speedup=1.15` but `jit_ms=2358.6`, producing the extreme break-even
+    outlier. This is compatible with “supported but economically poor” and not
+    with “unsupported architecture.”
+  - `benchmarks/reports/260531-2115-Review/methodology.md` separately records
+    the historical startup/warmup artifact around this kernel; that report
+    should be used carefully as context, not as proof that the architecture is
+    unsupported.
+
+### `multi_predicate`
+
+- **Low tier**
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1MultiPredicateLowKernels.cpp`
+    confirms that this family is still just a fixed-layout batch scan with two
+    thresholds and two field offsets.
+- **Tradeoff / abstract tiers**
+  - `UC1MultiPredicateTradeoffKernels.cpp` uses `BinaryPredicateScanner`.
+  - `UC1MultiPredicateAbstractKernels.cpp` uses `AndPredicate` plus two
+    `ThresholdPredicate` objects, making it a clean secondary example for both
+    helper-object capture and devirtualization.
+- **Observed consequence**
+  - Final-corpus results keep this kernel near parity rather than showing a
+    structural failure:
+    `benchmarks/reports/260610-corpus-final/speedup_summary.txt` gives
+    `0.995x` under `aggressive`, `1.021x` under `p0_o3_optimal`, and `1.004x`
+    under `uc_workload_optimal`.
+  - `benchmarks/reports/260610-corpus-final/measurement_noise.txt` shows that
+    the kernel is also one of the noisier marginal cases, reinforcing that the
+    thesis should describe it as a weak-benefit supported case, not as an
+    unsupported mechanism.
+
+### `column_scan`
+
+- **Low tier**
+  - `benchmarks/use-cases/UC1SqlPredicate/UC1ColumnScanLowKernels.cpp`
+    shows the same fixed-layout scan pattern, but each positive predicate match
+    also writes a row index to `out`.
+- **Tradeoff / abstract tiers**
+  - `UC1ColumnScanTradeoffKernels.cpp` wraps the same path in
+    `ProjectingScanner`.
+  - `UC1ColumnScanAbstractKernels.cpp` introduces `ResultCollector` /
+    `BufferCollector`; this is the best evidence for treating “collector-style
+    output abstraction” as a secondary effect inside the devirtualization
+    heading rather than as a new standalone taxonomy entry.
+- **Observed consequence**
+  - `benchmarks/reports/260610-breakeven/breakeven_table.txt` reports only
+    `1.08x` execution speedup and a 16-call break-even point.
+  - The weak payoff is consistent with a supported scan whose hot path still
+    performs substantial output materialization work. That is a limited-payoff
+    supported architecture, not an unsupported one.
+
+## Cross-Check Against Existing Thesis/Review Material
+
+- `docs/thesis.typ` already describes the three UC1 variants as specializing
+  fixed literals and row-layout metadata; this is consistent with the primary
+  `Flat Batch Kernels...` classification.
+- `docs/thesis.typ` also already sends readers from the outlier discussion to
+  `@specializeable-architectures`, so the taxonomy subsection should refine that
+  pointer rather than invent a contradictory explanation.
+- `benchmarks/reports/260531-2115-Review/methodology.md` is useful for two
+  cautions:
+  - historical `count_matching_rows` JIT-overhead artifacts should not be
+    confused with unsupportedness
+  - `column_scan` can be weak partly because remaining output work is large
+- `specs/008-use-case-benchmarks/spec.md` remains consistent with the outlier
+  classification: these kernels were designed as batch kernels with technical
+  specialization opportunities, but the spec never promised that every such
+  kernel would be highly profitable.
+
 ## Decision Rules for the Later Draft
 
 - Prefer headings that correspond to mechanisms the implementation or tests name

@@ -132,3 +132,59 @@
 - No broader unsupported heading for “opaque external callees” was kept beyond
   the cross-blob formulation because the local evidence is architectural rather
   than benchmark-facing.
+
+## Task 16 — Inspect the UC1 outlier kernels `count_matching_rows`, `multi_predicate`, and `column_scan` in the benchmark sources and note which architectural pattern each actually exhibits.
+
+- All three outlier families are still instances of the supported
+  `Flat Batch Kernels with Fixed Layout or Threshold Parameters` architecture.
+- Their tradeoff tiers also instantiate `By-Value Captured Helper Objects`.
+- Their abstract tiers also instantiate `Vtable Devirtualization`.
+- The key point is that none of the three source families looks like SQLite’s
+  unsupported shared-state interpreter pattern.
+
+## Task 17 — Analyze `count_matching_rows` deliberately across low/tradeoff/abstract variants: identify which supported or unsupported taxonomy pattern it instantiates, which specialization mechanism is actually available to CRS, and whether the thesis should present it as a simple-supported-pattern case rather than an unsupported one.
+
+- `count_matching_rows` is the simplest supported batch-scan case in the corpus.
+- CRS can specialize exactly the mechanisms the source exposes: `row_stride`,
+  `col_offset`, and `threshold`; the abstract tier additionally exposes a
+  devirtualization opportunity.
+- The thesis should present it as a simple supported pattern with limited
+  payoff, not as an unsupported pattern.
+
+## Task 18 — Analyze `multi_predicate` deliberately across low/tradeoff/abstract variants: identify whether it is best explained by flat layout constants, helper-object capture, abstract predicate devirtualization, or another taxonomy entry, and record the strongest evidence path.
+
+- Primary classification: `Flat Batch Kernels with Fixed Layout or Threshold Parameters`.
+- Secondary classification: `By-Value Captured Helper Objects` in tradeoff tier,
+  `Vtable Devirtualization` in abstract tier.
+- Strongest evidence path: the UC1 source files themselves plus the final-corpus
+  speed tables showing marginal-but-real improvement under some configs rather
+  than a structural specialization failure.
+
+## Task 19 — Analyze `column_scan` deliberately across low/tradeoff/abstract variants: identify how the output-buffer write path affects its taxonomy classification, whether any collector/result-abstraction pattern belongs in the taxonomy, and which entry should own the kernel family in the thesis discussion.
+
+- `column_scan` should stay under the primary flat-batch heading.
+- The output-buffer write path explains why less work disappears after
+  specialization, but it does not imply an unsupported architecture.
+- The abstract collector pattern is real, but it belongs as a secondary example
+  under `Vtable Devirtualization`, not as a new standalone heading.
+
+## Task 20 — Cross-check the outlier-kernel classifications against the reflection/report evidence in `benchmarks/reports/260531-2115-Review/`, `specs/008-use-case-benchmarks/spec.md`, and any final thesis text that already references them.
+
+- The current thesis text already describes these kernels in terms of fixed
+  predicates and row-layout metadata, which matches the final classification.
+- The review report adds cautionary context about historical `count_matching_rows`
+  JIT-overhead artifacts and about `column_scan` retaining substantial output
+  work, but it does not provide evidence that either kernel family is
+  architecturally unsupported.
+- `specs/008-use-case-benchmarks/spec.md` is also aligned: it promises technical
+  specialization opportunities, not guaranteed large speedups for every kernel.
+
+## Task 21 — Decide whether each outlier kernel can be defended as an instance of an unsupported pattern; if not, weaken the intended claim in `details.md` so the later thesis draft does not overstate the evidence.
+
+- None of the three UC1 outliers can be defended as an unsupported architecture.
+- `details.md` now treats all three as supported architectures with weak or
+  marginal economic payoff.
+- The later thesis draft should explicitly separate:
+  - unsupported structural failure cases: SQLite/TPC-H
+  - supported but low-payoff cases: `count_matching_rows`, `multi_predicate`,
+    `column_scan`
