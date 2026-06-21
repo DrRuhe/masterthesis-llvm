@@ -26,7 +26,7 @@ from report_utils import open_db, resolve_db_path, save_csv, save_plot
 CONFIGS = ("default", "per_uc_best")
 CONFIG_LABELS = {
     "default": "Default pipeline",
-    "per_uc_best": "max(U/S) pipeline",
+    "per_uc_best": "max($U/S$) pipeline",
 }
 ABSTRACTION_ORDER = ("low", "abstract", "tradeoff")
 ABSTRACTION_COLORS = {
@@ -312,9 +312,9 @@ def _plot_combined(df: pd.DataFrame, output_path: Path) -> None:
         _plot_points(ax, sub)
         ax.set_title(CONFIG_LABELS[config_name])
         ax.xaxis.set_major_formatter(FuncFormatter(_format_decimal_log_tick))
-        ax.set_xlabel("problem size measured by U/U_p")
+        ax.set_xlabel(r"problem size measured by $U/U_p$")
 
-    axes[0].set_ylabel("first-call speedup (U/( J+S ))")
+    axes[0].set_ylabel("first-call speedup ($U/ (J+S)$))")
     _add_legends(axes[0])
     save_plot(fig, output_path, dpi=220)
     plt.close(fig)
