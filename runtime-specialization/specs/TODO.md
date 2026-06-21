@@ -100,6 +100,15 @@ This document is the authoritative reference for high-level tasks required to co
 - **Prerequisite**: None if the thesis accepts the partial line; otherwise locate or regenerate the missing point.
 - **Effort**: ~15-60 minutes depending on whether the missing point can be recovered from existing artifacts.
 
+### RQ1-007: Build thesis taxonomy for "Specializeable Architectures"
+- **Status**: 🟢 Unblocked
+- **Data Needed**: Collect repository-backed evidence for supported and unsupported architectural patterns, then map the UC1 outlier kernels into that taxonomy without over-claiming unsupportedness.
+- **Why**: `docs/thesis.typ` line 1240 currently contains only a TODO stub, but the intended subsection should answer which architectural patterns CRS technically supports and which it does not.
+- **Outcome**: A drafting-ready evidence ledger and subsection plan covering supported patterns such as helper-call inlining / callback specialization / vtable devirtualization, plus unsupported patterns such as SQLite-style shared mutable state threaded through an interpreter dispatch loop.
+- **Reference**: `specs/021-specializeable-architectures-taxonomy/`
+- **Prerequisite**: None — most source material already exists in local specs, smoke tests, and benchmark reports.
+- **Effort**: ~1-2 hours (evidence collection + claim-strength review)
+
 ---
 
 ## Evaluation: Research Question 2 (RQ2) — Binary-Size Overhead
