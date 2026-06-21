@@ -1,0 +1,27 @@
+- [x] Confirm the target thesis context by rereading `docs/thesis.typ` around `@specializeable-architectures`, `@rq-limits`, and the existing RQ1 outlier references so the taxonomy does not duplicate later sections.
+- [x] Decide how the current SQLite/TPC-H explanation at `@rq-limits` will be migrated, condensed, or cross-referenced so `Specializeable Architectures` becomes the canonical support/limitations reference.
+- [x] Confirm `specs/TODO.md` records this taxonomy task and links back to spec 021 before any thesis drafting starts.
+- [ ] Build the candidate taxonomy heading list in `details.md` and mark each entry as `supported`, `unsupported`, or `open` based only on inspected local evidence.
+- [ ] Verify that each proposed heading has at least one repository artifact that can serve as evidence; remove or weaken any heading whose evidence is not local and concrete.
+- [ ] Brainstorm additional architectural-pattern headings from benchmark families, smoke tests, and pipeline specs, then record them in `details.md` as `supported`, `unsupported`, or `open`.
+- [ ] Collect support evidence for a flat-batch kernel pattern where scalar thresholds, row-layout metadata, or fixed bucket/layout parameters become JIT constants inside one large loop body.
+- [ ] Collect support evidence for immutable lookup-table / coefficient-array patterns from convolution or DFA benchmarks where a fixed table pointer or coefficient set is captured as specialization state.
+- [ ] Collect support evidence for a nested-helper/inlining style pattern from specs, smoke tests, benchmark kernels, or pass traces.
+- [ ] Collect support evidence for a constant function-pointer or callback-style pattern from `generic_sort`/forwarded-function-pointer artifacts.
+- [ ] Collect support evidence for a vtable-devirtualization pattern from smoke tests, UC abstract kernels, and pipeline specs.
+- [ ] Collect support evidence for by-value captured helper objects or policy structs whose fields become JIT constants without requiring virtual dispatch.
+- [ ] Collect unsupported-pattern evidence for the SQLite/TPC-H shared mutable state object threaded through an interpreter-style dispatch loop.
+- [ ] Collect unsupported-pattern evidence for the dynamic opcode-stream / interpreter-dispatch aspect of `sqlite3VdbeExec` and decide whether it should be a separate taxonomy entry or folded into the shared-state entry.
+- [ ] Consider open/brainstormed unsupported-pattern candidates such as opaque external callees, cross-blob boundaries, or dynamic state hidden behind escaping pointers; keep only those with concrete local evidence.
+- [ ] Inspect the UC1 outlier kernels `count_matching_rows`, `multi_predicate`, and `column_scan` in the benchmark sources and note which architectural pattern each actually exhibits.
+- [ ] Analyze `count_matching_rows` deliberately across low/tradeoff/abstract variants: identify which supported or unsupported taxonomy pattern it instantiates, which specialization mechanism is actually available to CRS, and whether the thesis should present it as a simple-supported-pattern case rather than an unsupported one.
+- [ ] Analyze `multi_predicate` deliberately across low/tradeoff/abstract variants: identify whether it is best explained by flat layout constants, helper-object capture, abstract predicate devirtualization, or another taxonomy entry, and record the strongest evidence path.
+- [ ] Analyze `column_scan` deliberately across low/tradeoff/abstract variants: identify how the output-buffer write path affects its taxonomy classification, whether any collector/result-abstraction pattern belongs in the taxonomy, and which entry should own the kernel family in the thesis discussion.
+- [ ] Cross-check the outlier-kernel classifications against the reflection/report evidence in `benchmarks/reports/260531-2115-Review/`, `specs/008-use-case-benchmarks/spec.md`, and any final thesis text that already references them.
+- [ ] Decide whether each outlier kernel can be defended as an instance of an unsupported pattern; if not, weaken the intended claim in `details.md` so the later thesis draft does not overstate the evidence.
+- [ ] For each supported taxonomy entry, record one minimal code snippet candidate path and one stronger supporting artifact path in `details.md`.
+- [ ] For each unsupported taxonomy entry, record one root-cause artifact path and one thesis-cross-reference path in `details.md`.
+- [ ] Draft the per-entry evidence ledger in `details.md` with: heading, classification, one-sentence definition, primary evidence, secondary evidence, and affected kernels.
+- [ ] Verify FR-001 through FR-010 are covered by at least one concrete collection task in this plan.
+- [ ] Verify SC-001 through SC-005 by checking that every taxonomy entry, the SQLite case, the three UC1 outliers, and the two user-requested example headings (`Nested Function Calls`, `Vtable Devirtualization`) have explicit evidence or an explicit weakening decision.
+- [ ] Report any remaining evidence gaps or over-strong planned claims to the user before any drafting pass edits `docs/thesis.typ`.
