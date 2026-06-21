@@ -1,9 +1,9 @@
 - [x] Confirm the target thesis context by rereading `docs/thesis.typ` around `@specializeable-architectures`, `@rq-limits`, and the existing RQ1 outlier references so the taxonomy does not duplicate later sections.
 - [x] Decide how the current SQLite/TPC-H explanation at `@rq-limits` will be migrated, condensed, or cross-referenced so `Specializeable Architectures` becomes the canonical support/limitations reference.
 - [x] Confirm `specs/TODO.md` records this taxonomy task and links back to spec 021 before any thesis drafting starts.
-- [ ] Build the candidate taxonomy heading list in `details.md` and mark each entry as `supported`, `unsupported`, or `open` based only on inspected local evidence.
-- [ ] Verify that each proposed heading has at least one repository artifact that can serve as evidence; remove or weaken any heading whose evidence is not local and concrete.
-- [ ] Brainstorm additional architectural-pattern headings from benchmark families, smoke tests, and pipeline specs, then record them in `details.md` as `supported`, `unsupported`, or `open`.
+- [x] Build the candidate taxonomy heading list in `details.md` and mark each entry as `supported`, `unsupported`, or `open` based only on inspected local evidence.
+- [x] Verify that each proposed heading has at least one repository artifact that can serve as evidence; remove or weaken any heading whose evidence is not local and concrete.
+- [x] Brainstorm additional architectural-pattern headings from benchmark families, smoke tests, and pipeline specs, then record them in `details.md` as `supported`, `unsupported`, or `open`.
 - [ ] Collect support evidence for a flat-batch kernel pattern where scalar thresholds, row-layout metadata, or fixed bucket/layout parameters become JIT constants inside one large loop body.
 - [ ] Collect support evidence for immutable lookup-table / coefficient-array patterns from convolution or DFA benchmarks where a fixed table pointer or coefficient set is captured as specialization state.
 - [ ] Collect support evidence for a nested-helper/inlining style pattern from specs, smoke tests, benchmark kernels, or pass traces.
