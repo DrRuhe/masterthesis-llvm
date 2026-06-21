@@ -83,6 +83,23 @@ This document is the authoritative reference for high-level tasks required to co
 - **Prerequisite**: None — all data already collected.
 - **Effort**: ~1 hour (writeup + verification against reflection documents).
 
+### RQ1-005: Complete the thesis UC first-call quadrants rerun for `per_uc_best`
+- **Status**: ✅ Complete (2026-06-21)
+- **Data Collected**: Study `corpus_uc_first_call_quadrants_20260620_160209` recorded both configs (`default`, `per_uc_best`) across all intended 18 kernels, all 3 abstraction levels, and all 4 sizes under best-practice controls. Coverage is complete at 6470 phase rows / 1294 distinct tuples; the missing two tuples from the old 1296 expectation are the intentionally omitted `count_matching_rows` `abstract` `EXTRALARGE` `specialized_exec` points (one per config).
+- **Why**: This unblocks regeneration of the thesis-grade RQ1 table, boxplot, and 4-quadrant figure from a single completed study without mixing partial shard studies.
+- **Outcome**: `benchmarks/reporting/plot_rq1_first_call_quadrants.py` and the related RQ1 export scripts can now be rerun directly against `corpus_uc_first_call_quadrants_20260620_160209`.
+- **Reference**: `benchmarks/run_thesis_uc_first_call_quadrants.sh`; study `corpus_uc_first_call_quadrants_20260620_160209`
+- **Supersedes**: Partial study `corpus_uc_first_call_quadrants_20260619_153349`; report dir `benchmarks/reports/20260619_153349-thesis-uc-first-call-quadrants/`
+
+### RQ1-006: Resolve incomplete source data for the thesis size-scaling figure
+- **Status**: 🟡 Partially Blocked
+- **Data Needed**: Either the missing `box_filter` `EXTRALARGE` point for the thesis source run `260517-15-04-size_scaling`, or an explicit thesis/prose decision that the figure intentionally shows only the three measured `box_filter` sizes.
+- **Why**: `specs/PLAN.md` points `rq1_size_scaling.png` at `260517-15-04-size_scaling` with kernels `box_filter`, `generic_sort`, and `multi_pattern_match`, but the stored CSV currently has only 3 size rows for `box_filter` while the other two kernels have 4.
+- **Outcome**: The size-scaling figure has unambiguous provenance and complete/intentional coverage for each displayed kernel.
+- **Reference**: `benchmarks/reporting/plot_thesis_size_scaling.py`; `benchmarks/reports/260517-15-04-size_scaling/data.csv`; `specs/PLAN.md`
+- **Prerequisite**: None if the thesis accepts the partial line; otherwise locate or regenerate the missing point.
+- **Effort**: ~15-60 minutes depending on whether the missing point can be recovered from existing artifacts.
+
 ---
 
 ## Evaluation: Research Question 2 (RQ2) — Binary-Size Overhead

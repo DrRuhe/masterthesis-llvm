@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from pathlib import Path
 
@@ -16,6 +17,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import FuncFormatter, LogLocator
 import pandas as pd
 
 from report_utils import open_db, resolve_db_path, save_csv, save_plot
@@ -39,6 +41,7 @@ SIZE_MARKERS = {
     "LARGE": "^",
     "EXTRALARGE": "D",
 }
+SIZE_RANK = {name: idx for idx, name in enumerate(SIZE_ORDER)}
 
 
 def _parse_args() -> argparse.Namespace:
@@ -203,6 +206,25 @@ def _plot_points(ax, sub: pd.DataFrame) -> pd.DataFrame:
         raise RuntimeError("No plottable rows found.")
 
     for abstraction in ABSTRACTION_ORDER:
+        series_rows = (
+            defined[defined["abstraction"] == abstraction]
+            .sort_values(["group", "kernel", "abstraction", "size"], key=lambda col: col.map(SIZE_RANK) if col.name == "size" else col)
+        )
+        for (_, kernel_rows) in series_rows.groupby(
+            ["group", "kernel", "abstraction"], sort=False, observed=False
+        ):
+            if len(kernel_rows) < 2:
+                continue
+            ax.plot(
+                kernel_rows["u_over_up"],
+                kernel_rows["first_call_speedup"],
+                color=ABSTRACTION_COLORS[abstraction],
+                linewidth=0.8,
+                alpha=0.22,
+                zorder=2,
+            )
+
+    for abstraction in ABSTRACTION_ORDER:
         for size in SIZE_ORDER:
             mask = (defined["abstraction"] == abstraction) & (defined["size"] == size)
             points = defined[mask]
@@ -220,23 +242,26 @@ def _plot_points(ax, sub: pd.DataFrame) -> pd.DataFrame:
                 zorder=3,
             )
 
-    disagreements = defined[defined["quadrant"].isin(["top_left", "bottom_right"])]
-    for _, row in disagreements.iterrows():
-        ax.annotate(
-            row["label"],
-            (row["u_over_up"], row["first_call_speedup"]),
-            xytext=(5, 4),
-            textcoords="offset points",
-            fontsize=8,
-            color="#222222",
-        )
-
     ax.axvline(1.0, color="black", linestyle="--", linewidth=1.0)
     ax.axhline(1.0, color="black", linestyle="--", linewidth=1.0)
     ax.set_xscale("log")
+    ax.xaxis.set_major_locator(LogLocator(base=10.0))
     ax.grid(True, which="both", axis="both", color="#dddddd", linewidth=0.8)
     ax.set_axisbelow(True)
     return defined
+
+
+def _format_decimal_log_tick(value: float, _: float) -> str:
+    if value <= 0:
+        return ""
+    exponent = round(math.log10(value))
+    if not math.isclose(value, 10 ** exponent, rel_tol=1e-9, abs_tol=0.0):
+        return ""
+    if -2 <= exponent <= 3:
+        if exponent < 0:
+            return f"{value:.{-exponent}f}"
+        return str(int(value))
+    return rf"$10^{{{exponent}}}$"
 
 
 def _add_legends(ax) -> None:
@@ -286,9 +311,10 @@ def _plot_combined(df: pd.DataFrame, output_path: Path) -> None:
         sub = df[df["config_name"] == config_name].copy()
         _plot_points(ax, sub)
         ax.set_title(CONFIG_LABELS[config_name])
-        ax.set_xlabel(r"$U / U_p$")
+        ax.xaxis.set_major_formatter(FuncFormatter(_format_decimal_log_tick))
+        ax.set_xlabel("problem size measured by U/U_p")
 
-    axes[0].set_ylabel(r"$U / (J + S)$")
+    axes[0].set_ylabel("first-call speedup (U/( J+S ))")
     _add_legends(axes[0])
     save_plot(fig, output_path, dpi=220)
     plt.close(fig)

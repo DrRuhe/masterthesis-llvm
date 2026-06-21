@@ -40,7 +40,9 @@ EXPECTED_CONFIGS=2
 EXPECTED_KERNELS=18
 EXPECTED_ABSTRACTIONS=3
 EXPECTED_SIZES=4
-EXPECTED_PHASE_TUPLES=1296
+# `count_matching_rows` at abstract/EXTRALARGE intentionally has no specialized_exec
+# benchmark, so the complete study covers 1294 tuples rather than 1296.
+EXPECTED_PHASE_TUPLES=1294
 
 if [[ ! -f "$BEST_UC_PIPELINES_JSON" ]]; then
     echo "Error: missing UC pipeline config JSON: $BEST_UC_PIPELINES_JSON" >&2
