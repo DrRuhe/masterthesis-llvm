@@ -253,17 +253,19 @@ def _annotate_line_labels(ax, labels: list[dict[str, object]]) -> None:
             y_label = _data_y_from_axes_fraction(ax, label_pos)
             color = item["color"]
             label = str(item["label"])
+            font_size = int(item.get("font_size", 9))
+            text_color = item.get("text_color", "black")
 
             if side == "left":
-                ax.plot([x_end, x_end - 0.12], [y_end, y_label], color=color, linewidth=0.8, alpha=0.8)
+                ax.plot([x_end, x_end + 0.12], [y_end, y_label], color=color, linewidth=0.8, alpha=0.8)
                 ax.text(
-                    x_end - 0.16,
+                    x_end + 0.16,
                     y_label,
                     label,
-                    color=color,
-                    fontsize=7,
+                    color=text_color,
+                    fontsize=font_size,
                     va="center",
-                    ha="right",
+                    ha="left",
                 )
                 continue
 
@@ -272,8 +274,8 @@ def _annotate_line_labels(ax, labels: list[dict[str, object]]) -> None:
                 x_end + 0.16,
                 y_label,
                 label,
-                color=color,
-                fontsize=7,
+                color=text_color,
+                fontsize=font_size,
                 va="center",
                 ha="left",
             )
@@ -302,6 +304,7 @@ def _plot_metric(
     *,
     log_scale: bool,
     labeled: bool,
+    single_label_kernel: str | None = None,
 ) -> None:
     label_points: list[dict[str, object]] = []
     has_left_labels = False
@@ -332,6 +335,23 @@ def _plot_metric(
                     "label": kernel,
                     "color": style["color"],
                     "side": anchor["side"],
+                    "font_size": 9,
+                    "text_color": "black",
+                }
+            )
+        elif single_label_kernel and kernel == single_label_kernel:
+            anchor = _label_anchor(kdf, metric)
+            has_left_labels = has_left_labels or anchor["side"] == "left"
+            has_right_labels = has_right_labels or anchor["side"] == "right"
+            label_points.append(
+                {
+                    "x": anchor["x"],
+                    "y": anchor["y"],
+                    "label": kernel,
+                    "color": style["color"],
+                    "side": anchor["side"],
+                    "font_size": 10,
+                    "text_color": "black",
                 }
             )
 
@@ -354,10 +374,10 @@ def _plot_metric(
     ax.grid(axis="y", which="major", color="0.85", linewidth=0.8)
     ax.grid(axis="x", which="major", color="0.93", linewidth=0.5)
 
-    left_margin = 0.35 if labeled and has_left_labels else 0.85
-    right_margin = len(SIZE_ORDER) + (0.9 if labeled and has_right_labels else 0.15)
+    left_margin = 0.85
+    right_margin = len(SIZE_ORDER) + (0.9 if (labeled or single_label_kernel) and has_right_labels else 0.15)
     ax.set_xlim(left_margin, right_margin)
-    if labeled:
+    if labeled or single_label_kernel:
         _annotate_line_labels(ax, label_points)
 
 
@@ -370,10 +390,20 @@ def _save_metric_plot(
     *,
     log_scale: bool,
     labeled: bool,
+    single_label_kernel: str | None = None,
 ) -> None:
     width = 11.5 if labeled else 8.6
     fig, ax = plt.subplots(figsize=(width, 4.8))
-    _plot_metric(ax, df, styles, metric, ylabel, log_scale=log_scale, labeled=labeled)
+    _plot_metric(
+        ax,
+        df,
+        styles,
+        metric,
+        ylabel,
+        log_scale=log_scale,
+        labeled=labeled,
+        single_label_kernel=single_label_kernel,
+    )
     fig.tight_layout()
     save_plot(fig, output)
     plt.close(fig)
@@ -456,6 +486,7 @@ def main() -> None:
         outputs["jit"],
         log_scale=True,
         labeled=False,
+        single_label_kernel="count_matching_rows",
     )
     _save_metric_plot(
         df,

@@ -1,0 +1,234 @@
+suite,group,kernel,abstraction,size_label,source_study,source_config,median_jit_overhead_ms,jit_module_instrs,jit_blob_kb
+PolyBench,polybench,2mm,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.1252419999998,452587.0,61178.0
+PolyBench,polybench,2mm,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,184.85554999999997,452587.0,61178.0
+PolyBench,polybench,2mm,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.27523500000066,452587.0,61178.0
+PolyBench,polybench,2mm,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.095958,452587.0,61178.0
+PolyBench,polybench,2mm,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.8171080000002,452587.0,61178.0
+PolyBench,polybench,3mm,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.60530499999993,452587.0,61178.0
+PolyBench,polybench,3mm,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.59325200000097,452587.0,61178.0
+PolyBench,polybench,3mm,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.41883000000036,452587.0,61178.0
+PolyBench,polybench,3mm,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,197.43049800000102,452587.0,61178.0
+PolyBench,polybench,3mm,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.18557700000105,452587.0,61178.0
+PolyBench,polybench,adi,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,205.76986300000044,452587.0,61178.0
+PolyBench,polybench,adi,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,205.8315780000015,452587.0,61178.0
+PolyBench,polybench,adi,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,206.42976700000304,452587.0,61178.0
+PolyBench,polybench,adi,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,210.59441700001003,452587.0,61178.0
+PolyBench,polybench,adi,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,206.2036870000128,452587.0,61178.0
+PolyBench,polybench,atax,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.6138849999981,452587.0,61178.0
+PolyBench,polybench,atax,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.71410600000073,452587.0,61178.0
+PolyBench,polybench,atax,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.58958100000032,452587.0,61178.0
+PolyBench,polybench,atax,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,242.4783159999997,452587.0,61178.0
+PolyBench,polybench,atax,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.6173400000003,452587.0,61178.0
+PolyBench,polybench,bicg,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,178.87604699999926,452587.0,61178.0
+PolyBench,polybench,bicg,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,180.23135099999976,452587.0,61178.0
+PolyBench,polybench,bicg,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,179.53644900000043,452587.0,61178.0
+PolyBench,polybench,bicg,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,178.67328999999899,452587.0,61178.0
+PolyBench,polybench,bicg,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,178.99895000000043,452587.0,61178.0
+PolyBench,polybench,cholesky,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.91311199999916,452587.0,61178.0
+PolyBench,polybench,cholesky,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.98898700000177,452587.0,61178.0
+PolyBench,polybench,cholesky,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.4998520000043,452587.0,61178.0
+PolyBench,polybench,cholesky,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.91490499999475,452587.0,61178.0
+PolyBench,polybench,cholesky,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.44390900000474,452587.0,61178.0
+PolyBench,polybench,correlation,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.9169820000004,452587.0,61178.0
+PolyBench,polybench,correlation,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.80291400000016,452587.0,61178.0
+PolyBench,polybench,correlation,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.49139600000032,452587.0,61178.0
+PolyBench,polybench,correlation,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,221.74822300000008,452587.0,61178.0
+PolyBench,polybench,correlation,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.64755999999974,452587.0,61178.0
+PolyBench,polybench,covariance,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,188.0429870000002,452587.0,61178.0
+PolyBench,polybench,covariance,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.17152099999979,452587.0,61178.0
+PolyBench,polybench,covariance,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.48569200000009,452587.0,61178.0
+PolyBench,polybench,covariance,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,208.07500199999927,452587.0,61178.0
+PolyBench,polybench,covariance,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,204.54058199999992,452587.0,61178.0
+PolyBench,polybench,deriche,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,200.41102399999744,452587.0,61178.0
+PolyBench,polybench,deriche,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,200.2687640000005,452587.0,61178.0
+PolyBench,polybench,deriche,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.4188449999967,452587.0,61178.0
+PolyBench,polybench,deriche,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,206.31422100000663,452587.0,61178.0
+PolyBench,polybench,deriche,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,216.2492380000032,452587.0,61178.0
+PolyBench,polybench,doitgen,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.34967699999916,452587.0,61178.0
+PolyBench,polybench,doitgen,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,184.95497100000335,452587.0,61178.0
+PolyBench,polybench,doitgen,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.4573589999997,452587.0,61178.0
+PolyBench,polybench,doitgen,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.72904499999865,452587.0,61178.0
+PolyBench,polybench,doitgen,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,196.56483300000005,452587.0,61178.0
+PolyBench,polybench,durbin,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,188.7351009999989,452587.0,61178.0
+PolyBench,polybench,durbin,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.12948199999846,452587.0,61178.0
+PolyBench,polybench,durbin,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,188.73141699999962,452587.0,61178.0
+PolyBench,polybench,durbin,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.0490969999945,452587.0,61178.0
+PolyBench,polybench,durbin,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.36728399999936,452587.0,61178.0
+PolyBench,polybench,fdtd_2d,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.65169000001026,452587.0,61178.0
+PolyBench,polybench,fdtd_2d,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.0315860000038,452587.0,61178.0
+PolyBench,polybench,fdtd_2d,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,198.58094500000334,452587.0,61178.0
+PolyBench,polybench,fdtd_2d,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,213.54694400000082,452587.0,61178.0
+PolyBench,polybench,fdtd_2d,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,200.8883379999986,452587.0,61178.0
+PolyBench,polybench,floyd_warshall,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,184.62417599999984,452587.0,61178.0
+PolyBench,polybench,floyd_warshall,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.07968400000152,452587.0,61178.0
+PolyBench,polybench,floyd_warshall,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.82815100000028,452587.0,61178.0
+PolyBench,polybench,floyd_warshall,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.59952400000202,452587.0,61178.0
+PolyBench,polybench,floyd_warshall,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.1479279999969,452587.0,61178.0
+PolyBench,polybench,gemm,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.32640400000133,452587.0,61178.0
+PolyBench,polybench,gemm,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.4428260000004,452587.0,61178.0
+PolyBench,polybench,gemm,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,185.431071,452587.0,61178.0
+PolyBench,polybench,gemm,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.82284200000055,452587.0,61178.0
+PolyBench,polybench,gemm,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,201.07592500000138,452587.0,61178.0
+PolyBench,polybench,gemver,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.01943200000323,452587.0,61178.0
+PolyBench,polybench,gemver,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.5360370000011,452587.0,61178.0
+PolyBench,polybench,gemver,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.7811770000004,452587.0,61178.0
+PolyBench,polybench,gemver,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,201.6716059999979,452587.0,61178.0
+PolyBench,polybench,gemver,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.09190699999934,452587.0,61178.0
+PolyBench,polybench,gesummv,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,179.71920100000105,452587.0,61178.0
+PolyBench,polybench,gesummv,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,179.66430999999972,452587.0,61178.0
+PolyBench,polybench,gesummv,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,179.83891600000135,452587.0,61178.0
+PolyBench,polybench,gesummv,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,179.4453979999986,452587.0,61178.0
+PolyBench,polybench,gesummv,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,179.68487699999972,452587.0,61178.0
+PolyBench,polybench,gramschmidt,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.09314399999755,452587.0,61178.0
+PolyBench,polybench,gramschmidt,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.08849100000214,452587.0,61178.0
+PolyBench,polybench,gramschmidt,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.69321400000194,452587.0,61178.0
+PolyBench,polybench,gramschmidt,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,218.1225620000049,452587.0,61178.0
+PolyBench,polybench,gramschmidt,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,196.0919370000056,452587.0,61178.0
+PolyBench,polybench,heat_3d,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.32081299999993,452587.0,61178.0
+PolyBench,polybench,heat_3d,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.76476899999795,452587.0,61178.0
+PolyBench,polybench,heat_3d,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.5972790000025,452587.0,61178.0
+PolyBench,polybench,heat_3d,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,232.946553000005,452587.0,61178.0
+PolyBench,polybench,heat_3d,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,224.5481700000056,452587.0,61178.0
+PolyBench,polybench,jacobi_1d,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,183.08602400000495,452587.0,61178.0
+PolyBench,polybench,jacobi_1d,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,183.9389419999975,452587.0,61178.0
+PolyBench,polybench,jacobi_1d,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.79524899999447,452587.0,61178.0
+PolyBench,polybench,jacobi_1d,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.1934959999919,452587.0,61178.0
+PolyBench,polybench,jacobi_1d,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.59349400000247,452587.0,61178.0
+PolyBench,polybench,jacobi_2d,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,195.23023899999714,452587.0,61178.0
+PolyBench,polybench,jacobi_2d,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,194.91275699999733,452587.0,61178.0
+PolyBench,polybench,jacobi_2d,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.36836100001153,452587.0,61178.0
+PolyBench,polybench,jacobi_2d,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,203.67332899999724,452587.0,61178.0
+PolyBench,polybench,jacobi_2d,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.44667999999376,452587.0,61178.0
+PolyBench,polybench,lu,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,188.94584500000633,452587.0,61178.0
+PolyBench,polybench,lu,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.50758999999806,452587.0,61178.0
+PolyBench,polybench,lu,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.806861000001,452587.0,61178.0
+PolyBench,polybench,lu,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,194.78701599999937,452587.0,61178.0
+PolyBench,polybench,lu,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.02123499999612,452587.0,61178.0
+PolyBench,polybench,ludcmp,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.89814699999894,452587.0,61178.0
+PolyBench,polybench,ludcmp,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,200.88485499999817,452587.0,61178.0
+PolyBench,polybench,ludcmp,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.2824980000023,452587.0,61178.0
+PolyBench,polybench,ludcmp,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,210.78479199999833,452587.0,61178.0
+PolyBench,polybench,ludcmp,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,199.73178200000063,452587.0,61178.0
+PolyBench,polybench,mvt,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.4747300000027,452587.0,61178.0
+PolyBench,polybench,mvt,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.1086780000023,452587.0,61178.0
+PolyBench,polybench,mvt,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.2539489999997,452587.0,61178.0
+PolyBench,polybench,mvt,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,198.10034300000012,452587.0,61178.0
+PolyBench,polybench,mvt,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.33369799999718,452587.0,61178.0
+PolyBench,polybench,nussinov,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,183.21395799999607,452587.0,61178.0
+PolyBench,polybench,nussinov,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.86399199999437,452587.0,61178.0
+PolyBench,polybench,nussinov,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.7941150000072,452587.0,61178.0
+PolyBench,polybench,nussinov,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,183.0589760000052,452587.0,61178.0
+PolyBench,polybench,nussinov,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.81403999999668,452587.0,61178.0
+PolyBench,polybench,seidel_2d,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,180.9127929999903,452587.0,61178.0
+PolyBench,polybench,seidel_2d,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,181.03378099999645,452587.0,61178.0
+PolyBench,polybench,seidel_2d,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,180.46617599999593,452587.0,61178.0
+PolyBench,polybench,seidel_2d,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,180.56994299999474,452587.0,61178.0
+PolyBench,polybench,seidel_2d,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,180.57126500001175,452587.0,61178.0
+PolyBench,polybench,symm,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,189.02966200000293,452587.0,61178.0
+PolyBench,polybench,symm,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,188.55644900000357,452587.0,61178.0
+PolyBench,polybench,symm,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,188.9996710000048,452587.0,61178.0
+PolyBench,polybench,symm,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.625492,452587.0,61178.0
+PolyBench,polybench,symm,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,188.53934699999897,452587.0,61178.0
+PolyBench,polybench,syr2k,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.94267199999615,452587.0,61178.0
+PolyBench,polybench,syr2k,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.26227099999937,452587.0,61178.0
+PolyBench,polybench,syr2k,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.10975100000616,452587.0,61178.0
+PolyBench,polybench,syr2k,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.78885199999718,452587.0,61178.0
+PolyBench,polybench,syr2k,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.15161199999875,452587.0,61178.0
+PolyBench,polybench,syrk,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.25609600000126,452587.0,61178.0
+PolyBench,polybench,syrk,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,191.88649500000565,452587.0,61178.0
+PolyBench,polybench,syrk,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.3391519999953,452587.0,61178.0
+PolyBench,polybench,syrk,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.67925400000507,452587.0,61178.0
+PolyBench,polybench,syrk,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,192.3233489999987,452587.0,61178.0
+PolyBench,polybench,trisolv,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.9129260000002,452587.0,61178.0
+PolyBench,polybench,trisolv,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.15559100000434,452587.0,61178.0
+PolyBench,polybench,trisolv,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.6009769999999,452587.0,61178.0
+PolyBench,polybench,trisolv,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.13890799999888,452587.0,61178.0
+PolyBench,polybench,trisolv,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,182.06234599999505,452587.0,61178.0
+PolyBench,polybench,trmm,,EXTRALARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.0615869999952,452587.0,61178.0
+PolyBench,polybench,trmm,,LARGE,thesis_jit_overhead_tu_scaling_20260622_133517,default,187.021730000005,452587.0,61178.0
+PolyBench,polybench,trmm,,MEDIUM,thesis_jit_overhead_tu_scaling_20260622_133517,default,186.50354100000044,452587.0,61178.0
+PolyBench,polybench,trmm,,MINI,thesis_jit_overhead_tu_scaling_20260622_133517,default,195.14153000000078,452587.0,61178.0
+PolyBench,polybench,trmm,,SMALL,thesis_jit_overhead_tu_scaling_20260622_133517,default,190.72780000000478,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q1,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.0263230000055,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q10,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.8633509999978,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q11,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.26537199999234,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q12,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,142.00281099999756,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q13,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.48668200000714,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q14,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,142.00056099998903,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q15,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.53373300000283,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q16,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.70465200000137,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q17,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.4957970000046,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q18,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.92031000000327,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q19,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.84996499999158,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q2,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.80129400000396,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q20,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.69381899999678,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q21,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.65659100000028,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q22,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.7876099999944,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q3,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.2886530000037,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q4,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.3951979999979,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q5,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.99639200001002,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q6,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.63726200000326,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q7,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.36182599999358,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q8,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.67249999999854,452587.0,61178.0
+SQLite TPC-H,db/sqlite3/tpch,tpch_q9,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.55304000000513,452587.0,61178.0
+SQLite input-size,db/sqlite3/input_size,agg_group,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.7605720000097,452587.0,61178.0
+SQLite input-size,db/sqlite3/input_size,agg_simple,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.2664819999918,452587.0,61178.0
+SQLite input-size,db/sqlite3/input_size,filter_large,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.56430499998862,452587.0,61178.0
+SQLite input-size,db/sqlite3/input_size,filter_small,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.87351300000728,452587.0,61178.0
+SQLite input-size,db/sqlite3/input_size,join_agg,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.58270500000467,452587.0,61178.0
+SQLite input-size,db/sqlite3/input_size,join_simple,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,142.1973979999933,452587.0,61178.0
+SQLite input-size,db/sqlite3/input_size,simple_scan,,,thesis_jit_overhead_tu_scaling_20260622_133517,default,141.69382800000108,452587.0,61178.0
+UC,uc12_groupby,grouped_count,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,58.6634869999898,2126.0,976.51953125
+UC,uc12_groupby,grouped_count,low,,corpus_uc_first_call_quadrants_20260620_160209,default,58.92300549999163,2150.0,975.6953125
+UC,uc12_groupby,grouped_count,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,58.630249500083664,2126.0,975.75
+UC,uc12_groupby,grouped_minmax,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,60.34995850006908,2303.0,983.8515625
+UC,uc12_groupby,grouped_minmax,low,,corpus_uc_first_call_quadrants_20260620_160209,default,60.471905999975206,2333.0,983.2109375
+UC,uc12_groupby,grouped_minmax,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,60.74485400006324,2303.0,983.13671875
+UC,uc12_groupby,grouped_sum,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,59.087412999929256,2152.0,976.0234375
+UC,uc12_groupby,grouped_sum,low,,corpus_uc_first_call_quadrants_20260620_160209,default,58.81255650001549,2179.0,975.1953125
+UC,uc12_groupby,grouped_sum,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,58.67220649997762,2152.0,975.36328125
+UC,uc14_sort,generic_sort,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,75.49378699991394,2161.0,952.90234375
+UC,uc14_sort,generic_sort,low,,corpus_uc_first_call_quadrants_20260620_160209,default,73.17457299996022,2146.0,950.5390625
+UC,uc14_sort,generic_sort,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,69.40987899997708,2303.0,958.0390625
+UC,uc14_sort,multi_key_sort,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,85.74500700024146,2371.0,963.6953125
+UC,uc14_sort,multi_key_sort,low,,corpus_uc_first_call_quadrants_20260620_160209,default,78.9876194999124,2281.0,958.4140625
+UC,uc14_sort,multi_key_sort,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,85.01609899985851,2315.0,960.42578125
+UC,uc14_sort,struct_sort,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,75.30236249999689,2198.0,959.265625
+UC,uc14_sort,struct_sort,low,,corpus_uc_first_call_quadrants_20260620_160209,default,73.1993809999949,2154.0,954.16015625
+UC,uc14_sort,struct_sort,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,77.58012349972887,2178.0,956.10546875
+UC,uc1_sql,column_scan,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,60.97160750000086,2176.0,976.55859375
+UC,uc1_sql,column_scan,low,,corpus_uc_first_call_quadrants_20260620_160209,default,61.804774499996995,2190.0,974.796875
+UC,uc1_sql,column_scan,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,62.11710649999702,2196.0,975.64453125
+UC,uc1_sql,count_matching_rows,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,60.42204499999926,2109.0,951.15625
+UC,uc1_sql,count_matching_rows,low,,corpus_uc_first_call_quadrants_20260620_160209,default,62.26711850000122,2172.0,950.28515625
+UC,uc1_sql,count_matching_rows,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,61.96519599999917,2108.0,949.57421875
+UC,uc1_sql,multi_predicate,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,61.38008400000672,2155.0,954.5390625
+UC,uc1_sql,multi_predicate,low,,corpus_uc_first_call_quadrants_20260620_160209,default,60.645124499998815,2138.0,950.4765625
+UC,uc1_sql,multi_predicate,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,60.926015000003275,2138.0,951.03125
+UC,uc2_conv,box_filter,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,68.5710845000358,2221.0,881.8671875
+UC,uc2_conv,box_filter,low,,corpus_uc_first_call_quadrants_20260620_160209,default,67.83716799999695,2221.0,880.2734375
+UC,uc2_conv,box_filter,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,68.29464850000022,2221.0,881.34375
+UC,uc2_conv,edge_detection,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,83.79490349994967,2010.0,878.03125
+UC,uc2_conv,edge_detection,low,,corpus_uc_first_call_quadrants_20260620_160209,default,69.55523150000431,1972.0,874.15234375
+UC,uc2_conv,edge_detection,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,71.41387549998512,2007.0,876.625
+UC,uc2_conv,separable_gaussian,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,79.57311150005353,2103.0,883.5234375
+UC,uc2_conv,separable_gaussian,low,,corpus_uc_first_call_quadrants_20260620_160209,default,82.59082799999362,3547.0,950.48828125
+UC,uc2_conv,separable_gaussian,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,77.05664100004128,2061.0,879.78125
+UC,uc7_dfa,email_match,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,61.30610299999262,2410.0,945.4453125
+UC,uc7_dfa,email_match,low,,corpus_uc_first_call_quadrants_20260620_160209,default,61.39334750002945,2485.0,946.9140625
+UC,uc7_dfa,email_match,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,57.060819500009075,1961.0,921.00390625
+UC,uc7_dfa,multi_pattern_match,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,58.341070999972544,2116.0,928.4765625
+UC,uc7_dfa,multi_pattern_match,low,,corpus_uc_first_call_quadrants_20260620_160209,default,58.40038349998622,2174.0,929.734375
+UC,uc7_dfa,multi_pattern_match,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,57.838518999972166,1975.0,923.06640625
+UC,uc7_dfa,url_match,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,60.32632149992878,2298.0,939.6953125
+UC,uc7_dfa,url_match,low,,corpus_uc_first_call_quadrants_20260620_160209,default,60.34864650001737,2373.0,942.1015625
+UC,uc7_dfa,url_match,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,60.471903000063776,2298.0,938.94921875
+UC,uc8_ivm,apply_row_delta,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,67.91502650003167,2148.0,975.40625
+UC,uc8_ivm,apply_row_delta,low,,corpus_uc_first_call_quadrants_20260620_160209,default,67.91255150000097,2306.0,981.01953125
+UC,uc8_ivm,apply_row_delta,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,67.66394549998722,2148.0,974.8125
+UC,uc8_ivm,batch_delta,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,58.323933499991654,2221.0,976.6484375
+UC,uc8_ivm,batch_delta,low,,corpus_uc_first_call_quadrants_20260620_160209,default,58.278589999872565,2220.0,974.94140625
+UC,uc8_ivm,batch_delta,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,58.34168299998055,2221.0,975.94921875
+UC,uc8_ivm,multi_agg_delta,abstract,,corpus_uc_first_call_quadrants_20260620_160209,default,69.48277550009152,2197.0,981.546875
+UC,uc8_ivm,multi_agg_delta,low,,corpus_uc_first_call_quadrants_20260620_160209,default,68.57474950004416,2186.0,978.20703125
+UC,uc8_ivm,multi_agg_delta,tradeoff,,corpus_uc_first_call_quadrants_20260620_160209,default,68.98883000019396,2187.0,979.30078125
