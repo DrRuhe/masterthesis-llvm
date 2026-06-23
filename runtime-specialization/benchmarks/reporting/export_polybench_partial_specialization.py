@@ -19,7 +19,7 @@ from report_utils import open_db, resolve_db_path
 
 SIZE_ORDER = ["SMALL", "MEDIUM", "LARGE", "EXTRALARGE"]
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DETAILS_PATH = REPO_ROOT / "specs/022-polybench-partial-specialization-evaluation/details.md"
+APPENDIX_TEMPLATE_PATH = REPO_ROOT / "benchmarks/reports/thesis-figures/rq3/polybench_partial_specialization_appendix.typ"
 EXPECTED_KERNEL_COUNT = 30
 
 
@@ -225,44 +225,8 @@ def write_summary_typst(rows: list[dict[str, object]], study_name: str, path: Pa
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def parse_decision_rows(path: Path) -> list[dict[str, str]]:
-    lines = path.read_text(encoding="utf-8").splitlines()
-    table_lines = [line for line in lines if line.startswith("| `") or line.startswith("| ---")]
-    out: list[dict[str, str]] = []
-    for line in table_lines:
-        if line.startswith("| ---"):
-            continue
-        parts = [part.strip() for part in line.strip("|").split("|")]
-        if len(parts) != 4:
-            continue
-        out.append(
-            {
-                "kernel": parts[0].strip("`"),
-                "specialized": parts[1],
-                "variable": parts[2],
-                "scenario": parts[3],
-            }
-        )
-    return out
-
-
-def write_appendix_typst(rows: list[dict[str, str]], path: Path) -> None:
-    lines = [
-        "== PolyBench Partial-Specialization Scenarios <polybench-partial-specialization-appendix>",
-        "// Source: specs/022-polybench-partial-specialization-evaluation/details.md",
-        "The table below lists the specialization choice for each PolyBench kernel together with the repeated-call scenario it is intended to represent.",
-        "",
-        "#table(",
-        "  columns: 4,",
-        "  align: (left, left, left, left),",
-        "  [Kernel], [Specialized inputs / state], [Runtime-variable inputs], [Scenario],",
-    ]
-    for row in rows:
-        lines.append(
-            f"  [`{row['kernel']}`], [{row['specialized']}], [{row['variable']}], [{row['scenario']}],"
-        )
-    lines.append(")")
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+def write_appendix_typst(path: Path) -> None:
+    path.write_text(APPENDIX_TEMPLATE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def write_provenance(
@@ -324,11 +288,7 @@ def main() -> None:
             output_dir / "polybench_partial_summary.typ",
         )
 
-    appendix_rows = parse_decision_rows(DETAILS_PATH)
-    write_appendix_typst(
-        appendix_rows,
-        output_dir / "polybench_partial_specialization_appendix.typ",
-    )
+    write_appendix_typst(output_dir / "polybench_partial_specialization_appendix.typ")
     write_provenance(
         args.study_name,
         args.stability_threshold,

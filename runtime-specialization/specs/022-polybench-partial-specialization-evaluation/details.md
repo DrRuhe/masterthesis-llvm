@@ -1,47 +1,67 @@
 # PolyBench Partial-Specialization Decisions
 
-This file records the intended specialization split for each PolyBench kernel. The common rule is:
+Source for kernel descriptions: `benchmarks/polybench/PolyBenchC-4.2.1-master/polybench.pdf`.
 
-- specialize stable runtime state that plausibly remains fixed for one processing session, such as data-buffer identities, coefficient tables, matrix layouts, or a subset of dimensional parameters;
-- keep at least one request-varying problem-size or iteration parameter explicit whenever that parameter represents per-call work variation in the modeled scenario.
+## Revised Decision Rule
 
-For unary kernels, the benchmark-visible size parameter remains the per-call varying input and the specialized subset is carried by the lambda closure through stable runtime state such as array identities and auxiliary buffer layout. This is still a proper partial-specialization model relative to the underlying imported kernel, whose true runtime interface includes both scalar parameters and data pointers.
+The first implementation overused partial specialization by treating selected size parameters as if they were independent configuration knobs. After re-reading the PolyBench documentation, that is not defensible for most kernels:
 
-| Kernel | Specialized inputs / state | Runtime-variable inputs | Repeated-call scenario represented |
+- many kernels are pure dense linear-algebra kernels whose exposed scalar parameters jointly define one problem instance and the shapes of all participating arrays;
+- varying only one of those dimensions while pretending the others are stable is usually not a realistic "same kernel, different request" scenario, because the dimensions are semantically coupled;
+- therefore, those kernels now fall back to **full specialization of all benchmark-visible scalar parameters**.
+
+We keep **partial specialization** only where the benchmark structure exposes a believable split between:
+
+- stable spatial/layout state, and
+- a runtime-varying work amount applied to that fixed state.
+
+That leaves two defensible partial-specialization families:
+
+- `correlation` / `covariance`: fixed attribute layout `M`, variable number of data points `N`;
+- time-stepping stencils: fixed spatial domain (`N`, `NX`, `NY`), variable iteration horizon (`TSTEPS`, `TMAX`).
+
+For convolution-like kernels, the user's requested rule is to specialize the small kernel/configuration object. None of the PolyBench kernels expose such a runtime kernel matrix directly in the benchmark API. `deriche` comes closest conceptually, but its filter coefficients are already fixed constants in the benchmark wrapper, so there is no remaining benchmark-visible "small kernel" object to specialize separately.
+
+## Per-Kernel Decisions
+
+| Kernel | What it computes / why it is useful | Specialization decision | Why this decision is defensible |
 | --- | --- | --- | --- |
-| `correlation` | `m`, data/corr/mean/stddev buffers | `n` | Same feature layout reused across batches while row count varies per batch. |
-| `covariance` | `m`, data/cov/mean buffers | `n` | Same feature layout and output buffer reused while incoming sample count changes. |
-| `2mm` | `ni`, `nj`, `nk`, all matrix buffers | `nl` | Fixed left-hand pipeline and intermediate layout, varying output width per request. |
-| `3mm` | `ni`, `nj`, `nk`, `nl`, all matrix buffers | `nm` | Fixed upstream matrix chain with varying final reduction/output extent. |
-| `atax` | matrix/vector buffers, `m` | `n` | Fixed row layout with varying active column count per request. |
-| `bicg` | matrix/vector buffers, `m` | `n` | Fixed row-side layout and work buffers, varying column-side extent. |
-| `doitgen` | tensor/coefficient buffers, `nq`, `nr` | `np` | Fixed outer tensor grid while the innermost transform width varies between calls. |
-| `mvt` | matrix/vector buffers | `n` | Same allocated matrix/vector session, varying active prefix length. |
-| `gemm` | matrix buffers, `ni`, `nj` | `nk` | Fixed output tile geometry while the reduction depth varies by request. |
-| `gemver` | matrix/vector buffers | `n` | Same update buffers reused across requests with varying active problem size. |
-| `gesummv` | matrix/vector buffers | `n` | Same coefficient matrices reused while active vector length changes. |
-| `symm` | matrix buffers, `m` | `n` | Fixed left symmetric operand shape, varying output width. |
-| `syr2k` | matrix buffers, `m` | `n` | Fixed update width/layout, varying accumulation extent. |
-| `syrk` | matrix buffers, `m` | `n` | Fixed update width/layout, varying accumulation extent. |
-| `trmm` | matrix buffers, `m` | `n` | Fixed triangular transform shape, varying output width. |
-| `cholesky` | matrix buffer | `n` | Same factorization workspace reused with varying active matrix prefix. |
-| `durbin` | `r`/`y` buffers | `n` | Same signal workspace reused while the active sequence length changes. |
-| `gramschmidt` | matrix buffers, `m` | `n` | Fixed row layout with varying orthogonalization width. |
-| `lu` | matrix buffer | `n` | Same factorization buffer reused while active matrix size changes. |
-| `ludcmp` | matrix/vector buffers | `n` | Same factorization/solve workspace reused while active matrix size changes. |
-| `trisolv` | matrix/vector buffers | `n` | Same triangular-solve workspace reused while active prefix length changes. |
-| `deriche` | image/work buffers, `w` | `h` | Fixed image row stride and filter workspace, varying image height. |
-| `floyd_warshall` | path matrix buffer | `n` | Same path matrix allocation reused while active graph size changes. |
-| `nussinov` | sequence/table buffers | `n` | Same DP workspace reused while active sequence length changes. |
-| `adi` | work buffers, `n` | `tsteps` | Fixed grid geometry reused while the number of simulation time steps varies. |
-| `fdtd_2d` | field buffers, `nx`, `ny` | `tmax` | Fixed field layout reused while the simulated time horizon varies. |
-| `heat_3d` | 3D buffers, `n` | `tsteps` | Fixed volume geometry reused while the number of diffusion steps varies. |
-| `jacobi_1d` | work buffers, `n` | `tsteps` | Fixed vector layout reused while the iteration count changes. |
-| `jacobi_2d` | work buffers, `n` | `tsteps` | Fixed grid layout reused while the iteration count changes. |
-| `seidel_2d` | grid buffer, `n` | `tsteps` | Fixed grid layout reused while the iteration count changes. |
+| `correlation` | PolyBench describes this as computing Pearson correlation coefficients for an `N x M` data matrix, producing an `M x M` symmetric correlation matrix. This is useful in statistics, feature analysis, and data-mining workflows where relationships between attributes are studied. | **Partial**: specialize `M`; keep `N` runtime-variable. | `M` models the stable feature schema of a dataset, while `N` models the number of rows in one batch. That is a plausible repeated-call scenario: same columns and output layout, changing batch size. |
+| `covariance` | PolyBench describes this as computing the covariance matrix of an `N x M` data matrix, producing an `M x M` symmetric covariance matrix. This is useful in statistics and multivariate analysis as a basic measure of linear dependence. | **Partial**: specialize `M`; keep `N` runtime-variable. | As with `correlation`, a fixed attribute schema with varying row counts is believable. The variable `N` changes the amount of data processed, while `M` determines the stable output layout and per-row interpretation. |
+| `2mm` | PolyBench describes `2mm` as two chained matrix multiplications computing `E = alpha * A * B * C + beta * D`. This is useful as a representative dense linear-algebra pipeline and as a building block in scientific computing. | **Full**: specialize `NI`, `NJ`, `NK`, `NL`. | All four dimensions define one coupled matrix-multiplication shape. Leaving only one dynamic would be artificial because the benchmark-visible inputs are just the problem dimensions of one pure function. |
+| `3mm` | PolyBench describes `3mm` as three chained matrix multiplications computing `G = (A * B) * (C * D)`. This is useful as another representative dense linear-algebra kernel with multiple intermediates and cache-sensitive matrix shapes. | **Full**: specialize `NI`, `NJ`, `NK`, `NL`, `NM`. | The five dimensions jointly define the legal matrix chain. There is no believable stable-state object distinct from the full problem shape at the benchmark API level. |
+| `atax` | PolyBench describes `atax` as computing `A^T * (A * x)`. This is useful in numerical linear algebra and least-squares style workloads where repeated matrix-vector products appear. | **Full**: specialize `M`, `N`. | `M` and `N` define the matrix shape together. A partial split would again amount to varying only part of one pure matrix problem, not reusing a separate stable kernel object. |
+| `bicg` | PolyBench describes `bicg` as the core of the BiCGSTAB iterative solver, computing both `q = A p` and `s = A^T r`. This is useful as a representative sparse/iterative-solver-inspired linear algebra kernel. | **Full**: specialize `M`, `N`. | The row and column dimensions define the coupled operator shape. The benchmark does not expose a smaller reusable configuration object separate from that shape. |
+| `doitgen` | PolyBench describes `doitgen` as a MADNESS-derived tensor contraction, computing an output array from an input `R x Q x S` array and another matrix-like input. This is useful as a representative scientific tensor kernel. | **Full**: specialize `NQ`, `NR`, `NP`. | The PolyBench notes explicitly say the computation does not make sense if one dimension relation is violated. That makes a partial size split especially hard to justify here; the benchmark-visible dimensions behave as one coupled tensor shape. |
+| `mvt` | PolyBench describes `mvt` as two matrix-vector multiplications, one with `A` and one with `A^T`, updating `x1` and `x2`. This is useful as a compact representative of dense matrix-vector workloads. | **Full**: specialize `N`. | There is only one benchmark-visible size parameter, so partial specialization of the scalar API is impossible. The benchmark already bakes the data buffers into the closure; the remaining scalar should be specialized too. |
+| `gemm` | PolyBench describes `gemm` as BLAS generalized matrix multiplication, computing `C_out = alpha * A * B + beta * C`. This is useful across almost every numerical-computing domain because GEMM is the canonical dense linear-algebra primitive. | **Full**: specialize `NI`, `NJ`, `NK`. | The benchmark-visible parameters are exactly the coupled GEMM shape. Specializing only part of them would not correspond to a distinct reusable runtime kernel object. |
+| `gemver` | PolyBench describes `gemver` as a sequence of BLAS-like rank updates and matrix-vector multiplies producing updated `A`, `x`, and `w`. This is useful as a richer linear-algebra kernel than plain GEMM because it combines multiple dependent operations. | **Full**: specialize `N`. | Only one size parameter is exposed, so there is no meaningful partial split at the scalar API level. |
+| `gesummv` | PolyBench describes `gesummv` as a summed pair of matrix-vector products `y = alpha * A x + beta * B x`. This is useful as a compact representative BLAS-style fused linear-algebra computation. | **Full**: specialize `N`. | Only one benchmark-visible dimension exists, so partial specialization is not meaningful here. |
+| `symm` | PolyBench describes `symm` as symmetric matrix-matrix multiplication `C_out = alpha * A * B + beta * C` with `A` symmetric. This is useful as a standard BLAS-3 building block exploiting matrix structure. | **Full**: specialize `M`, `N`. | `M` and `N` jointly determine the legal matrix shapes. Treating only one as dynamic would again be an artificial split of one pure dense kernel. |
+| `syr2k` | PolyBench describes `syr2k` as a symmetric rank-2k update `C_out = alpha * A B^T + alpha * B A^T + beta * C`. This is useful in structured BLAS workloads that update symmetric matrices efficiently. | **Full**: specialize `M`, `N`. | The dimensions define one coupled update shape and one symmetric output layout. There is no separate benchmark-visible “small kernel” configuration to isolate. |
+| `syrk` | PolyBench describes `syrk` as a symmetric rank-k update `C_out = alpha * A A^T + beta * C`. This is useful in covariance-like and structured linear-algebra computations. | **Full**: specialize `M`, `N`. | Same rationale as `syr2k`: the exposed dimensions are one coupled problem shape. |
+| `trmm` | PolyBench describes `trmm` as triangular matrix multiplication `B_out = A * B` with triangular `A`. This is useful in triangular-solve and blocked-factorization contexts. | **Full**: specialize `M`, `N`. | The matrix dimensions are coupled and define the full legal problem instance. |
+| `cholesky` | PolyBench describes `cholesky` as Cholesky decomposition of a positive-definite matrix, producing `L` with `A = L L^T`. This is useful in numerical linear algebra, least squares, and Gaussian-model computations. | **Full**: specialize `N`. | Only one size parameter exists, so there is no scalar-level partial split. |
+| `durbin` | PolyBench describes `durbin` as solving Yule-Walker equations for a Toeplitz system. This is useful in signal processing and time-series/autoregressive modeling. | **Full**: specialize `N`. | Only one benchmark-visible size exists, so partial specialization is not meaningful. |
+| `gramschmidt` | PolyBench describes `gramschmidt` as QR decomposition with modified Gram-Schmidt, producing orthogonal `Q` and upper-triangular `R`. This is useful in numerical linear algebra and least-squares factorization. | **Full**: specialize `M`, `N`. | The dimensions jointly define the factorization shape and even the rank precondition. A partial split would be mathematically coupled and unrealistic. |
+| `lu` | PolyBench describes `lu` as LU decomposition without pivoting, producing lower- and upper-triangular factors. This is useful as a classical direct linear-system building block. | **Full**: specialize `N`. | Only one scalar size parameter exists. |
+| `ludcmp` | PolyBench describes `ludcmp` as solving `A x = b` using LU decomposition plus forward/backward substitution. This is useful as a more complete direct-solver workflow than `lu` alone. | **Full**: specialize `N`. | Only one scalar size parameter exists. |
+| `trisolv` | PolyBench describes `trisolv` as solving a lower-triangular system `L x = b` by forward substitution. This is useful in direct-solver pipelines and factorization back-solves. | **Full**: specialize `N`. | Only one scalar size parameter exists. |
+| `deriche` | PolyBench describes `deriche` as a recursive image filter that can be used for smoothing or edge detection, implemented as horizontal and vertical passes. This is useful in image processing and low-level vision pipelines. | **Full**: specialize `W`, `H`. | Although the user’s heuristic about “specialize the small kernel” is right in spirit, PolyBench’s exposed API does not pass a separate filter kernel matrix. The benchmark wrapper already fixes `alpha` and the derived coefficients, so the remaining width/height parameters are just the full image shape. |
+| `floyd_warshall` | PolyBench describes Floyd-Warshall as computing all-pairs shortest path lengths for a weighted graph. This is useful in graph analytics, routing, and dynamic-programming-based optimization. | **Full**: specialize `N`. | Only one scalar size parameter exists, so partial specialization is not meaningful. |
+| `nussinov` | PolyBench describes Nussinov as a dynamic-programming algorithm for RNA folding prediction. This is useful in bioinformatics for secondary-structure prediction. | **Full**: specialize `N`. | Only one scalar size parameter exists, so partial specialization is not meaningful. |
+| `adi` | PolyBench describes ADI as alternating-direction implicit heat diffusion over a 2D grid, splitting each time step into easier 1D solves. This is useful in numerical PDE solvers and diffusion simulation. | **Partial**: specialize `N`; keep `TSTEPS` runtime-variable. | Here there is a believable split: the spatial grid is stable, while the number of simulated time steps changes by workload or stopping criterion. This matches a repeated-call scenario better than the dense linear-algebra kernels do. |
+| `fdtd_2d` | PolyBench describes `fdtd-2d` as a simplified finite-difference time-domain simulation for 2D electromagnetic fields. This is useful in computational electromagnetics and wave propagation simulation. | **Partial**: specialize `NX`, `NY`; keep `TMAX` runtime-variable. | The spatial mesh can stay fixed while the simulated time horizon changes. That is a natural “same discretization, different run length” scenario. |
+| `heat_3d` | PolyBench describes `heat-3d` as iterating the heat equation over a 3D space. This is useful in diffusion simulation and stencil-compiler evaluation. | **Partial**: specialize `N`; keep `TSTEPS` runtime-variable. | The spatial volume is a stable mesh, while the number of time steps is a natural runtime workload knob. |
+| `jacobi_1d` | PolyBench describes `jacobi-1d` as a 1D Jacobi-style stencil that averages neighboring points over repeated time steps. This is useful as a simple iterative stencil benchmark. | **Partial**: specialize `N`; keep `TSTEPS` runtime-variable. | Again, the fixed domain size and variable iteration count form a plausible stable-state/runtime-work split. |
+| `jacobi_2d` | PolyBench describes `jacobi-2d` as a 2D Jacobi-style stencil with a 5-point pattern. This is useful in iterative PDE solvers and stencil optimization studies. | **Partial**: specialize `N`; keep `TSTEPS` runtime-variable. | The grid geometry can remain fixed while the solver runs for different numbers of iterations. |
+| `seidel_2d` | PolyBench describes `seidel-2d` as a 2D Gauss-Seidel-style stencil with a 9-point pattern. This is useful in iterative solver studies where same-step updates matter. | **Partial**: specialize `N`; keep `TSTEPS` runtime-variable. | As with the Jacobi kernels, the believable varying input is the iteration horizon, not one of several coupled matrix dimensions. |
 
-## Reporting / Appendix Intent
+## Implementation Consequence
 
-- The appendix section in `docs/thesis.typ` should summarize this same table in prose/list form.
-- The reporting script should be able to emit an appendix-ready Typst snippet from the same decision ledger to avoid hand-maintaining a second copy of the kernel rationale.
-- The conditional summary table for amortized speedup and `$U_p$` should only be emitted when the PolyBench curves are sufficiently size-stable; otherwise the reporting script should write a short provenance note explaining why the table was skipped.
+The benchmark code now follows this revised policy:
+
+- **partial specialization kept** for `correlation`, `covariance`, `adi`, `fdtd_2d`, `heat_3d`, `jacobi_1d`, `jacobi_2d`, and `seidel_2d`;
+- **full specialization restored** for all other PolyBench kernels.
+
+This is intentionally conservative. It is better to admit that most PolyBench kernels do not expose a clean partial-specialization scenario in their current benchmark API than to force an unrealistic benchmark narrative.

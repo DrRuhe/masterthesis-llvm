@@ -237,14 +237,15 @@ static auto pb_make_lambda_2mm(const std::tuple<int, int, int, int>& A) {
     int NIArg = std::get<0>(A);
     int NJArg = std::get<1>(A);
     int NKArg = std::get<2>(A);
-    return [NIArg, NJArg, NKArg, Tmp = g_2mm_tmp, AMat = g_2mm_A, BMat = g_2mm_B,
-            CMat = g_2mm_C, DMat = g_2mm_D](int NLArg) {
+    int NLArg = std::get<3>(A);
+    return [NIArg, NJArg, NKArg, NLArg, Tmp = g_2mm_tmp, AMat = g_2mm_A, BMat = g_2mm_B,
+            CMat = g_2mm_C, DMat = g_2mm_D]() {
         __pb_2mm_kernel(NIArg, NJArg, NKArg, NLArg, 1.5, 1.2,
             Tmp, AMat, BMat, CMat, DMat);
     };
 }
-static auto pb_runtime_args_2mm(const std::tuple<int, int, int, int>& A) {
-    return std::make_tuple(std::get<3>(A));
+static auto pb_runtime_args_2mm(const std::tuple<int, int, int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_4(2mm)
 
@@ -295,14 +296,15 @@ static auto pb_make_lambda_3mm(const std::tuple<int, int, int, int, int>& A) {
     int NJArg = std::get<1>(A);
     int NKArg = std::get<2>(A);
     int NLArg = std::get<3>(A);
-    return [NIArg, NJArg, NKArg, NLArg, EMat = g_3mm_E, AMat = g_3mm_A, BMat = g_3mm_B,
-            FMat = g_3mm_F, CMat = g_3mm_C, DMat = g_3mm_D, GMat = g_3mm_G](int NMArg) {
+    int NMArg = std::get<4>(A);
+    return [NIArg, NJArg, NKArg, NLArg, NMArg, EMat = g_3mm_E, AMat = g_3mm_A, BMat = g_3mm_B,
+            FMat = g_3mm_F, CMat = g_3mm_C, DMat = g_3mm_D, GMat = g_3mm_G]() {
         __pb_3mm_kernel(NIArg, NJArg, NKArg, NLArg, NMArg,
             EMat, AMat, BMat, FMat, CMat, DMat, GMat);
     };
 }
-static auto pb_runtime_args_3mm(const std::tuple<int, int, int, int, int>& A) {
-    return std::make_tuple(std::get<4>(A));
+static auto pb_runtime_args_3mm(const std::tuple<int, int, int, int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_5(3mm)
 
@@ -336,13 +338,14 @@ extern "C" void kernel_atax(int m, int n) {
 }
 static auto pb_make_lambda_atax(const std::tuple<int, int>& A) {
     int MArg = std::get<0>(A);
-    return [MArg, AMat = g_atax_A, XVec = g_atax_x,
-            YVec = g_atax_y, Tmp = g_atax_tmp](int NArg) {
+    int NArg = std::get<1>(A);
+    return [MArg, NArg, AMat = g_atax_A, XVec = g_atax_x,
+            YVec = g_atax_y, Tmp = g_atax_tmp]() {
         __pb_atax_kernel(MArg, NArg, AMat, XVec, YVec, Tmp);
     };
 }
-static auto pb_runtime_args_atax(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_atax(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(atax)
 
@@ -379,13 +382,14 @@ extern "C" void kernel_bicg(int m, int n) {
 }
 static auto pb_make_lambda_bicg(const std::tuple<int, int>& A) {
     int MArg = std::get<0>(A);
-    return [MArg, AMat = g_bicg_A, SVec = g_bicg_s, QVector = g_bicg_q,
-            PVec = g_bicg_p, RVec = g_bicg_r](int NArg) {
+    int NArg = std::get<1>(A);
+    return [MArg, NArg, AMat = g_bicg_A, SVec = g_bicg_s, QVector = g_bicg_q,
+            PVec = g_bicg_p, RVec = g_bicg_r]() {
         __pb_bicg_kernel(MArg, NArg, AMat, SVec, QVector, PVec, RVec);
     };
 }
-static auto pb_runtime_args_bicg(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_bicg(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(bicg)
 
@@ -422,13 +426,14 @@ extern "C" void kernel_doitgen(int nq, int nr, int np) {
 static auto pb_make_lambda_doitgen(const std::tuple<int, int, int>& A) {
     int NQArg = std::get<0>(A);
     int NRArg = std::get<1>(A);
-    return [NQArg, NRArg, Tensor = g_doitgen_A, C4Mat = g_doitgen_C4,
-            Sum = g_doitgen_sum](int NPArg) {
+    int NPArg = std::get<2>(A);
+    return [NQArg, NRArg, NPArg, Tensor = g_doitgen_A, C4Mat = g_doitgen_C4,
+            Sum = g_doitgen_sum]() {
         __pb_doitgen_kernel(NRArg, NQArg, NPArg, Tensor, C4Mat, Sum);
     };
 }
-static auto pb_runtime_args_doitgen(const std::tuple<int, int, int>& A) {
-    return std::make_tuple(std::get<2>(A));
+static auto pb_runtime_args_doitgen(const std::tuple<int, int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_3(doitgen)
 
@@ -459,14 +464,15 @@ extern "C" void kernel_mvt(int n) __asm__("kernel_mvt");
 extern "C" void kernel_mvt(int n) {
     __pb_mvt_kernel(n, g_mvt_x1, g_mvt_x2, g_mvt_y1, g_mvt_y2, g_mvt_A);
 }
-static auto pb_make_lambda_mvt(const std::tuple<int>&) {
-    return [X1 = g_mvt_x1, X2 = g_mvt_x2, Y1 = g_mvt_y1,
-            Y2 = g_mvt_y2, AMat = g_mvt_A](int NArg) {
+static auto pb_make_lambda_mvt(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, X1 = g_mvt_x1, X2 = g_mvt_x2, Y1 = g_mvt_y1,
+            Y2 = g_mvt_y2, AMat = g_mvt_A]() {
         __pb_mvt_kernel(NArg, X1, X2, Y1, Y2, AMat);
     };
 }
-static auto pb_runtime_args_mvt(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_mvt(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(mvt)
 
@@ -502,13 +508,14 @@ extern "C" void kernel_gemm(int ni, int nj, int nk) {
 static auto pb_make_lambda_gemm(const std::tuple<int, int, int>& A) {
     int NIArg = std::get<0>(A);
     int NJArg = std::get<1>(A);
-    return [NIArg, NJArg, CMat = g_gemm_C, AMat = g_gemm_A,
-            BMat = g_gemm_B](int NKArg) {
+    int NKArg = std::get<2>(A);
+    return [NIArg, NJArg, NKArg, CMat = g_gemm_C, AMat = g_gemm_A,
+            BMat = g_gemm_B]() {
         __pb_gemm_kernel(NIArg, NJArg, NKArg, 1.5, 1.2, CMat, AMat, BMat);
     };
 }
-static auto pb_runtime_args_gemm(const std::tuple<int, int, int>& A) {
-    return std::make_tuple(std::get<2>(A));
+static auto pb_runtime_args_gemm(const std::tuple<int, int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_3(gemm)
 
@@ -545,15 +552,16 @@ extern "C" void kernel_gemver(int n) {
         g_gemver_A, g_gemver_u1, g_gemver_v1, g_gemver_u2, g_gemver_v2,
         g_gemver_w, g_gemver_x, g_gemver_y, g_gemver_z);
 }
-static auto pb_make_lambda_gemver(const std::tuple<int>&) {
-    return [AMat = g_gemver_A, U1 = g_gemver_u1, V1 = g_gemver_v1,
+static auto pb_make_lambda_gemver(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, AMat = g_gemver_A, U1 = g_gemver_u1, V1 = g_gemver_v1,
             U2 = g_gemver_u2, V2 = g_gemver_v2, W = g_gemver_w, X = g_gemver_x,
-            Y = g_gemver_y, Z = g_gemver_z](int NArg) {
+            Y = g_gemver_y, Z = g_gemver_z]() {
         __pb_gemver_kernel(NArg, 1.5, 1.2, AMat, U1, V1, U2, V2, W, X, Y, Z);
     };
 }
-static auto pb_runtime_args_gemver(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_gemver(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(gemver)
 
@@ -587,14 +595,15 @@ extern "C" void kernel_gesummv(int n) {
     __pb_gesummv_kernel(n, 1.5, 1.2,
         g_gesummv_A, g_gesummv_B, g_gesummv_tmp, g_gesummv_x, g_gesummv_y);
 }
-static auto pb_make_lambda_gesummv(const std::tuple<int>&) {
-    return [AMat = g_gesummv_A, BMat = g_gesummv_B, Tmp = g_gesummv_tmp,
-            X = g_gesummv_x, Y = g_gesummv_y](int NArg) {
+static auto pb_make_lambda_gesummv(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, AMat = g_gesummv_A, BMat = g_gesummv_B, Tmp = g_gesummv_tmp,
+            X = g_gesummv_x, Y = g_gesummv_y]() {
         __pb_gesummv_kernel(NArg, 1.5, 1.2, AMat, BMat, Tmp, X, Y);
     };
 }
-static auto pb_runtime_args_gesummv(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_gesummv(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(gesummv)
 
@@ -629,13 +638,14 @@ extern "C" void kernel_symm(int m, int n) {
 }
 static auto pb_make_lambda_symm(const std::tuple<int, int>& A) {
     int MArg = std::get<0>(A);
-    return [MArg, CMat = g_symm_C, AMat = g_symm_A,
-            BMat = g_symm_B](int NArg) {
+    int NArg = std::get<1>(A);
+    return [MArg, NArg, CMat = g_symm_C, AMat = g_symm_A,
+            BMat = g_symm_B]() {
         __pb_symm_kernel(MArg, NArg, 1.5, 1.2, CMat, AMat, BMat);
     };
 }
-static auto pb_runtime_args_symm(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_symm(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(symm)
 
@@ -673,13 +683,14 @@ extern "C" void kernel_syr2k(int spec_m, int spec_n) {
 }
 static auto pb_make_lambda_syr2k(const std::tuple<int, int>& A) {
     int MArg = std::get<0>(A);
-    return [MArg, CMat = g_syr2k_C, AMat = g_syr2k_A,
-            BMat = g_syr2k_B](int NArg) {
+    int NArg = std::get<1>(A);
+    return [MArg, NArg, CMat = g_syr2k_C, AMat = g_syr2k_A,
+            BMat = g_syr2k_B]() {
         __pb_syr2k_kernel(NArg, MArg, 1.5, 1.2, CMat, AMat, BMat);
     };
 }
-static auto pb_runtime_args_syr2k(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_syr2k(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(syr2k)
 
@@ -713,12 +724,13 @@ extern "C" void kernel_syrk(int spec_m, int spec_n) {
 }
 static auto pb_make_lambda_syrk(const std::tuple<int, int>& A) {
     int MArg = std::get<0>(A);
-    return [MArg, CMat = g_syrk_C, AMat = g_syrk_A](int NArg) {
+    int NArg = std::get<1>(A);
+    return [MArg, NArg, CMat = g_syrk_C, AMat = g_syrk_A]() {
         __pb_syrk_kernel(NArg, MArg, 1.5, 1.2, CMat, AMat);
     };
 }
-static auto pb_runtime_args_syrk(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_syrk(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(syrk)
 
@@ -750,12 +762,13 @@ extern "C" void kernel_trmm(int m, int n) {
 }
 static auto pb_make_lambda_trmm(const std::tuple<int, int>& A) {
     int MArg = std::get<0>(A);
-    return [MArg, AMat = g_trmm_A, BMat = g_trmm_B](int NArg) {
+    int NArg = std::get<1>(A);
+    return [MArg, NArg, AMat = g_trmm_A, BMat = g_trmm_B]() {
         __pb_trmm_kernel(MArg, NArg, 1.5, AMat, BMat);
     };
 }
-static auto pb_runtime_args_trmm(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_trmm(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(trmm)
 
@@ -782,13 +795,14 @@ extern "C" void kernel_cholesky(int n) __asm__("kernel_cholesky");
 extern "C" void kernel_cholesky(int n) {
     __pb_cholesky_kernel(n, g_cholesky_A);
 }
-static auto pb_make_lambda_cholesky(const std::tuple<int>&) {
-    return [AMat = g_cholesky_A](int NArg) {
+static auto pb_make_lambda_cholesky(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, AMat = g_cholesky_A]() {
         __pb_cholesky_kernel(NArg, AMat);
     };
 }
-static auto pb_runtime_args_cholesky(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_cholesky(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(cholesky)
 
@@ -807,13 +821,14 @@ extern "C" void kernel_durbin(int n) __asm__("kernel_durbin");
 extern "C" void kernel_durbin(int n) {
     __pb_durbin_kernel(n, g_durbin_r, g_durbin_y);
 }
-static auto pb_make_lambda_durbin(const std::tuple<int>&) {
-    return [RVec = g_durbin_r, YVec = g_durbin_y](int NArg) {
+static auto pb_make_lambda_durbin(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, RVec = g_durbin_r, YVec = g_durbin_y]() {
         __pb_durbin_kernel(NArg, RVec, YVec);
     };
 }
-static auto pb_runtime_args_durbin(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_durbin(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(durbin)
 
@@ -849,13 +864,14 @@ extern "C" void kernel_gramschmidt(int m, int n) {
 }
 static auto pb_make_lambda_gramschmidt(const std::tuple<int, int>& A) {
     int MArg = std::get<0>(A);
-    return [MArg, AMat = g_gramschmidt_A, RMat = g_gramschmidt_R,
-            QMat = g_gramschmidt_Q](int NArg) {
+    int NArg = std::get<1>(A);
+    return [MArg, NArg, AMat = g_gramschmidt_A, RMat = g_gramschmidt_R,
+            QMat = g_gramschmidt_Q]() {
         __pb_gramschmidt_kernel(MArg, NArg, AMat, RMat, QMat);
     };
 }
-static auto pb_runtime_args_gramschmidt(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_gramschmidt(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(gramschmidt)
 
@@ -882,13 +898,14 @@ extern "C" void kernel_lu(int n) __asm__("kernel_lu");
 extern "C" void kernel_lu(int n) {
     __pb_lu_kernel(n, g_lu_A);
 }
-static auto pb_make_lambda_lu(const std::tuple<int>&) {
-    return [AMat = g_lu_A](int NArg) {
+static auto pb_make_lambda_lu(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, AMat = g_lu_A]() {
         __pb_lu_kernel(NArg, AMat);
     };
 }
-static auto pb_runtime_args_lu(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_lu(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(lu)
 
@@ -918,14 +935,15 @@ extern "C" void kernel_ludcmp(int n) __asm__("kernel_ludcmp");
 extern "C" void kernel_ludcmp(int n) {
     __pb_ludcmp_kernel(n, g_ludcmp_A, g_ludcmp_b, g_ludcmp_x, g_ludcmp_y);
 }
-static auto pb_make_lambda_ludcmp(const std::tuple<int>&) {
-    return [AMat = g_ludcmp_A, BVec = g_ludcmp_b,
-            XVec = g_ludcmp_x, YVec = g_ludcmp_y](int NArg) {
+static auto pb_make_lambda_ludcmp(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, AMat = g_ludcmp_A, BVec = g_ludcmp_b,
+            XVec = g_ludcmp_x, YVec = g_ludcmp_y]() {
         __pb_ludcmp_kernel(NArg, AMat, BVec, XVec, YVec);
     };
 }
-static auto pb_runtime_args_ludcmp(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_ludcmp(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(ludcmp)
 
@@ -954,13 +972,14 @@ extern "C" void kernel_trisolv(int n) __asm__("kernel_trisolv");
 extern "C" void kernel_trisolv(int n) {
     __pb_trisolv_kernel(n, g_trisolv_L, g_trisolv_x, g_trisolv_b);
 }
-static auto pb_make_lambda_trisolv(const std::tuple<int>&) {
-    return [LMat = g_trisolv_L, XVec = g_trisolv_x, BVec = g_trisolv_b](int NArg) {
+static auto pb_make_lambda_trisolv(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, LMat = g_trisolv_L, XVec = g_trisolv_x, BVec = g_trisolv_b]() {
         __pb_trisolv_kernel(NArg, LMat, XVec, BVec);
     };
 }
-static auto pb_runtime_args_trisolv(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_trisolv(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(trisolv)
 
@@ -1000,13 +1019,14 @@ extern "C" void kernel_deriche(int w, int h) {
 }
 static auto pb_make_lambda_deriche(const std::tuple<int, int>& A) {
     int WArg = std::get<0>(A);
-    return [WArg, ImgIn = g_deriche_imgIn, ImgOut = g_deriche_imgOut,
-            Y1 = g_deriche_y1, Y2 = g_deriche_y2](int HArg) {
+    int HArg = std::get<1>(A);
+    return [WArg, HArg, ImgIn = g_deriche_imgIn, ImgOut = g_deriche_imgOut,
+            Y1 = g_deriche_y1, Y2 = g_deriche_y2]() {
         __pb_deriche_kernel(WArg, HArg, 0.25f, ImgIn, ImgOut, Y1, Y2);
     };
 }
-static auto pb_runtime_args_deriche(const std::tuple<int, int>& A) {
-    return std::make_tuple(std::get<1>(A));
+static auto pb_runtime_args_deriche(const std::tuple<int, int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_2(deriche)
 
@@ -1035,13 +1055,14 @@ extern "C" void kernel_floyd_warshall(int n) __asm__("kernel_floyd_warshall");
 extern "C" void kernel_floyd_warshall(int n) {
     __pb_fw_kernel(n, g_fw_path);
 }
-static auto pb_make_lambda_floyd_warshall(const std::tuple<int>&) {
-    return [Path = g_fw_path](int NArg) {
+static auto pb_make_lambda_floyd_warshall(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, Path = g_fw_path]() {
         __pb_fw_kernel(NArg, Path);
     };
 }
-static auto pb_runtime_args_floyd_warshall(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_floyd_warshall(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(floyd_warshall)
 
@@ -1073,13 +1094,14 @@ extern "C" void kernel_nussinov(int n) __asm__("kernel_nussinov");
 extern "C" void kernel_nussinov(int n) {
     __pb_nussinov_kernel(n, g_nussinov_seq, g_nussinov_table);
 }
-static auto pb_make_lambda_nussinov(const std::tuple<int>&) {
-    return [Seq = g_nussinov_seq, Table = g_nussinov_table](int NArg) {
+static auto pb_make_lambda_nussinov(const std::tuple<int>& A) {
+    int NArg = std::get<0>(A);
+    return [NArg, Seq = g_nussinov_seq, Table = g_nussinov_table]() {
         __pb_nussinov_kernel(NArg, Seq, Table);
     };
 }
-static auto pb_runtime_args_nussinov(const std::tuple<int>& A) {
-    return std::make_tuple(std::get<0>(A));
+static auto pb_runtime_args_nussinov(const std::tuple<int>&) {
+    return std::tuple<>();
 }
 POLYBENCH_IMPL_1(nussinov)
 
