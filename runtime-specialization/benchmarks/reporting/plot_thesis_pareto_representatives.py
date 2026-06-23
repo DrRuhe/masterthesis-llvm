@@ -107,6 +107,7 @@ def main() -> None:
             title=None,
         )
         shutil.copy2(report_png, thesis_output_dir / filename)
+        shutil.copy2(report_csv, thesis_output_dir / csv_name)
         print(f"  Copied: {thesis_output_dir / filename}")
 
 

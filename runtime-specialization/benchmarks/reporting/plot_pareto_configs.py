@@ -67,6 +67,17 @@ _GLOBAL_PARETO_COLOR = "#555555"   # neutral dark gray for global frontier
 _SINGLE_LEVEL_COLOR  = "#1f77b4"   # blue when no kv_a dimension
 
 
+def _dedupe_legend(ax):
+    """Collapse duplicate legend labels while preserving first occurrence order."""
+    handles, labels = ax.get_legend_handles_labels()
+    unique = {}
+    for handle, label in zip(handles, labels):
+        if label and label not in unique:
+            unique[label] = handle
+    if unique:
+        ax.legend(unique.values(), unique.keys(), loc="best")
+
+
 def _normalize_params(raw_params: dict) -> dict:
     """Map env-var keys back to short names, then fill any missing keys with Default()."""
     short = {}
@@ -127,8 +138,8 @@ END
 
 
 def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
-    """Fetch rows for a study. Returns list of 7-tuples:
-    (config_label, params_json, group, kernel, jit_ms, spec_ms, kv_a_or_None).
+    """Fetch rows for a study. Returns list of 8-tuples:
+    (config_label, params_json, group, kernel, jit_ms, spec_ms, unspec_ms, kv_a_or_None).
 
     Tries optim_trial_params first; falls back to ablation_studies. Returns empty list
     if neither has data for the study.
@@ -166,7 +177,7 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
             WHERE otp.study_name = ?
               AND NOT otp.used_timeout_fallback
               AND p.run_type = 'iteration'
-              AND p.phase IN ('jit_overhead', 'specialized_exec')
+              AND p.phase IN ('jit_overhead', 'specialized_exec', 'unspecialized')
         ),
         jit AS (
             SELECT
@@ -183,6 +194,14 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
             FROM phase_rows
             WHERE phase = 'specialized_exec'
             GROUP BY trial_id, "group", kernel, kv_a
+        ),
+        unspec AS (
+            SELECT
+                trial_id, "group", kernel, kv_a,
+                MAX(phase_ns) AS t_unspec_ns
+            FROM phase_rows
+            WHERE phase = 'unspecialized'
+            GROUP BY trial_id, "group", kernel, kv_a
         )
         SELECT
             'trial_' || CAST(jit.trial_id AS VARCHAR) AS config_label,
@@ -190,6 +209,7 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
             jit."group", jit.kernel,
             jit.t_jit_ns / 1e6 AS jit_ms,
             spec.t_spec_ns / 1e6 AS spec_ms,
+            unspec.t_unspec_ns / 1e6 AS unspec_ms,
             jit.kv_a
         FROM jit
         JOIN spec
@@ -197,6 +217,11 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
          AND spec."group" = jit."group"
          AND spec.kernel = jit.kernel
          {kv_a_join}
+        LEFT JOIN unspec
+          ON unspec.trial_id = jit.trial_id
+         AND unspec."group" = jit."group"
+         AND unspec.kernel = jit.kernel
+         AND unspec.kv_a IS NOT DISTINCT FROM jit.kv_a
         WHERE jit.t_jit_ns IS NOT NULL
           AND spec.t_spec_ns IS NOT NULL
         """,
@@ -219,7 +244,7 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
             JOIN v_parsed p ON p.run_id = a.run_id
             WHERE a.study_name = ?
               AND p.run_type = 'iteration'
-              AND p.phase IN ('jit_overhead', 'specialized_exec')
+              AND p.phase IN ('jit_overhead', 'specialized_exec', 'unspecialized')
         ),
         jit AS (
             SELECT
@@ -236,6 +261,14 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
             FROM phase_rows
             WHERE phase = 'specialized_exec'
             GROUP BY config_name, "group", kernel, kv_a
+        ),
+        unspec AS (
+            SELECT
+                config_name, "group", kernel, kv_a,
+                MAX(phase_ns) AS t_unspec_ns
+            FROM phase_rows
+            WHERE phase = 'unspecialized'
+            GROUP BY config_name, "group", kernel, kv_a
         )
         SELECT
             jit.config_name AS config_label,
@@ -243,6 +276,7 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
             jit."group", jit.kernel,
             jit.t_jit_ns / 1e6 AS jit_ms,
             spec.t_spec_ns / 1e6 AS spec_ms,
+            unspec.t_unspec_ns / 1e6 AS unspec_ms,
             jit.kv_a
         FROM jit
         JOIN spec
@@ -250,6 +284,11 @@ def fetch_rows(con: duckdb.DuckDBPyConnection, study_name: str):
          AND spec."group" = jit."group"
          AND spec.kernel = jit.kernel
          {kv_a_join}
+        LEFT JOIN unspec
+          ON unspec.config_name = jit.config_name
+         AND unspec."group" = jit."group"
+         AND unspec.kernel = jit.kernel
+         AND unspec.kv_a IS NOT DISTINCT FROM jit.kv_a
         WHERE jit.t_jit_ns IS NOT NULL
           AND spec.t_spec_ns IS NOT NULL
         """,
@@ -286,7 +325,7 @@ def _flag_default(rows):
         seen = set()
         for i, r in enumerate(rows):
             if r[0] == "default":
-                key = (r[2], r[3], r[6])  # group, kernel, kv_a
+                key = (r[2], r[3], r[7])  # group, kernel, kv_a
                 if key not in seen:
                     is_default[i] = True
                     seen.add(key)
@@ -296,7 +335,7 @@ def _flag_default(rows):
     best_per_group = {}
     for i, r in enumerate(rows):
         params = _parse_params(r[1])
-        key = (r[2], r[3], r[6])  # group, kernel, kv_a
+        key = (r[2], r[3], r[7])  # group, kernel, kv_a
         d = _params_distance(params)
         if key not in best_per_group or d < best_per_group[key][0]:
             best_per_group[key] = (d, i)
@@ -319,22 +358,42 @@ def _plot_frontier(ax, jit_vals, spec_vals, color, linewidth=1.5, alpha=0.7,
 
 def _write_csv(output_path_csv: Path, rows, default_flags, pareto_per_row):
     """Write CSV with one row per (config, kernel[, kv_a]) combination."""
+    def amortized_speedup(row):
+        unspec_ms = row[6]
+        spec_ms = row[5]
+        if unspec_ms is None or spec_ms is None or spec_ms <= 0:
+            return None
+        return unspec_ms / spec_ms
+
+    def amortization_point_ms(row):
+        speedup = amortized_speedup(row)
+        jit_ms = row[4]
+        if speedup is None or jit_ms is None or speedup <= 1.0:
+            return None
+        return (speedup * jit_ms) / (speedup - 1.0)
+
     output_path_csv.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path_csv, "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow([
             "config_label", *_PARAM_COLS,
             "group", "kernel", "kv_a",
-            "jit_overhead_ms", "specialized_exec_ms",
+            "jit_overhead_ms", "specialized_exec_ms", "unspecialized_exec_ms",
+            "amortized_speedup_u_over_s", "amortization_point_up_ms",
             "is_pareto_optimal", "is_default",
         ])
         for i, r in enumerate(rows):
             params = _parse_params(r[1])
             param_vals = [params.get(c, "") for c in _PARAM_COLS]
+            speedup = amortized_speedup(r)
+            up_ms = amortization_point_ms(r)
             w.writerow([
                 r[0], *param_vals,
-                r[2], r[3], r[6] if r[6] is not None else "",
+                r[2], r[3], r[7] if r[7] is not None else "",
                 f"{r[4]:.6f}", f"{r[5]:.6f}",
+                "" if r[6] is None else f"{r[6]:.6f}",
+                "" if speedup is None else f"{speedup:.6f}",
+                "" if up_ms is None else f"{up_ms:.6f}",
                 bool(pareto_per_row[i]), bool(default_flags[i]),
             ])
 
@@ -353,7 +412,7 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
 
     jit_arr  = np.array([r[4] for r in rows])
     spec_arr = np.array([r[5] for r in rows])
-    kv_a_vals = [r[6] for r in rows]
+    kv_a_vals = [r[7] for r in rows]
     has_levels = any(v is not None for v in kv_a_vals)
 
     # Global per-kernel Pareto mask (used for CSV is_pareto_optimal and for global line).
@@ -394,19 +453,19 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
             # Per-level Pareto frontier.
             _plot_frontier(ax, lj[l_pareto], ls[l_pareto],
                            color=color, linewidth=1.5, alpha=0.8, zorder=2,
-                           label=f"{level} Pareto")
+                           label="Pareto Frontier")
 
             # Default stars for this level.
             if ldefault.any():
                 ax.scatter(lj[ldefault], ls[ldefault],
                            c=color, s=260, marker="*",
                            edgecolors="black", linewidths=0.6, zorder=5,
-                           label=f"{level} default")
+                           label="Default")
 
         # Global Pareto frontier — dashed, neutral color, drawn on top.
         _plot_frontier(ax, jit_arr[global_pareto], spec_arr[global_pareto],
                        color=_GLOBAL_PARETO_COLOR, linewidth=2.0, linestyle="--",
-                       alpha=0.9, zorder=4, label="Global Pareto")
+                       alpha=0.9, zorder=4)
 
     else:
         # Single-level (no kv_a): original behavior.
@@ -422,7 +481,7 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
         if dflags.any():
             ax.scatter(jit_arr[dflags], spec_arr[dflags],
                        c="red", s=260, marker="*", edgecolors="black", linewidths=0.6,
-                       label="Options::Default()", zorder=5)
+                       label="Default", zorder=5)
 
         _plot_frontier(ax, jit_arr[global_pareto], spec_arr[global_pareto],
                        color=_SINGLE_LEVEL_COLOR, linewidth=1.5, alpha=0.7, zorder=2)
@@ -431,7 +490,7 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
     ax.set_ylabel("Specialized exec (ms)  — lower is better")
     if title:
         ax.set_title(title)
-    ax.legend(loc="best")
+    _dedupe_legend(ax)
     ax.grid(True, alpha=0.3)
 
     fig.savefig(output_path_png, dpi=150, bbox_inches="tight")
@@ -481,7 +540,7 @@ def render(rows, default_flags, output_path_png: Path, output_path_csv: Path,
     if dflags.any():
         ax.scatter(jit_arr[dflags], spec_arr[dflags],
                    c="red", s=260, marker="*", edgecolors="black", linewidths=0.6,
-                   label="Options::Default()", zorder=5)
+                   label="Default", zorder=5)
     _plot_frontier(ax, jit_arr[global_pareto], spec_arr[global_pareto],
                    color=_SINGLE_LEVEL_COLOR, linewidth=1.5, alpha=0.7, zorder=2)
 
@@ -489,7 +548,7 @@ def render(rows, default_flags, output_path_png: Path, output_path_csv: Path,
     ax.set_ylabel("Specialized exec (ms)  — lower is better")
     if title:
         ax.set_title(title)
-    ax.legend(loc="best")
+    _dedupe_legend(ax)
     ax.grid(True, alpha=0.3)
     fig.savefig(output_path_png, dpi=150, bbox_inches="tight")
     plt.close(fig)
