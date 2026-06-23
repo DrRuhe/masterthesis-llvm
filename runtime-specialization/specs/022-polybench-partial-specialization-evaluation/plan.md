@@ -1,0 +1,11 @@
+- [x] Confirm the current PolyBench benchmark registration and lambda benchmark helpers before modifying the specialization path
+- [x] Create the `specs/022-polybench-partial-specialization-evaluation/` artifacts and capture the per-kernel specialization decisions in `details.md`
+- [ ] Add reusable lambda-based benchmark helpers for PolyBench `jit_overhead` and `specialized_exec` measurements in `benchmarks/ClangRuntimeSpecializerBenchmark.h`
+- [ ] Refactor `benchmarks/polybench/polybench_bench.cpp` so all 30 kernels use the partial-specialization lambda path while preserving existing benchmark phases and names
+- [ ] Add a dedicated best-practice PolyBench thesis runner script for the default pipeline
+- [ ] Add a PolyBench reporting script that generates the size-scaling plots and conditional summary table into `benchmarks/reports/thesis-figures/rq3/`
+- [ ] Update `specs/TODO.md` to track the PolyBench reevaluation and appendix integration work
+- [ ] Build and run a focused PolyBench sanity check to verify the new benchmark path
+- [ ] Run the PolyBench thesis study/reporting flow or, if the full run is too expensive, validate the runner/reporting commands against a narrow filtered study and document the remaining full-run step
+- [ ] Update `docs/thesis.typ` to add the PolyBench appendix section and wire in the generated appendix/report artifacts
+- [ ] Verify the thesis build path after the appendix integration
