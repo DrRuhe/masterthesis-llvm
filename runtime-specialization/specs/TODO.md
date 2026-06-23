@@ -140,6 +140,18 @@ This document is the authoritative reference for high-level tasks required to co
   - [x] Benchmark rerun completed with the fixed dedicated `PolyBenchBenchmark` binary
 - **Effort**: ~1.5 hours (bug fix + recompile + run 60 trials: 30 kernels × 2 sizes × 1 rep baseline).
 
+### RQ3-003: Reevaluate PolyBench with partial specialization and thesis appendix rationale
+- **Status**: 🟡 Partially Blocked
+- **Data Needed**: A best-practice default-pipeline PolyBench study using the new lambda-based partial-specialization path across `SMALL`/`MEDIUM`/`LARGE`/`EXTRALARGE`, plus the generated size-scaling plots and optional `$U_p$` summary table.
+- **Why**: The previous PolyBench study specialized all benchmark-visible arguments and therefore did not model repeated calls with stable kernel state and changing inputs. The thesis needs a more realistic PolyBench evaluation and an appendix that explains the specialization choice for each kernel.
+- **Outcome**: Thesis-ready RQ3 figures for amortized speedup and JIT time across input size, a conditional summary table when the data is sufficiently stable, and an appendix section listing the per-kernel specialization decision and modeled scenario.
+- **Reference**: `specs/022-polybench-partial-specialization-evaluation/`, `benchmarks/run_thesis_polybench_partial_specialization.sh`, `benchmarks/reporting/export_polybench_partial_specialization.py`
+- **Prerequisite**:
+  - [x] Partial-specialization benchmark infrastructure implemented
+  - [ ] Best-practice PolyBench study recorded in DuckDB
+  - [ ] Thesis appendix section wired into `docs/thesis.typ`
+- **Effort**: ~1-2 hours for the full study plus artifact generation once the build is available.
+
 ### RQ3-002: Evaluate TPC-H on CRS (if feasible)
 - **Status**: ❌ SKIPPED — TPC-H JIT overhead > 2 minutes (infeasible, documented as RQ6 failure case)
 - **Decision Made**: TPC-H module (255,342 instrs) is 12× too large for practical specialization.

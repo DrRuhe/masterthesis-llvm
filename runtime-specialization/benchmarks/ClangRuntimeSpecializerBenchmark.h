@@ -490,6 +490,70 @@ void benchmarkSpecializedExec(
     }
 }
 
+template <class Factory>
+__attribute__((always_inline))
+void benchmarkLambdaJITOverhead(
+    benchmark::State& state,
+    Factory&& factory,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
+
+    auto modStats = ClangRuntimeSpecializer::getModuleStats();
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    RS->setOptions(opts);
+    auto&& FactoryRef = factory;
+    for (auto _ : state) {
+        auto T0 = std::chrono::high_resolution_clock::now();
+        benchmark::DoNotOptimize(std::invoke(FactoryRef));
+        auto T1 = std::chrono::high_resolution_clock::now();
+        state.SetIterationTime(std::chrono::duration<double>(T1 - T0).count());
+    }
+    RS->setOptions(ClangRuntimeSpecializer::Options::Default());
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+    auto txStats = ClangRuntimeSpecializer::getLastTransformStats();
+
+    state.counters["jit_module_fns"]    = (double)modStats.FunctionCount;
+    state.counters["jit_module_instrs"] = (double)modStats.InstructionCount;
+    state.counters["jit_blob_kb"]       = (double)(modStats.BitcodeSizeBytes / 1024);
+    state.counters["jit_pruned_fns"]    = (double)txStats.FunctionCountAfterPrune;
+    state.counters["jit_pruned_instrs"] = (double)txStats.InstructionCountAfterPrune;
+}
+
+template <class Factory, class Tuple>
+__attribute__((always_inline))
+void benchmarkLambdaSpecializedExec(
+    benchmark::State& state,
+    Factory&& factory,
+    Tuple runtimeArgs,
+    ClangRuntimeSpecializer::Options opts = ClangRuntimeSpecializer::Options::Default())
+{
+    auto* RS = ClangRuntimeSpecializer::init();
+    opts = detail::resolveUCPipelineOptions(state.name(), opts);
+
+    auto PrevLevel = ClangRuntimeSpecializer::getLogLevel();
+    ClangRuntimeSpecializer::setLogLevel(ClangRuntimeSpecializer::LogLevel::None);
+    RS->setOptions(opts);
+    auto SpecFn = std::invoke(std::forward<Factory>(factory));
+    RS->setOptions(ClangRuntimeSpecializer::Options::Default());
+    ClangRuntimeSpecializer::setLogLevel(PrevLevel);
+
+    auto InvokeSpecialized = [&](auto&&... a) {
+        return SpecFn(std::forward<decltype(a)>(a)...);
+    };
+    using R = decltype(std::apply(InvokeSpecialized, runtimeArgs));
+
+    for (auto _ : state) {
+        benchmark::DoNotOptimize(runtimeArgs);
+        if constexpr (std::is_void_v<R>)
+            std::apply(InvokeSpecialized, runtimeArgs);
+        else
+            benchmark::DoNotOptimize(std::apply(InvokeSpecialized, runtimeArgs));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Pass-trace JSON utilities
 // ---------------------------------------------------------------------------
