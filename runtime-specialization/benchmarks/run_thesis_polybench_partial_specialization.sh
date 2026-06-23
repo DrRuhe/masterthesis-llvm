@@ -14,10 +14,11 @@ fi
 
 BINARY="$1"
 DB="${2:-benchmarks.duckdb}"
-DATE="$(date +%Y%m%d)"
-STUDY="polybench_partial_default_thesis_${DATE}"
-REPORT_DIR="reports/${DATE}-thesis-polybench-partial"
+RUN_STAMP="$(date +%Y%m%d_%H%M%S)"
+STUDY="polybench_partial_default_thesis_${RUN_STAMP}"
+REPORT_DIR="reports/${RUN_STAMP}-thesis-polybench-partial"
 CONFIG_JSON="$REPORT_DIR/configs.json"
+TIMEOUT_SECONDS=3600
 
 mkdir -p "$REPORT_DIR"
 
@@ -33,6 +34,7 @@ python3 ablation_benchmarks.py "$BINARY" \
   --configs "$CONFIG_JSON" \
   --benchmark-filter 'BM_g:polybench;.*s:(SMALL|MEDIUM|LARGE|EXTRALARGE);.*t:(jit_overhead|specialized_exec|unspecialized)' \
   --reps 5 \
+  --timeout "$TIMEOUT_SECONDS" \
   --benchmarking-best-practice
 
 python3 - "$DB" "$STUDY" <<'PY'
