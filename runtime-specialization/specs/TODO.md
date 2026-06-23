@@ -1,6 +1,6 @@
 # LLVM Runtime Specializer: Thesis Completion Checklist
 
-**Last Updated**: 2026-06-12  
+**Last Updated**: 2026-06-23  
 **Status**: Active — tracks missing data, open questions, and completion blockers for thesis evaluation sections.
 
 This document is the authoritative reference for high-level tasks required to complete the thesis. It is organized by thesis chapter and mapped to research questions. Sessions that discover new open tasks MUST update this file with a link to the relevant spec or reflection document.
@@ -38,12 +38,12 @@ This document is the authoritative reference for high-level tasks required to co
 - **Next Step**: Copy existing content into proper Design chapter; add missing rationale for IR serialization vs. alternatives.
 
 ### D-002: Verify ARMv8 portability scope statement
-- **Status**: 🟢 Unblocked
-- **Data Needed**: Statement of scope: are results portable to ARM, or x86-64-specific?
+- **Status**: ✅ Complete (2026-06-23)
+- **Data Needed**: None.
 - **Why**: Discussion chapter must address portability threats; currently assumed but not validated.
-- **Outcome**: Explicit scope statement: "Results are x86-64 specific; ARM/RISC-V may differ due to cache hierarchy and instruction set differences."
-- **Reference**: Constitution principle "Hardware Specificity"; Spec 007 FR-020; Design chapter should cite this early.
-- **Next Step**: Run a polybench trial on ARM if available, or document as "out of scope for this thesis."
+- **Outcome**: Thesis now states that all evaluation results were collected on x86-64 Linux, that the `TrapUnreachable=true` JITLink workaround and `Large` code model are x86-64/Linux-specific implementation constraints, and that portability to AArch64 and RISC-V remains untested.
+- **Reference**: `docs/thesis.typ` section `Platform Scope`
+- **Next Step**: Optional future work: validate the implementation on AArch64 hardware instead of inferring portability from LLVM support alone.
 
 ---
 
@@ -237,13 +237,13 @@ This document is the authoritative reference for high-level tasks required to co
 - **Effort**: ~2-4 hours (runtime fix + regression tests + UC rerun).
 
 ### RQ6-003: Verify LLJIT crash fix and document boundary conditions
-- **Status**: 🟢 Unblocked
-- **Data Needed**: Document the `TrapUnreachable=true` fix and `setMutableContent` assertion that motivated it.
+- **Status**: ✅ Complete (2026-06-23)
+- **Data Needed**: None.
 - **Why**: This is a boundary condition that could affect portability; thesis should document it.
-- **Outcome**: Explanation in Discussion or RQ6 section: "LLJIT assertion 'MutableContent.data()' occurs when [condition]; mitigation: [fix]. This may affect portability to [other LLVM versions / platforms]."
-- **Reference**: Constitution "Critical Bug Fix: JITLink setMutableContent Crash"; Memory notes.
-- **Prerequisite**: None — already fixed.
-- **Effort**: ~30 minutes (writeup + verification against LLVM source).
+- **Outcome**: Thesis now documents both the mitigation (`TrapUnreachable=true`) and the motivating failure mode: without it, ORC JITLink hit a `setMutableContent` assertion when materializing a zero-byte `.text` section. The text frames this as a Linux/LLVM-version-specific boundary condition rather than evidence of general portability.
+- **Reference**: `docs/thesis.typ` sections `Initialization` and `Platform Scope`
+- **Prerequisite**: None — already fixed and now documented.
+- **Effort**: Complete.
 
 ### RQ6-004: Document scope limitations explicitly in Discussion
 - **Status**: 🟢 Unblocked
