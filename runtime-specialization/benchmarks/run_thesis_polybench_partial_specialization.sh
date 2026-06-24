@@ -19,6 +19,9 @@ STUDY="polybench_partial_default_thesis_${RUN_STAMP}"
 REPORT_DIR="reports/${RUN_STAMP}-thesis-polybench-partial"
 CONFIG_JSON="$REPORT_DIR/configs.json"
 TIMEOUT_SECONDS=3600
+ALL_KERNEL_ALT='correlation|covariance|2mm|3mm|atax|bicg|doitgen|mvt|gemm|gemver|gesummv|symm|syr2k|syrk|trmm|cholesky|durbin|gramschmidt|lu|ludcmp|trisolv|deriche|floyd_warshall|nussinov|adi|fdtd_2d|heat_3d|jacobi_1d|jacobi_2d|seidel_2d'
+EXTRALARGE_KERNEL_ALT='2mm|atax|bicg|doitgen|mvt|gemm|gemver|gesummv|syrk|trmm|cholesky|durbin|trisolv|deriche|fdtd_2d|heat_3d|jacobi_1d|jacobi_2d'
+BENCH_FILTER="^(BM_g:polybench;n:(${ALL_KERNEL_ALT});s:(SMALL|MEDIUM|LARGE);t:(jit_overhead|specialized_exec|unspecialized)|BM_g:polybench;n:(${EXTRALARGE_KERNEL_ALT});s:EXTRALARGE;t:(jit_overhead|specialized_exec|unspecialized))"
 
 mkdir -p "$REPORT_DIR"
 
@@ -32,7 +35,7 @@ python3 ablation_benchmarks.py "$BINARY" \
   --db "$DB" \
   --study-name "$STUDY" \
   --configs "$CONFIG_JSON" \
-  --benchmark-filter 'BM_g:polybench;.*s:(SMALL|MEDIUM|LARGE|EXTRALARGE);.*t:(jit_overhead|specialized_exec|unspecialized)' \
+  --benchmark-filter "$BENCH_FILTER" \
   --reps 5 \
   --timeout "$TIMEOUT_SECONDS" \
   --benchmarking-best-practice

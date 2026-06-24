@@ -13,6 +13,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 from report_utils import open_db, resolve_db_path
 
@@ -21,6 +22,26 @@ SIZE_ORDER = ["SMALL", "MEDIUM", "LARGE", "EXTRALARGE"]
 REPO_ROOT = Path(__file__).resolve().parents[2]
 APPENDIX_TEMPLATE_PATH = REPO_ROOT / "benchmarks/reports/thesis-figures/rq3/polybench_partial_specialization_appendix.typ"
 EXPECTED_KERNEL_COUNT = 30
+EXTRALARGE_KERNELS = {
+    "2mm",
+    "atax",
+    "bicg",
+    "doitgen",
+    "mvt",
+    "gemm",
+    "gemver",
+    "gesummv",
+    "syrk",
+    "trmm",
+    "cholesky",
+    "durbin",
+    "trisolv",
+    "deriche",
+    "fdtd_2d",
+    "heat_3d",
+    "jacobi_1d",
+    "jacobi_2d",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -122,12 +143,15 @@ def validate_rows(rows: list[dict[str, object]]) -> list[str]:
     kernels = sorted({row["kernel"] for row in rows})
     if len(kernels) != EXPECTED_KERNEL_COUNT:
         raise SystemExit(f"Expected {EXPECTED_KERNEL_COUNT} PolyBench kernels, got {len(kernels)}.")
-    expected_points = len(kernels) * len(SIZE_ORDER)
+    expected_points = (len(kernels) * 3) + len(EXTRALARGE_KERNELS)
     if len(rows) != expected_points:
         raise SystemExit(f"Expected {expected_points} PolyBench size points, got {len(rows)}.")
     for kernel in kernels:
         seen = {row["size"] for row in rows if row["kernel"] == kernel}
-        if seen != set(SIZE_ORDER):
+        expected_sizes = {"SMALL", "MEDIUM", "LARGE"}
+        if kernel in EXTRALARGE_KERNELS:
+            expected_sizes.add("EXTRALARGE")
+        if seen != expected_sizes:
             raise SystemExit(f"Kernel {kernel} does not cover the expected size tiers.")
     return kernels
 
@@ -138,25 +162,38 @@ def plot_metric(
     metric: str,
     ylabel: str,
     output: Path,
-    log_scale: bool,
 ) -> None:
-    fig, axes = plt.subplots(5, 6, figsize=(18, 12), constrained_layout=True, sharex=True)
+    fig, axes = plt.subplots(
+        5, 6, figsize=(18, 12), constrained_layout=True, sharex=True, sharey=True
+    )
     axes = axes.flatten()
     x_positions = list(range(len(SIZE_ORDER)))
+    values = [float(row[metric]) for row in rows]
+
+    if metric == "amortized_speedup":
+        y_min = math.floor(min(values) * 20.0) / 20.0
+        y_max = math.ceil(max(values) * 20.0) / 20.0
+        formatter = FuncFormatter(lambda value, _pos: f"{value:.2f}x")
+    else:
+        y_min = math.floor(min(values) / 10.0) * 10.0
+        y_max = math.ceil(max(values) / 10.0) * 10.0
+        formatter = FuncFormatter(lambda value, _pos: f"{value:.0f}")
 
     for index, kernel in enumerate(kernels):
         ax = axes[index]
         kernel_rows = [row for row in rows if row["kernel"] == kernel]
         kernel_rows.sort(key=lambda row: SIZE_ORDER.index(str(row["size"])))
+        xs = [SIZE_ORDER.index(str(row["size"])) for row in kernel_rows]
         y_values = [float(row[metric]) for row in kernel_rows]
-        ax.plot(x_positions, y_values, marker="o", linewidth=1.5, color="#355070")
+        ax.plot(xs, y_values, marker="o", linewidth=1.5, color="#355070")
         ax.set_title(kernel, fontsize=9)
         ax.set_xticks(x_positions)
         ax.set_xticklabels(SIZE_ORDER, rotation=35, ha="right", fontsize=8)
-        if log_scale:
-            ax.set_yscale("log")
-            if metric == "amortized_speedup":
-                ax.axhline(1.0, color="black", linestyle=":", linewidth=0.8)
+        ax.set_ylim(y_min, y_max)
+        ax.yaxis.set_major_locator(MaxNLocator(nbins=4))
+        ax.yaxis.set_major_formatter(formatter)
+        if metric == "amortized_speedup":
+            ax.axhline(1.0, color="black", linestyle=":", linewidth=0.8)
         ax.tick_params(axis="y", labelsize=8)
 
     for ax in axes[len(kernels):]:
@@ -183,6 +220,8 @@ def compute_summary(
     unstable: list[str] = []
     for kernel in kernels:
         kernel_rows = [row for row in rows if row["kernel"] == kernel]
+        if len(kernel_rows) != len(SIZE_ORDER):
+            continue
         kernel_rows.sort(key=lambda row: SIZE_ORDER.index(str(row["size"])))
         speedups = [float(row["amortized_speedup"]) for row in kernel_rows]
         jit_ms = [float(row["jit_ms"]) for row in kernel_rows]
@@ -239,7 +278,7 @@ def write_provenance(
     lines = [
         f"Study: {study_name}",
         "Config: default",
-        "Sizes: SMALL, MEDIUM, LARGE, EXTRALARGE",
+        "Sizes: SMALL, MEDIUM, LARGE for all 30 kernels; EXTRALARGE only for the verified 18-kernel subset",
         "Metrics: amortized speedup = U / S, jit time = J, U_p = ((U / S) J) / ((U / S) - 1)",
         f"Summary table heuristic threshold: relative spread <= {threshold:.2f}",
         f"Summary table emitted: {'yes' if emitted_summary else 'no'}",
@@ -268,7 +307,6 @@ def main() -> None:
         "amortized_speedup",
         "amortized speedup (U / S)",
         output_dir / "polybench_partial_amortized_speedup.png",
-        log_scale=True,
     )
     plot_metric(
         rows,
@@ -276,7 +314,6 @@ def main() -> None:
         "jit_ms",
         "jit time [ms]",
         output_dir / "polybench_partial_jit_time.png",
-        log_scale=True,
     )
 
     emitted_summary, summary_rows, unstable = compute_summary(rows, args.stability_threshold)
