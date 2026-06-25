@@ -1,0 +1,7 @@
+Study: polybench_partial_default_thesis_20260624_105615
+Config: default
+Sizes: SMALL, MEDIUM, LARGE for all 30 kernels; EXTRALARGE only for the verified 18-kernel subset
+Metrics: amortized speedup = U / S, jit time = J, U_p = ((U / S) J) / ((U / S) - 1)
+Summary table heuristic threshold: relative spread <= 0.20
+Summary table emitted: no
+Kernels exceeding heuristic threshold: doitgen, gemm, heat_3d, jacobi_1d
