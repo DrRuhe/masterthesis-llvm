@@ -75,13 +75,12 @@ This document is the authoritative reference for high-level tasks required to co
 - **Reference**: `benchmarks/reports/260610-breakeven/breakeven_table.txt`, `breakeven_hist.png`.
 
 ### RQ1-004: Document the three failure cases for RQ6
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Synthesize reflection findings on `count_matching_rows`, `column_scan`, `multi_predicate` into thesis-ready narrative with root causes.
-- **Why**: These three kernels are the thesis's answer to "where does specialization break down?" Reflections document them; now need writeup.
-- **Outcome**: RQ6 section with three case studies, each with root cause analysis and practical guidance.
-- **Reference**: Reflection 260531 §8 "Specialization Failure Cases"; Reflection 260527 §12 "Minimum Viable Kernel Duration."
-- **Prerequisite**: None — all data already collected.
-- **Effort**: ~1 hour (writeup + verification against reflection documents).
+- **Status**: ✅ Complete (2026-06-25)
+- **Data Needed**: None.
+- **Why**: These three kernels are the thesis's answer to "where does specialization break down?" The thesis now groups them as supported architectures with weak economic payoff instead of unsupported architectures.
+- **Outcome**: `docs/thesis.typ` section `Failure Cases and Weak-Payoff Cases` now explains `count_matching_rows`, `multi_predicate`, and `column_scan` as weak-payoff scan kernels, gives their root causes, and contrasts them against the structural SQLite/TPC-H failure case.
+- **Reference**: `docs/thesis.typ` section `Failure Cases and Weak-Payoff Cases`; Reflection 260531 §8 "Specialization Failure Cases"; Reflection 260527 §12 "Minimum Viable Kernel Duration."
+- **Prerequisite**: None.
 
 ### RQ1-005: Complete the thesis UC first-call quadrants rerun for `per_uc_best`
 - **Status**: ✅ Complete (2026-06-21)
@@ -101,13 +100,12 @@ This document is the authoritative reference for high-level tasks required to co
 - **Effort**: ~15-60 minutes depending on whether the missing point can be recovered from existing artifacts.
 
 ### RQ1-007: Build thesis taxonomy for "Specializeable Architectures"
-- **Status**: 🟢 Unblocked
-- **Data Needed**: Collect repository-backed evidence for supported and unsupported architectural patterns, then map the UC1 outlier kernels into that taxonomy without over-claiming unsupportedness.
-- **Why**: `docs/thesis.typ` line 1240 currently contains only a TODO stub, but the intended subsection should answer which architectural patterns CRS technically supports and which it does not.
-- **Outcome**: A drafting-ready evidence ledger and subsection plan covering supported patterns such as helper-call inlining / callback specialization / vtable devirtualization, plus unsupported patterns such as SQLite-style shared mutable state threaded through an interpreter dispatch loop.
-- **Reference**: `specs/021-specializeable-architectures-taxonomy/`
-- **Prerequisite**: None — most source material already exists in local specs, smoke tests, and benchmark reports.
-- **Effort**: ~1-2 hours (evidence collection + claim-strength review)
+- **Status**: ✅ Complete (2026-06-25)
+- **Data Needed**: None.
+- **Why**: The thesis now contains a dedicated subsection that distinguishes supported patterns from unsupported or weak-payoff cases and maps the UC1 outliers into that taxonomy without over-claiming unsupportedness.
+- **Outcome**: `docs/thesis.typ` section `Supported Specialization Patterns` now covers batch-processing kernels, helper-call chains, and virtual-dispatch-style specialization, while the following failure section positions the UC1 scan kernels as weak-payoff supported cases and SQLite/TPC-H as the structural unsupported boundary case.
+- **Reference**: `docs/thesis.typ` sections `Supported Specialization Patterns` and `Failure Cases and Weak-Payoff Cases`; `specs/021-specializeable-architectures-taxonomy/`
+- **Prerequisite**: None.
 
 ---
 
@@ -141,16 +139,15 @@ This document is the authoritative reference for high-level tasks required to co
 - **Effort**: ~1.5 hours (bug fix + recompile + run 60 trials: 30 kernels × 2 sizes × 1 rep baseline).
 
 ### RQ3-003: Reevaluate PolyBench with partial specialization and thesis appendix rationale
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: A best-practice default-pipeline PolyBench study using the new lambda-based partial-specialization path across `SMALL`/`MEDIUM`/`LARGE`/`EXTRALARGE`, plus the generated size-scaling plots and optional `$U_p$` summary table.
-- **Why**: The previous PolyBench study specialized all benchmark-visible arguments and therefore did not model repeated calls with stable kernel state and changing inputs. The thesis needs a more realistic PolyBench evaluation and an appendix that explains the specialization choice for each kernel.
-- **Outcome**: Thesis-ready RQ3 figures for amortized speedup and JIT time across input size, a conditional summary table when the data is sufficiently stable, and an appendix section listing the per-kernel specialization decision and modeled scenario.
+- **Status**: ✅ Complete (2026-06-25)
+- **Data Needed**: None.
+- **Why**: The thesis now uses the partial-specialization PolyBench study and includes the appendix material explaining the per-kernel specialization choices.
+- **Outcome**: Best-practice default-pipeline study `polybench_partial_default_thesis_20260624_105615` was recorded, the generated figures are referenced in `docs/thesis.typ`, the appendix includes `polybench_partial_specialization_appendix.typ`, and the automation correctly skipped the optional `$U_p$` summary table because the heuristic judged the size-scaling behavior too unstable.
 - **Reference**: `specs/022-polybench-partial-specialization-evaluation/`, `benchmarks/run_thesis_polybench_partial_specialization.sh`, `benchmarks/reporting/export_polybench_partial_specialization.py`
 - **Prerequisite**:
   - [x] Partial-specialization benchmark infrastructure implemented
-  - [ ] Best-practice PolyBench study recorded in DuckDB
-  - [ ] Thesis appendix section wired into `docs/thesis.typ`
-- **Effort**: ~1-2 hours for the full study plus artifact generation once the build is available.
+  - [x] Best-practice PolyBench study recorded in DuckDB
+  - [x] Thesis appendix section wired into `docs/thesis.typ`
 
 ### RQ3-002: Evaluate TPC-H on CRS (if feasible)
 - **Status**: ❌ SKIPPED — TPC-H JIT overhead > 2 minutes (infeasible, documented as RQ6 failure case)
@@ -202,17 +199,12 @@ This document is the authoritative reference for high-level tasks required to co
 ## Evaluation: Research Question 6 (RQ6) — Failure Cases & Boundaries
 
 ### RQ6-001: Document all specialization failure cases with root causes
-- **Status**: 🟡 Partially Blocked
-- **Data Needed**: Synthesis of reflected findings on failure cases into thesis-ready narrative.
-- **Why**: RQ6 is the thesis's explicit answer to "where does specialization break down?"
-- **Outcome**: Four documented failure cases with root causes, practical guidance, and scope implications:
-  1. **JIT Startup Overhead**: `count_matching_rows` (now fixed with JIT warmup; Reflection 260531 §8 Case 1).
-  2. **Fundamentally Poor Candidate**: `count_matching_rows` exec speedup still 1.01× (Reflection 260531 §8 Case 2).
-  3. **Marginal Candidates**: `column_scan`, `multi_predicate` (Reflection 260531 §8 Case 3).
-  4. **Dispatch Overhead (Fixed)**: UC8 kernels pre-batch-conversion (Reflection 260531 §8 Case 4).
-- **Reference**: Reflection 260531 §8; Reflection 260527 §12 "Minimum Viable Kernel Duration."
-- **Prerequisite**: None — all data already collected.
-- **Effort**: ~1 hour (writeup + cross-reference to reflections).
+- **Status**: ✅ Complete (2026-06-25)
+- **Data Needed**: None.
+- **Why**: RQ6 is the thesis's explicit answer to "where does specialization break down?", and that answer is now present in the evaluation chapter.
+- **Outcome**: `docs/thesis.typ` section `Failure Cases and Weak-Payoff Cases` now documents the current root-cause taxonomy used by the thesis: a structural interpreter-dispatch failure case for SQLite/TPC-H and a weak-payoff class for the UC1 scan kernels. Fixed historical issues such as JIT warmup and pre-batch UC8 dispatch overhead are no longer treated as the thesis's primary boundary cases.
+- **Reference**: `docs/thesis.typ` section `Failure Cases and Weak-Payoff Cases`; Reflection 260531 §8; Reflection 260527 §12 "Minimum Viable Kernel Duration."
+- **Prerequisite**: None.
 
 ### RQ6-002: Quantify module-size limitation (TPC-H case study)
 - **Status**: ✅ Complete (2026-06-10)
@@ -424,7 +416,7 @@ This document is the authoritative reference for high-level tasks required to co
 
 ### 🟢 Unblocked (Start Immediately)
 - D-001: Design chapter completion
-- RQ1-004, RQ6-001, RQ6-003, RQ6-004: Failure case documentation
+- RQ6-004: Discussion limitations polish
 - INF-002, INF-003, INF-004: Infrastructure & reproducibility documentation
 - DISC-001, DISC-002: Methodology & validity threats
 - FW-001, FW-002, FW-003: Future work
@@ -433,7 +425,6 @@ This document is the authoritative reference for high-level tasks required to co
 ### 🟡 Partially Blocked
 - RQ1-001: Needs corpus study rerun (~1 hour)
 - RQ1-002, RQ1-003: Depends on RQ1-001
-- RQ1-004: Writeup only (data ready)
 - RQ2-001, RQ2-002: Binary-size measurement (no known blocker)
 - RQ3-002, RQ4-001: Depends on polybench fix
 - RQ4-002: Sensitivity analysis (can start now)
