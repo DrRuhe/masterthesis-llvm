@@ -23,9 +23,10 @@ static void BM_jit_init_warmup(benchmark::State& state) {
     for (auto _ : state) {
         auto t0 = std::chrono::steady_clock::now();
         auto* RS = CRS::ClangRuntimeSpecializer::init();
-        // specializeOnly on a trivial 1-argument function forces LLVM to create
-        // the JIT engine and compile a minimal module — paying all startup costs.
-        auto warmup = RS->specializeOnly<int>(mypow_bench, 2);
+        // This TU is not rewritten by IRDumpingPass, so the warmup benchmark
+        // must use the explicit resolved-name entry point instead of the free
+        // specializeOnly() wrapper that expects pass-injected metadata.
+        auto warmup = RS->specializeOnlyResolved<int>("mypow_bench", mypow_bench, 2);
         auto t1 = std::chrono::steady_clock::now();
         state.SetIterationTime(
             std::chrono::duration<double>(t1 - t0).count());

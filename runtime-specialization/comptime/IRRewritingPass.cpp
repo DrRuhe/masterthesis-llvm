@@ -385,16 +385,30 @@ PreservedAnalyses IRRewritingPass::run(Module &M, ModuleAnalysisManager &AM) {
          OpFunc->hasLinkOnceODRLinkage()))
       OpFunc->setLinkage(GlobalValue::ExternalLinkage);
 
-  // FR-010: Collect only actual specialization targets from rewritten call sites.
-  // Keeping this list precise avoids cross-TU name collisions for unrelated
-  // inline/library functions and keeps funcName->blob dispatch stable.
+  // FR-010: Publish specialization roots to !crs.func_names.
+  // External definitions in this TU are the canonical owners for cross-TU
+  // specializeOnly/callSpecialized targets like the synthetic benchmark kernels.
+  // Lambda proxy functions and same-TU internal targets are added explicitly
+  // below so they survive DCE and remain addressable by the runtime.
   SmallVector<std::string, 64> FuncNames;
+  for (auto &F : M) {
+    if (F.isDeclaration() || F.getName().starts_with("__clangRS"))
+      continue;
+    if (F.hasLocalLinkage())
+      continue;
+    std::string Name = F.getName().str();
+    if (llvm::find(FuncNames, Name) == FuncNames.end())
+      FuncNames.push_back(Name);
+  }
   for (auto* OpFunc : LambdaTargets) {
     std::string Name = OpFunc->getName().str();
     if (llvm::find(FuncNames, Name) == FuncNames.end())
       FuncNames.push_back(Name);
   }
   for (const auto &Site : SpecFuncPtrSites) {
+    auto *ResolvedFn = M.getFunction(Site.ResolvedName);
+    if (!ResolvedFn || ResolvedFn->isDeclaration())
+      continue;
     if (llvm::find(FuncNames, Site.ResolvedName) == FuncNames.end())
       FuncNames.push_back(Site.ResolvedName);
   }

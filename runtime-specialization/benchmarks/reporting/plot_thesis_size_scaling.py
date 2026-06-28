@@ -22,8 +22,6 @@ DEFAULT_CSV = "benchmarks/reports/thesis-figures/rq1/rq1_first_call_quadrants.cs
 DEFAULT_OUTPUT_DIR = "benchmarks/reports/thesis-figures/rq1"
 DEFAULT_OUTPUT_PREFIX = "rq1_size_scaling"
 SIZE_ORDER = ["SMALL", "MEDIUM", "LARGE", "EXTRALARGE"]
-
-
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Generate thesis size-scaling figures for amortized speedup and JIT overhead."
@@ -312,6 +310,11 @@ def _plot_metric(
     for kernel in sorted(df["display_name"].unique()):
         kdf = df[df["display_name"] == kernel].sort_values("size_rank")
         style = styles[kernel]
+        linewidth = float(style.get("linewidth", 1.6))
+        markerfacecolor = style.get("markerfacecolor", style["color"])
+        markeredgecolor = style.get("markeredgecolor", style["color"])
+        markeredgewidth = float(style.get("markeredgewidth", 0.6))
+        zorder = float(style.get("zorder", 2))
         xs = kdf["size_rank"].to_numpy()
         ys = kdf[metric].to_numpy()
         ax.plot(
@@ -320,9 +323,13 @@ def _plot_metric(
             marker=style["marker"],
             linestyle=style["linestyle"],
             color=style["color"],
-            linewidth=1.6,
+            linewidth=linewidth,
             markersize=5,
+            markerfacecolor=markerfacecolor,
+            markeredgecolor=markeredgecolor,
+            markeredgewidth=markeredgewidth,
             alpha=0.95,
+            zorder=zorder,
         )
         if labeled:
             anchor = _label_anchor(kdf, metric)

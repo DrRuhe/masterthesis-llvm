@@ -191,8 +191,8 @@ This document is the authoritative reference for high-level tasks required to co
 
 ### RQ5-002: Identify and explain outliers in break-even distribution
 - **Status**: ✅ Complete (2026-06-10)
-- **Finding**: count_matching_rows has 2358ms JIT overhead (vs 42-58ms for other kernels) due to cold LLVM JIT compilation of a large IR module. Root cause: JIT startup warmup not implemented for this kernel.
-- **Reference**: `benchmarks/reports/260610-breakeven/breakeven_table.txt`; also documented in Reflection 260531 §6.1.
+- **Finding**: count_matching_rows has 2358ms JIT overhead (vs 42-58ms for other kernels) due to cold LLVM JIT compilation of a large IR module. Root cause: the first benchmark invocation pays a one-time runtime-specializer startup cost. An isolated rerun of `BM_g:synthetic;n:jit_init;t:jit_overhead;` on 2026-06-26 measured that startup contribution directly at `3206265409 ns` (`3.206 s`) real time, which replaces the earlier fallback estimate derived from the first-call study.
+- **Reference**: `benchmarks/reports/260610-breakeven/breakeven_table.txt`; Reflection 260531 §6.1; `benchmarks/reports/20260626-jit-init-warmup/`; `benchmarks/reports/20260626-jit-init-warmup-fixed2/`
 
 ---
 
@@ -306,6 +306,15 @@ This document is the authoritative reference for high-level tasks required to co
 - **Reference**: `docs/thesis.typ` Evaluation section; evaluation review 2026-06-12; `specs/PLAN.md`; `benchmarks/reports/thesis-figures/`.
 - **Prerequisite**: Final UC rerun numbers should be available before locking the cited absolute metrics.
 - **Effort**: ~2-3 hours (prose + figure/table caption pass).
+
+### INF-010: Reconcile thesis claims with current repo behavior and artifact provenance
+- **Status**: 🟢 Unblocked
+- **Data Needed**: None beyond the local audit inputs already present in the repo.
+- **Why**: The thesis currently contains several contradictions with the checked-in implementation and evaluation artifacts, including pipeline-default wording, API scope, SQLite default-pipeline justification, binary-size basis, and unresolved TODOs inside completed claim sections.
+- **Outcome**: A thesis section set that is internally consistent with the current repo and cites one defensible local source of truth per audited claim.
+- **Reference**: `outputs/paper-code-audit-thesis-vs-repo-2026-06-25.md`; `specs/023-thesis-repo-consistency-remediation/`
+- **Prerequisite**: None.
+- **Effort**: ~2-4 hours for thesis-only remediation; more if a code fix for blob-collision handling is approved.
 
 ### INF-008: Rename the six presented UC benchmark families to reader-facing UC1-UC6
 - **Status**: 🟢 Unblocked

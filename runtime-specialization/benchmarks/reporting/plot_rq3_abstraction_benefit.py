@@ -64,6 +64,24 @@ GROUP_POSITIONS = {
     ("specialized_exec", "abstract"): 6.0,
 }
 
+UC_DISPLAY_ORDER = (
+    "uc1_sql",
+    "uc2_conv",
+    "uc7_dfa",
+    "uc8_ivm",
+    "uc12_groupby",
+    "uc14_sort",
+)
+
+UC_LABELS = {
+    "uc1_sql": "UC1",
+    "uc2_conv": "UC2",
+    "uc7_dfa": "UC3",
+    "uc8_ivm": "UC4",
+    "uc12_groupby": "UC5",
+    "uc14_sort": "UC6",
+}
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -113,6 +131,31 @@ def _phase_rank(phase: str) -> int:
 
 def _abstraction_rank(abstraction: str) -> int:
     return ABSTRACTION_ORDER.index(abstraction)
+
+
+def _kernel_sort_key(row: tuple[str, str]) -> tuple[int, str, str]:
+    group_name, kernel = row
+    try:
+        group_rank = UC_DISPLAY_ORDER.index(group_name)
+    except ValueError as exc:
+        raise RuntimeError(f"Unexpected group_name '{group_name}' in RQ3 abstraction data.") from exc
+    return group_rank, kernel, group_name
+
+
+def _ordered_kernel_rows(df: pd.DataFrame) -> list[tuple[str, str]]:
+    unique_rows = df[["group_name", "kernel"]].drop_duplicates()
+    ordered_rows = sorted(
+        ((str(row.group_name), str(row.kernel)) for row in unique_rows.itertuples(index=False)),
+        key=_kernel_sort_key,
+    )
+    return ordered_rows
+
+
+def _kernel_display_label(group_name: str, kernel: str) -> str:
+    uc_label = UC_LABELS.get(group_name)
+    if uc_label is None:
+        raise RuntimeError(f"Missing UC label mapping for group '{group_name}'.")
+    return f"{uc_label}: {kernel}"
 
 
 def _load_rows(
@@ -226,7 +269,7 @@ def _validate_rows(df: pd.DataFrame) -> None:
     if df.empty:
         raise RuntimeError("No RQ3 abstraction rows found for the requested slice.")
 
-    kernels = sorted(df["kernel"].unique())
+    kernels = [_kernel_display_label(group_name, kernel) for group_name, kernel in _ordered_kernel_rows(df)]
     if len(kernels) != EXPECTED_KERNEL_COUNT:
         raise RuntimeError(
             f"Expected {EXPECTED_KERNEL_COUNT} kernels, found {len(kernels)}: {kernels}"
@@ -255,6 +298,12 @@ def _validate_rows(df: pd.DataFrame) -> None:
 
     if not np.allclose(baseline_rows["relative_runtime"], 1.0):
         raise RuntimeError("Baseline rows must normalize to exactly 1.0.")
+
+    observed_groups = set(df["group_name"].unique())
+    if observed_groups != set(UC_DISPLAY_ORDER):
+        raise RuntimeError(
+            f"Expected UC groups {UC_DISPLAY_ORDER}, found {sorted(observed_groups)}."
+        )
 
 
 def _add_category_labels(ax: plt.Axes) -> None:
@@ -371,13 +420,13 @@ def _plot_aggregate(df: pd.DataFrame, output: Path, config_name: str, size: str)
 
 
 def _plot_kernel_grid(df: pd.DataFrame, output: Path, config_name: str, size: str) -> None:
-    kernels = sorted(df["kernel"].unique())
+    ordered_kernels = _ordered_kernel_rows(df)
     y_max = max(2.2, float(df["relative_runtime"].max()) * 1.08)
     fig, axes = plt.subplots(3, 6, figsize=(18, 9.5), sharey=True, constrained_layout=True)
     axes_flat = axes.flatten()
 
-    for ax, kernel in zip(axes_flat, kernels):
-        kernel_rows = df[df["kernel"] == kernel]
+    for ax, (group_name, kernel) in zip(axes_flat, ordered_kernels):
+        kernel_rows = df[(df["group_name"] == group_name) & (df["kernel"] == kernel)]
         for phase in PHASE_ORDER:
             phase_rows = kernel_rows[kernel_rows["phase"] == phase].sort_values(
                 by="abstraction",
@@ -412,13 +461,13 @@ def _plot_kernel_grid(df: pd.DataFrame, output: Path, config_name: str, size: st
         )
         ax.tick_params(axis="x", labelsize=8)
         ax.tick_params(axis="y", labelsize=8)
-        ax.set_title(kernel, fontsize=10)
+        ax.set_title(_kernel_display_label(group_name, kernel), fontsize=10)
         ax.text(1.0, 0.98, "U", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=8)
         ax.text(5.0, 0.98, "S", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=8)
 
     for ax in axes[:, 0]:
         ax.set_ylabel("relative runtime")
-    for ax in axes_flat[len(kernels):]:
+    for ax in axes_flat[len(ordered_kernels):]:
         ax.remove()
 
     save_plot(fig, output, dpi=220)
@@ -492,15 +541,15 @@ def main() -> None:
     df["x_position"] = df.apply(
         lambda row: GROUP_POSITIONS[(row["phase"], row["abstraction"])], axis=1
     )
+    group_rank_map = {name: idx for idx, name in enumerate(UC_DISPLAY_ORDER)}
     df = df.sort_values(
         by=["group_name", "kernel", "phase", "abstraction"],
-        key=lambda col: col.map(
-            {
-                **{name: idx for idx, name in enumerate(PHASE_ORDER)},
-                **{name: idx for idx, name in enumerate(ABSTRACTION_ORDER)},
-            }
-        )
-        if col.name in {"phase", "abstraction"}
+        key=lambda col: col.map(group_rank_map)
+        if col.name == "group_name"
+        else col.map({name: idx for idx, name in enumerate(PHASE_ORDER)})
+        if col.name == "phase"
+        else col.map({name: idx for idx, name in enumerate(ABSTRACTION_ORDER)})
+        if col.name == "abstraction"
         else col,
     )
 
