@@ -1,0 +1,15 @@
+- [ ] Verify the current audited contradictions against `outputs/paper-code-audit-thesis-vs-repo-2026-06-25.md`, `docs/thesis.typ`, and the referenced repo artifacts before making any thesis edits
+- [ ] Update the implementation chapter so the default pipeline is described consistently with `Options::Default()` and the evaluation chapter
+- [ ] Update the API/annotation-free discussion to state the plugin-rewrite requirement, the unsupported runtime-function-pointer case, and the non-generic-lambda limitation
+- [ ] Update the safety/scope discussion to describe the effective single-threaded runtime requirement, not only concurrent mutation of specialized arguments
+- [ ] Update the embedded-IR and lambda-specialization prose to match the preprocessed-blob and shallow-address serialization implementation
+- [ ] Decide whether the function-to-blob lookup section should be weakened to describe current collision behavior or whether a code fix for deterministic collision handling is required
+- [ ] Remove the SQLite/TPC-H default-pipeline justification that relies on the invalidated wrong-blob benchmark path, or replace it with a valid local argument
+- [ ] Reconcile the UC default-pipeline headline numbers so the thesis clearly distinguishes deployable default results from oracle-style per-kernel selections
+- [ ] Reconcile the RQ2 binary-size prose with the recorded measurement basis in `benchmarks/reports/260610-binary-size/binary_size_table.txt`
+- [ ] Resolve the size-scaling provenance mismatch by choosing one authoritative dataset or weakening the thesis claim accordingly
+- [ ] Resolve or remove the live TODO in the supported-architectures/devirtualization section so the taxonomy chapter no longer undercuts itself
+- [ ] Update `specs/TODO.md` to record the thesis-repo consistency remediation task and any follow-up code defect discovered during execution
+- [ ] Verify SC-001 and SC-002 by re-reading the updated thesis sections against the cited code paths
+- [ ] Verify SC-003 by checking that each remediated evaluation claim now points to one defensible local artifact or explicitly scoped uncertainty
+- [ ] Verify SC-004 by confirming the audit report, spec, plan, and details together describe the remaining repair work without unstated assumptions
