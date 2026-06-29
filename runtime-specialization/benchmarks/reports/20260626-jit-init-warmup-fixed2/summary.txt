@@ -1,0 +1,9 @@
+Isolated startup warmup measurement
+Date: 2026-06-26
+Benchmark: BM_g:synthetic;n:jit_init;t:jit_overhead;/iterations:1/manual_time
+Real time: 3206265409 ns
+CPU time: 3205416466 ns
+Interpretation: one-time runtime-specializer startup overhead in the isolated AllBenchmarks process
+Source artifacts:
+- result.json
+- run.log

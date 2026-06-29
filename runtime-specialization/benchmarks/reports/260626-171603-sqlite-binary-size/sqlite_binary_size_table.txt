@@ -1,0 +1,69 @@
+Binary-Size Overhead of SQLite IR-Dump + Runtime Infrastructure
+===========================================================
+Date: 2026-06-26
+Purpose: RQ2 follow-up — quantify per-TU binary size cost of the IRDumpingPass plugin for SQLite on the same basis as the UC case study
+
+Subject TU
+----------
+File:      benchmarks/tpch/sqlite3_with_accessor.c
+Content:   SQLite amalgamation TU with `sqlite3VdbeExec` IR blob and accessor hooks
+Compiler:  /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/bin/clang-21 -x c -O2 -DSQLITE_THREADSAFE=0 -DSQLITE_OMIT_LOAD_EXTENSION=1 -DSQLITE_PRIVATE= -fvisibility=default -I/home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/_deps/sqlite3_src-src -c /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/runtime-specialization/benchmarks/tpch/sqlite3_with_accessor.c
+Plugin:    /home/Jakob.Gerhardt/CLionProjects/Masterarbeit/llvm/llvm/build/release/lib/LLVMRuntimeSpecializationComptimePlugin.so
+Method:    Exact release-build compile command from `build.ninja`, rebuilt once with and once without `-fpass-plugin`
+
+Object File Sizes  (from `size` and `wc -c`)
+---------------------------------------------
+                        Without plugin    With plugin    Overhead
+                        --------------    -----------    --------
+text (size tool)*          1,145,363 B      3,352,895 B   +2,207,532 B  (+192.7%)
+data (size tool)              18,872 B         21,872 B       +3,000 B  (+15.9%)
+bss                              953 B            953 B           +0 B
+Total sections (size)      1,165,188 B      3,375,720 B   +2,210,532 B  (+189.7%)
+On-disk file size          1,775,096 B      3,999,520 B   +2,224,424 B  (+125.3%)
+                            1,733.5 KB     3,905.8 KB   2,172.3 KB
+
+* `size(1)` on ELF counts `.text`, `.rodata`, `.gcc_except_table`, and similar sections
+  into the "text" column. See the section breakdown below for the split.
+
+Detailed Section Breakdown  (from `size -A -d`)
+-----------------------------------------------
+                        Without plugin    With plugin    Overhead
+                        --------------    -----------    --------
+.text* (code only)           985,432 B        985,454 B          +22 B
+.rodata* (read-only)          61,307 B      2,268,793 B   +2,207,486 B
+.data*                        18,872 B         21,864 B       +2,992 B
+.init_array                        0 B              8 B           +8 B
+
+IR Blob Analysis
+----------------
+The IR-dumping plugin embeds a serialized LLVM bitcode snapshot of the SQLite TU
+as a read-only data blob registered at startup.
+
+.rodata section growth:          2,207,486 bytes  (2,155.7 KB)
+  As % of total file overhead:    99.2%
+  As % of with-plugin file size:  55.2%
+
+Extra .text growth:              22 bytes  (22 B)
+Extra .data growth:              2,992 bytes  (2.9 KB)
+Other plugin overhead:           13,916 bytes  (13.6 KB)
+
+Summary Table
+-------------
+Metric                         Without plugin    With plugin    Overhead
+-----------------------------  --------------    -----------    --------
+Object file (on disk)           1,733.5 KB     3,905.8 KB   2,172.3 KB  (+125.3%)
+Loadable sections (text+data)   1,137.9 KB     3,296.6 KB   2,158.7 KB
+  of which .rodata growth          59.9 KB     2,215.6 KB   2,155.7 KB
+  of which extra .text            962.3 KB       962.4 KB         22 B
+  of which extra .data             18.4 KB        21.4 KB       2.9 KB
+
+Notes
+-----
+1. This measurement uses the same object-level before/after-plugin basis as the recorded
+   UC RQ2 case study, so the two TUs can be compared directly without mixing in linked-binary
+   or benchmark-harness metadata.
+2. The correct SQLite subject TU is `sqlite3_with_accessor.c` / `sqlite3_with_ir.o`, not
+   `sqlite3_tpch_bench.cpp`, because this is the TU that actually embeds the SQLite IR blob.
+3. The benchmark path's blob-selection issue affects specialization behavior, but it does not
+   change this binary-size measurement because the object-level comparison is performed on the
+   blob-carrying TU itself.

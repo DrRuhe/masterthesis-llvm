@@ -1,0 +1,15 @@
+Derived startup-overhead estimate for thesis TODO
+===============================================
+
+Source study:
+  benchmarks/reports/thesis-figures/rq1/rq1_first_call_quadrants.csv
+
+Rows used:
+  default, uc1_sql, count_matching_rows, low, SMALL   jit_ms = 3094.720258
+  default, uc1_sql, count_matching_rows, low, MEDIUM  jit_ms =   62.217829
+
+Derived one-time startup contribution:
+  3094.720258 - 62.217829 = 3032.502429 ms
+
+Thesis-facing wording:
+  roughly 3.0 s
