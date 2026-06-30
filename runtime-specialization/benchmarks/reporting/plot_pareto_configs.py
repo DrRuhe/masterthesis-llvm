@@ -33,6 +33,17 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+plt.rcParams.update(
+    {
+        "font.size": 11,
+        "axes.titlesize": 11,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+    }
+)
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from record_benchmark import resolve_db_path
 from report_utils import make_report_dir
@@ -422,7 +433,7 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
     _write_csv(output_path_csv, rows, default_flags, global_pareto)
 
     # --- PNG ---
-    fig, ax = plt.subplots(figsize=(9, 6))
+    fig, ax = plt.subplots(figsize=(10, 6.8))
     dflags = np.array(default_flags)
 
     if has_levels:
@@ -492,8 +503,9 @@ def render_kernel(rows, default_flags, output_path_png: Path, output_path_csv: P
         ax.set_title(title)
     _dedupe_legend(ax)
     ax.grid(True, alpha=0.3)
+    ax.tick_params(axis="both", labelsize=10)
 
-    fig.savefig(output_path_png, dpi=150, bbox_inches="tight")
+    fig.savefig(output_path_png, dpi=180, bbox_inches="tight")
     plt.close(fig)
     print(f"  Saved: {output_path_png}")
     print(f"  Saved: {output_path_csv}")

@@ -1,10 +1,10 @@
 config_label,fixpoint_max,unroll_max,large_module_max,early_prune,o3_final,group,kernel,kv_a,jit_overhead_ms,specialized_exec_ms,unspecialized_exec_ms,amortized_speedup_u_over_s,amortization_point_up_ms,is_pareto_optimal,is_default
+no_o3_final,10,128,50000,1,0,uc2_conv,edge_detection,low,42.561108,153.188511,211.452060,1.380339,154.464227,True,False
+no_unroll,10,1,50000,1,1,uc2_conv,edge_detection,low,51.015366,147.696990,212.953060,1.441824,166.480732,True,False
 p0_o3_optimal,16,62,3,1,1,uc2_conv,edge_detection,low,54.276629,113.922595,212.452366,1.864883,117.032630,True,False
-aggressive,20,256,50000,1,1,uc2_conv,edge_detection,low,51.600679,150.304550,212.609599,1.414525,176.082032,False,False
-uc_workload_optimal,22,5,1,1,1,uc2_conv,edge_detection,low,50.623116,148.914890,211.561201,1.420685,170.957988,True,False
 default,10,128,50000,1,1,uc2_conv,edge_detection,low,58.344192,184.373483,260.682742,1.413884,199.311645,False,True
 o3_only,1,128,50000,0,1,uc2_conv,edge_detection,low,52.421398,158.633252,222.767038,1.404290,182.084362,False,False
 no_prune,10,128,50000,0,1,uc2_conv,edge_detection,low,52.252942,157.196012,228.740992,1.455132,167.061194,False,False
 fixpoint_2,2,128,50000,1,1,uc2_conv,edge_detection,low,52.090760,148.539735,213.533921,1.437554,171.140603,False,False
-no_o3_final,10,128,50000,1,0,uc2_conv,edge_detection,low,42.561108,153.188511,211.452060,1.380339,154.464227,True,False
-no_unroll,10,1,50000,1,1,uc2_conv,edge_detection,low,51.015366,147.696990,212.953060,1.441824,166.480732,True,False
+aggressive,20,256,50000,1,1,uc2_conv,edge_detection,low,51.600679,150.304550,212.609599,1.414525,176.082032,False,False
+uc_workload_optimal,22,5,1,1,1,uc2_conv,edge_detection,low,50.623116,148.914890,211.561201,1.420685,170.957988,True,False

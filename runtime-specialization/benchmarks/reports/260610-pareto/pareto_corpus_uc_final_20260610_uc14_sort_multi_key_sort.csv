@@ -1,10 +1,10 @@
 config_label,fixpoint_max,unroll_max,large_module_max,early_prune,o3_final,group,kernel,kv_a,jit_overhead_ms,specialized_exec_ms,unspecialized_exec_ms,amortized_speedup_u_over_s,amortization_point_up_ms,is_pareto_optimal,is_default
-o3_only,1,128,50000,0,1,uc14_sort,multi_key_sort,low,60.201327,772.225997,1037.975687,1.344135,235.136732,False,False
 default,10,128,50000,1,1,uc14_sort,multi_key_sort,low,81.948319,895.907273,1192.008628,1.330504,329.897522,False,True
-no_o3_final,10,128,50000,1,0,uc14_sort,multi_key_sort,low,45.395827,708.711841,989.571417,1.396296,159.946168,True,False
-no_unroll,10,1,50000,1,1,uc14_sort,multi_key_sort,low,56.448028,724.819741,978.448628,1.349920,217.765004,False,False
 uc_workload_optimal,22,5,1,1,1,uc14_sort,multi_key_sort,low,59.057463,717.557883,987.179448,1.375749,216.230158,False,False
+o3_only,1,128,50000,0,1,uc14_sort,multi_key_sort,low,60.201327,772.225997,1037.975687,1.344135,235.136732,False,False
+p0_o3_optimal,16,62,3,1,1,uc14_sort,multi_key_sort,low,69.092985,712.835114,988.793033,1.387127,247.569131,False,False
 fixpoint_2,2,128,50000,1,1,uc14_sort,multi_key_sort,low,57.778880,714.212045,992.112427,1.389101,206.272278,False,False
 no_prune,10,128,50000,0,1,uc14_sort,multi_key_sort,low,58.305815,750.693947,1055.467406,1.405989,201.920100,False,False
 aggressive,20,256,50000,1,1,uc14_sort,multi_key_sort,low,56.477888,711.149049,982.642480,1.381767,204.415892,False,False
-p0_o3_optimal,16,62,3,1,1,uc14_sort,multi_key_sort,low,69.092985,712.835114,988.793033,1.387127,247.569131,False,False
+no_o3_final,10,128,50000,1,0,uc14_sort,multi_key_sort,low,45.395827,708.711841,989.571417,1.396296,159.946168,True,False
+no_unroll,10,1,50000,1,1,uc14_sort,multi_key_sort,low,56.448028,724.819741,978.448628,1.349920,217.765004,False,False

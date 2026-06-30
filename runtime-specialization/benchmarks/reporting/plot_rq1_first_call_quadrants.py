@@ -20,6 +20,18 @@ from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter, LogLocator
 import pandas as pd
 
+plt.rcParams.update(
+    {
+        "font.size": 11,
+        "axes.titlesize": 11,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "legend.title_fontsize": 10,
+    }
+)
+
 from report_utils import open_db, resolve_db_path, save_csv, save_plot
 
 
@@ -301,7 +313,7 @@ def _plot_combined(df: pd.DataFrame, output_path: Path) -> None:
     fig, axes = plt.subplots(
         1,
         len(CONFIGS),
-        figsize=(13.2, 5.8),
+        figsize=(14.4, 6.4),
         sharex=True,
         sharey=True,
         constrained_layout=True,

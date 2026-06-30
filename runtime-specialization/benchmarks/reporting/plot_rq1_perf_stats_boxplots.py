@@ -18,6 +18,16 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+plt.rcParams.update(
+    {
+        "font.size": 11,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+    }
+)
+
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -78,7 +88,7 @@ def main() -> None:
     data = [default_speedups, best_speedups]
     ypos = np.array([2, 1], dtype=float)
 
-    fig, ax = plt.subplots(figsize=(9.2, 2), constrained_layout=True)
+    fig, ax = plt.subplots(figsize=(10.4, 2.6), constrained_layout=True)
     bp = ax.boxplot(
         data,
         positions=ypos,
@@ -138,7 +148,7 @@ def main() -> None:
             textcoords="offset points",
             va="top",
             ha="center",
-            fontsize=9,
+            fontsize=10,
             color="#222222",
             zorder=5,
         )
@@ -147,7 +157,7 @@ def main() -> None:
     ax.set_xlabel("Amortized speedup")
     ax.grid(axis="x", color="#d9d9d9", linewidth=0.8)
     ax.set_axisbelow(True)
-    ax.legend(loc="lower right")
+    ax.legend(loc="lower right", fontsize=10)
 
     fig.savefig(output, dpi=220, bbox_inches="tight")
     plt.close(fig)

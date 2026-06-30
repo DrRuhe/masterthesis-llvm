@@ -1,10 +1,10 @@
 config_label,fixpoint_max,unroll_max,large_module_max,early_prune,o3_final,group,kernel,kv_a,jit_overhead_ms,specialized_exec_ms,unspecialized_exec_ms,amortized_speedup_u_over_s,amortization_point_up_ms,is_pareto_optimal,is_default
-no_prune,10,128,50000,0,1,uc7_dfa,multi_pattern_match,low,44.760842,114.005241,138.540654,1.215213,252.744733,False,False
-no_o3_final,10,128,50000,1,0,uc7_dfa,multi_pattern_match,low,39.418300,90.783851,114.327521,1.259338,191.414359,True,False
 default,10,128,50000,1,1,uc7_dfa,multi_pattern_match,low,46.857223,117.716848,145.607761,1.236932,244.623594,False,True
-aggressive,20,256,50000,1,1,uc7_dfa,multi_pattern_match,low,49.768495,91.739584,116.398864,1.268797,234.921547,False,False
-fixpoint_2,2,128,50000,1,1,uc7_dfa,multi_pattern_match,low,43.549770,90.626007,115.517782,1.274665,202.105824,False,False
-p0_o3_optimal,16,62,3,1,1,uc7_dfa,multi_pattern_match,low,53.067065,90.311583,115.062925,1.274066,246.695781,True,False
-uc_workload_optimal,22,5,1,1,1,uc7_dfa,multi_pattern_match,low,41.539940,91.650532,114.568356,1.250057,207.662065,False,False
 o3_only,1,128,50000,0,1,uc7_dfa,multi_pattern_match,low,43.469401,111.850420,139.784280,1.249743,217.525928,False,False
 no_unroll,10,1,50000,1,1,uc7_dfa,multi_pattern_match,low,42.528389,90.534865,114.445981,1.264109,203.553991,True,False
+no_prune,10,128,50000,0,1,uc7_dfa,multi_pattern_match,low,44.760842,114.005241,138.540654,1.215213,252.744733,False,False
+no_o3_final,10,128,50000,1,0,uc7_dfa,multi_pattern_match,low,39.418300,90.783851,114.327521,1.259338,191.414359,True,False
+uc_workload_optimal,22,5,1,1,1,uc7_dfa,multi_pattern_match,low,41.539940,91.650532,114.568356,1.250057,207.662065,False,False
+p0_o3_optimal,16,62,3,1,1,uc7_dfa,multi_pattern_match,low,53.067065,90.311583,115.062925,1.274066,246.695781,True,False
+aggressive,20,256,50000,1,1,uc7_dfa,multi_pattern_match,low,49.768495,91.739584,116.398864,1.268797,234.921547,False,False
+fixpoint_2,2,128,50000,1,1,uc7_dfa,multi_pattern_match,low,43.549770,90.626007,115.517782,1.274665,202.105824,False,False

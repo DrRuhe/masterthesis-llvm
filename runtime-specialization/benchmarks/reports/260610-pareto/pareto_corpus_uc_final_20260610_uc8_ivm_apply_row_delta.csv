@@ -1,10 +1,10 @@
 config_label,fixpoint_max,unroll_max,large_module_max,early_prune,o3_final,group,kernel,kv_a,jit_overhead_ms,specialized_exec_ms,unspecialized_exec_ms,amortized_speedup_u_over_s,amortization_point_up_ms,is_pareto_optimal,is_default
 no_unroll,10,1,50000,1,1,uc8_ivm,apply_row_delta,low,47.156045,14.680402,29.260507,1.993168,94.636477,False,False
-no_prune,10,128,50000,0,1,uc8_ivm,apply_row_delta,low,48.016902,14.760977,33.658436,2.280231,85.523341,False,False
-p0_o3_optimal,16,62,3,1,1,uc8_ivm,apply_row_delta,low,51.897093,11.969565,32.117857,2.683293,82.727779,True,False
-default,10,128,50000,1,1,uc8_ivm,apply_row_delta,low,52.360273,15.762172,35.938484,2.280046,93.265255,False,True
-no_o3_final,10,128,50000,1,0,uc8_ivm,apply_row_delta,low,45.514461,13.678462,29.256338,2.138862,85.479336,True,False
-fixpoint_2,2,128,50000,1,1,uc8_ivm,apply_row_delta,low,49.116166,13.992964,29.237700,2.089457,94.199319,False,False
-o3_only,1,128,50000,0,1,uc8_ivm,apply_row_delta,low,48.405348,14.217391,33.324677,2.343938,84.422905,False,False
 aggressive,20,256,50000,1,1,uc8_ivm,apply_row_delta,low,48.510268,14.071404,29.617804,2.104822,92.418026,False,False
 uc_workload_optimal,22,5,1,1,1,uc8_ivm,apply_row_delta,low,48.466166,14.324476,30.109305,2.101948,92.448424,False,False
+p0_o3_optimal,16,62,3,1,1,uc8_ivm,apply_row_delta,low,51.897093,11.969565,32.117857,2.683293,82.727779,True,False
+fixpoint_2,2,128,50000,1,1,uc8_ivm,apply_row_delta,low,49.116166,13.992964,29.237700,2.089457,94.199319,False,False
+o3_only,1,128,50000,0,1,uc8_ivm,apply_row_delta,low,48.405348,14.217391,33.324677,2.343938,84.422905,False,False
+no_prune,10,128,50000,0,1,uc8_ivm,apply_row_delta,low,48.016902,14.760977,33.658436,2.280231,85.523341,False,False
+default,10,128,50000,1,1,uc8_ivm,apply_row_delta,low,52.360273,15.762172,35.938484,2.280046,93.265255,False,True
+no_o3_final,10,128,50000,1,0,uc8_ivm,apply_row_delta,low,45.514461,13.678462,29.256338,2.138862,85.479336,True,False

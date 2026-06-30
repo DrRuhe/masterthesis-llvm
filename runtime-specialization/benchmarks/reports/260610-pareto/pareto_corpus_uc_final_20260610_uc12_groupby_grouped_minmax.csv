@@ -1,10 +1,10 @@
 config_label,fixpoint_max,unroll_max,large_module_max,early_prune,o3_final,group,kernel,kv_a,jit_overhead_ms,specialized_exec_ms,unspecialized_exec_ms,amortized_speedup_u_over_s,amortization_point_up_ms,is_pareto_optimal,is_default
-p0_o3_optimal,16,62,3,1,1,uc12_groupby,grouped_minmax,low,57.768970,12.411047,29.100256,2.344706,100.729269,True,False
-default,10,128,50000,1,1,uc12_groupby,grouped_minmax,low,49.378656,14.629284,34.463503,2.355789,85.799266,False,True
-no_prune,10,128,50000,0,1,uc12_groupby,grouped_minmax,low,43.543440,13.810274,32.264010,2.336232,76.130167,False,False
 no_unroll,10,1,50000,1,1,uc12_groupby,grouped_minmax,low,42.767556,13.280734,28.794307,2.168126,79.379657,True,False
-fixpoint_2,2,128,50000,1,1,uc12_groupby,grouped_minmax,low,46.716638,13.802154,29.302595,2.123045,88.314823,False,False
 o3_only,1,128,50000,0,1,uc12_groupby,grouped_minmax,low,43.587536,13.886541,32.298726,2.325901,76.461424,False,False
+p0_o3_optimal,16,62,3,1,1,uc12_groupby,grouped_minmax,low,57.768970,12.411047,29.100256,2.344706,100.729269,True,False
+no_prune,10,128,50000,0,1,uc12_groupby,grouped_minmax,low,43.543440,13.810274,32.264010,2.336232,76.130167,False,False
+aggressive,20,256,50000,1,1,uc12_groupby,grouped_minmax,low,44.296628,13.705829,28.797888,2.101142,84.524540,False,False
 uc_workload_optimal,22,5,1,1,1,uc12_groupby,grouped_minmax,low,44.460660,13.815348,29.592897,2.142030,83.391897,False,False
 no_o3_final,10,128,50000,1,0,uc12_groupby,grouped_minmax,low,44.557078,14.627992,31.634962,2.162632,82.881397,False,False
-aggressive,20,256,50000,1,1,uc12_groupby,grouped_minmax,low,44.296628,13.705829,28.797888,2.101142,84.524540,False,False
+default,10,128,50000,1,1,uc12_groupby,grouped_minmax,low,49.378656,14.629284,34.463503,2.355789,85.799266,False,True
+fixpoint_2,2,128,50000,1,1,uc12_groupby,grouped_minmax,low,46.716638,13.802154,29.302595,2.123045,88.314823,False,False

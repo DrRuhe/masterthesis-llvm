@@ -22,6 +22,18 @@ from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
 
+plt.rcParams.update(
+    {
+        "font.size": 11,
+        "axes.titlesize": 11,
+        "axes.labelsize": 11,
+        "xtick.labelsize": 10,
+        "ytick.labelsize": 10,
+        "legend.fontsize": 10,
+        "legend.title_fontsize": 10,
+    }
+)
+
 from report_utils import open_db, resolve_db_path, save_csv, save_plot
 
 
@@ -422,7 +434,7 @@ def _plot_aggregate(df: pd.DataFrame, output: Path, config_name: str, size: str)
 def _plot_kernel_grid(df: pd.DataFrame, output: Path, config_name: str, size: str) -> None:
     ordered_kernels = _ordered_kernel_rows(df)
     y_max = max(2.2, float(df["relative_runtime"].max()) * 1.08)
-    fig, axes = plt.subplots(3, 6, figsize=(18, 9.5), sharey=True, constrained_layout=True)
+    fig, axes = plt.subplots(3, 6, figsize=(20, 10.8), sharey=True, constrained_layout=True)
     axes_flat = axes.flatten()
 
     for ax, (group_name, kernel) in zip(axes_flat, ordered_kernels):
@@ -459,11 +471,11 @@ def _plot_kernel_grid(df: pd.DataFrame, output: Path, config_name: str, size: st
             [GROUP_POSITIONS[(phase, abstraction)] for phase in PHASE_ORDER for abstraction in ABSTRACTION_ORDER],
             ["L", "T", "A", "L", "T", "A"],
         )
-        ax.tick_params(axis="x", labelsize=8)
-        ax.tick_params(axis="y", labelsize=8)
-        ax.set_title(_kernel_display_label(group_name, kernel), fontsize=10)
-        ax.text(1.0, 0.98, "U", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=8)
-        ax.text(5.0, 0.98, "S", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=8)
+        ax.tick_params(axis="x", labelsize=9)
+        ax.tick_params(axis="y", labelsize=9)
+        ax.set_title(_kernel_display_label(group_name, kernel), fontsize=11)
+        ax.text(1.0, 0.98, "U", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=9)
+        ax.text(5.0, 0.98, "S", transform=ax.get_xaxis_transform(), ha="center", va="top", fontsize=9)
 
     for ax in axes[:, 0]:
         ax.set_ylabel("relative runtime")
