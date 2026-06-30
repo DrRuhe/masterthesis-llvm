@@ -21,6 +21,16 @@ RULES = (
     Rule(re.compile(r"\bdumped IR\b"), "use `embedded IR` or `embedded LLVM bitcode`"),
     Rule(re.compile(r"\bsteady-state\b"), "replace with `amortized`, `long-run`, or `remaining runtime work` depending on context"),
     Rule(re.compile(r"(?<!runtime )(?<!runtime-)specializers?\b"), "use `runtime specializer` or `CRS` for the whole system"),
+    Rule(re.compile(r"\bamortized speedups?\b"), "use `@amortized-speedup` (or plural form) for the canonical metric term"),
+    Rule(re.compile(r"\bfirst-call speedups?\b"), "use `@first-call-speedup` (or plural form) for the canonical metric term"),
+    Rule(re.compile(r"\bruntime-invariant values?\b"), "use `@runtime-invariant-value` (or plural form) when naming the canonical concept"),
+    Rule(re.compile(r"\bspecialization constants?\b"), "use `@specialization-constant` (or plural form) when naming the canonical concept"),
+    Rule(re.compile(r"\bspecializable inputs?\b"), "use `@specializable-input` (or plural form) when naming the canonical concept"),
+    Rule(re.compile(r"\bunspecializable inputs?\b"), "use `@unspecializable-input` (or plural form) when naming the canonical concept"),
+    Rule(re.compile(r"\bembedded IR\b"), "use `@embedded-ir` when naming the canonical concept in thesis prose"),
+    Rule(re.compile(r"\bIR blobs?\b"), "use `@ir-blob` (or plural form) when naming the canonical concept"),
+    Rule(re.compile(r"\bJIT configurations?\b"), "use `@jit-configuration` (or plural form) when naming the canonical concept"),
+    Rule(re.compile(r"\bruntime specializers?\b"), "use `@runtime-specializer` (or `CRS`) when naming the canonical system concept"),
 )
 
 
