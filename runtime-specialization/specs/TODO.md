@@ -45,6 +45,14 @@ This document is the authoritative reference for high-level tasks required to co
 - **Reference**: `docs/thesis.typ` section `Platform Scope`
 - **Next Step**: Optional future work: validate the implementation on AArch64 hardware instead of inferring portability from LLVM support alone.
 
+### D-003: Remediate Implementation chapter contract gaps and low-value detail
+- **Status**: ✅ Complete (2026-06-30)
+- **Data Needed**: None beyond the current chapter text and local implementation facts.
+- **Why**: The `Implementation` chapter had a visible `#TODO`, overstated the determinism of resolved-name lookup, under-specified the startup/API/failure contract, and included several debugging/maintenance details that did not clearly earn their place in the thesis argument.
+- **Outcome**: `docs/thesis.typ` section `Implementation` now states the plugin/init contract explicitly, qualifies duplicate-name resolution, explains the observable semantics of `callSpecialized` / `specializeOnly` / `specializeLambda`, reconnects shallow serialization to the `!invariant.load` correctness gate, removes the debug-vs-release digression, justifies the instrumentation subsection via the analysis benchmark, and closes with a synthesis paragraph that bridges into `Evaluation`.
+- **Reference**: `docs/thesis.typ` section `Implementation`; `specs/024-implementation-chapter-analysis/findings.md`
+- **Next Step**: None.
+
 ---
 
 ## Evaluation: Research Question 1 (RQ1) — Speedup & JIT Overhead
